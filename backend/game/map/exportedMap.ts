@@ -10,12 +10,6 @@ const HORIZONTAL_FOOTPRINT_SCALE = 1.125;
 const RAW_EXPORTED_MAP_WIDTH = 819;  // 546 × 1.5 — map scaled up 50%
 const RAW_EXPORTED_MAP_HEIGHT = 828;  // 552 × 1.5 — map scaled up 50%
 
-const RAW_EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
-  { x: 360, y: 390 }, // P0 — user-specified spawn (scaled ×1.5)
-  { x: 375, y: 390 }, // P1 (scaled ×1.5)
-  { x: 360, y: 390 }, // Center (fallback, scaled ×1.5)
-];
-
 const rawObjects: MapObject[] = [
   { id: "entity_0", type: "building", x: 518.58, y: 476.57, w: 133.65, d: 172.65, h: 202.88 },
   { id: "entity_1", type: "building", x: 536.40, y: 193.48, w: 132.89, d: 241.26, h: 167.10 },
@@ -179,9 +173,16 @@ function scaleMapObject(obj: MapObject): MapObject {
 
 export const EXPORTED_MAP_WIDTH = toCollisionTestHorizontalUnits(RAW_EXPORTED_MAP_WIDTH);
 export const EXPORTED_MAP_HEIGHT = toCollisionTestHorizontalUnits(RAW_EXPORTED_MAP_HEIGHT);
-export const EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number }> = RAW_EXPORTED_MAP_SPAWN_POSITIONS.map(
-  (spawn) => ({ x: toCollisionTestHorizontalUnits(spawn.x), y: toCollisionTestHorizontalUnits(spawn.y) })
-);
+export const EXPORTED_MAP_SPAWN_POSITIONS: Array<{ x: number; y: number; z: number }> = [
+  { x: 173.74, y: 94.14, z: 0.17 },
+  { x: 300.61, y: 130.85, z: 9.10 },
+  { x: 338.49, y: 172.62, z: 65.62 },
+  { x: 310.16, y: 289.59, z: 97.34 },
+  { x: 157.22, y: 321.05, z: 6.53 },
+  { x: 13.66, y: 263.33, z: 16.01 },
+  { x: 31.60, y: 158.91, z: 19.29 },
+  { x: 46.44, y: 88.90, z: 13.93 },
+];
 
 const objects: MapObject[] = rawObjects.map(scaleMapObject);
 

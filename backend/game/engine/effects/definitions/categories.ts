@@ -212,6 +212,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   YOU_FENG_PIAO_ZONG: "ABILITY",
   RU_YI_FA: "ABILITY",
   XIANG_JI_BI_LUO: "ABILITY",
+  INTERRUPT_CHANNEL: "ABILITY",
 };
 
 export function getEffectCategory(type: EffectType): string {

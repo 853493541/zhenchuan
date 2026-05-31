@@ -11,9 +11,12 @@ import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../../engine/state/types/position";
-import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS } from "../../map/exportedMap";
+import { getGroundHeightForMap, getTopDownHitHeightForMap, type MapContext } from "../../engine/loop/movement";
+import { EXPORTED_MAP_WIDTH, EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS, exportedMap } from "../../map/exportedMap";
+import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
 import { BASE_HASTE_RATE_PCT } from "../../engine/utils/haste";
 import { createStartingConsumableCounts } from "../gameplay/consumableService";
+import { TEST_MODE, type GameMode, isExportedMapMode, isYumen1v1BasicMode } from "../../modes";
 
 // Arena dimensions (must match backend arena size)
 const PUBG_WIDTH = 2000;
@@ -38,8 +41,32 @@ const ARENA_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
   { x: 100, y: 100 }, // Center (fallback)
 ];
 
+const TEST_MODE_GATHER_RADIUS = 4;
+const TEST_MODE_SPAWN_Z_LIFT = 10;
+const TEST_MODE_SPAWN_POSITIONS: Array<{ x: number; y: number }> = [
+  { x: EXPORTED_MAP_WIDTH / 2 - TEST_MODE_GATHER_RADIUS, y: EXPORTED_MAP_HEIGHT / 2 },
+  { x: EXPORTED_MAP_WIDTH / 2 + TEST_MODE_GATHER_RADIUS, y: EXPORTED_MAP_HEIGHT / 2 },
+  { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 - TEST_MODE_GATHER_RADIUS },
+  { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 + TEST_MODE_GATHER_RADIUS },
+];
+
 // Keep SPAWN_POSITIONS as alias for pubg (backward compat)
 const SPAWN_POSITIONS = PUBG_SPAWN_POSITIONS;
+
+export function attachPlayerNamesToBattleState(
+  state: GameState,
+  playerNames?: Record<string, string> | null
+): GameState {
+  const names = playerNames && typeof playerNames === "object" ? playerNames : {};
+  (state as any).playerNames = { ...names };
+  state.players = state.players.map((player) => {
+    const username = names[player.userId];
+    return typeof username === "string" && username.trim().length > 0
+      ? { ...player, username }
+      : player;
+  });
+  return state;
+}
 
 // Pickup spawn positions — clusters near each player spawn (P0≈985,1000 | P1≈1015,1000)
 // so books appear within arm's reach without needing to walk far.
@@ -198,6 +225,22 @@ const COMMON_ABILITY_IDS = [
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const DRAFT_ABILITY_SLOT_COUNT = 6;
 
+function createExportedTestMapContext(): MapContext {
+  return {
+    objects: exportedMap.objects,
+    width: EXPORTED_MAP_WIDTH,
+    height: EXPORTED_MAP_HEIGHT,
+    playerRadius: COLLISION_TEST_PLAYER_RADIUS,
+    collisionSystem: getCollisionTestExportedSystem(),
+  };
+}
+
+function getTestModeSpawnZ(x: number, y: number, mapCtx: MapContext) {
+  const supportGroundZ = getGroundHeightForMap(x, y, 100000, mapCtx);
+  const topDownHitZ = getTopDownHitHeightForMap(x, y, mapCtx);
+  return Math.max(supportGroundZ, topDownHitZ) + TEST_MODE_SPAWN_Z_LIFT;
+}
+
 function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
   const numeric = Number(value);
   if (!Number.isFinite(numeric)) return Math.max(0, Math.min(DRAFT_ABILITY_SLOT_COUNT - 1, fallback));
@@ -238,17 +281,23 @@ function makeCommonAbilities(): AbilityInstance[] {
 export function initializeBattleState(
   tournament: TournamentState,
   playerIds: PlayerID[],
-  mode: 'arena' | 'pubg' | 'collision-test' = 'pubg'
+  mode: GameMode = 'pubg'
 ): GameState {
   const isArena = mode === 'arena';
-  const isCollisionTest = mode === 'collision-test';
-  const unitScale = isCollisionTest ? 1 : NEW_WORLD_UNIT_SCALE;
-  const mapWidth  = isCollisionTest ? EXPORTED_MAP_WIDTH  : isArena ? ARENA_WIDTH  : PUBG_WIDTH;
-  const mapHeight = isCollisionTest ? EXPORTED_MAP_HEIGHT : isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
-  const spawnList = isCollisionTest ? EXPORTED_MAP_SPAWN_POSITIONS : isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
+  const isTestMode = mode === TEST_MODE;
+  const isExportedMap = isExportedMapMode(mode);
+  const isYumen = isYumen1v1BasicMode(mode);
+  const unitScale = isExportedMap ? 1 : NEW_WORLD_UNIT_SCALE;
+  const mapWidth  = isExportedMap ? EXPORTED_MAP_WIDTH  : isArena ? ARENA_WIDTH  : PUBG_WIDTH;
+  const mapHeight = isExportedMap ? EXPORTED_MAP_HEIGHT : isArena ? ARENA_HEIGHT : PUBG_HEIGHT;
+  const spawnList = isTestMode ? TEST_MODE_SPAWN_POSITIONS : isExportedMap ? EXPORTED_MAP_SPAWN_POSITIONS : isArena ? ARENA_SPAWN_POSITIONS : PUBG_SPAWN_POSITIONS;
+  const testModeMapCtx = isTestMode ? createExportedTestMapContext() : null;
 
   const players: PlayerState[] = playerIds.map((id, i) => {
     const spawn = spawnList[i % spawnList.length];
+    const spawnZ = isTestMode && testModeMapCtx
+      ? getTestModeSpawnZ(spawn.x, spawn.y, testModeMapCtx)
+      : (spawn as { z?: number }).z;
 
     // Face toward map center
     const dx = mapWidth  / 2 - spawn.x;
@@ -279,7 +328,7 @@ export function initializeBattleState(
       combatLinks: {},
       consumableCooldowns: {},
       consumableCounts: createStartingConsumableCounts(),
-      position: { x: spawn.x, y: spawn.y },
+      position: { x: spawn.x, y: spawn.y, ...(typeof spawnZ === "number" ? { z: spawnZ } : {}) },
       velocity: { vx: 0, vy: 0 },
       facing: { x: dx / mag, y: dy / mag },
       moveSpeed: BASE_MOVE_SPEED_PER_TICK * unitScale,
@@ -291,11 +340,15 @@ export function initializeBattleState(
     unitScale,
     turn: 0,
     activePlayerIndex: 0,
+    testShortCooldown: isTestMode,
     gameOver: false,
     players,
     events: [],
-    pickups: isCollisionTest ? [] : isArena ? generateArenaPickups() : generatePickups(),
+    pickups: isExportedMap ? [] : isArena ? generateArenaPickups() : generatePickups(),
+    ...(isYumen ? { playArea: { minX: 0, minY: 0, maxX: mapWidth, maxY: mapHeight } } : {}),
   };
+
+  (state as any).mode = mode;
 
   return state;
 }

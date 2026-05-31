@@ -1,0 +1,1526 @@
+{
+  "generatedAt": "2026-05-30T05:32:00.404Z",
+  "source": {
+    "resolvedAbilitiesModule": "backend/dist/game/abilities/abilities.js",
+    "baseAbilitiesFile": "backend/game/abilities/abilities.ts",
+    "overrideFile": "backend/game/abilities/ability-property-overrides.json"
+  },
+  "summary": {
+    "totalAbilities": 168,
+    "overriddenDescriptions": 166
+  },
+  "abilities": [
+    {
+      "id": "anchen_misan",
+      "name": "暗尘弥散",
+      "currentDescription": "隐身5秒，移动速度提升100%，受到伤害降低20%",
+      "baseDescription": "隐身5秒，移动速度提升100%，受到伤害降低20%",
+      "overrideDescription": null,
+      "hasDescriptionOverride": false,
+      "originalDescription": null
+    },
+    {
+      "id": "baizu",
+      "name": "百足",
+      "currentDescription": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到（3.8541*攻击力）点伤害，并使这些目标每3秒受到伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成（3.8541*攻击力）点伤害",
+      "baseDescription": "可选目标或地面施放（范围6）\n命中后立刻造成3点伤害\n附加【百足】18秒：每3秒造成4点伤害，结束时以携带者为中心再次爆炸，造成3点范围伤害（不再附加百足）",
+      "overrideDescription": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到（3.8541*攻击力）点伤害，并使这些目标每3秒受到伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成（3.8541*攻击力）点伤害",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "bang_da_gou_tou",
+      "name": "棒打狗头",
+      "currentDescription": "向目标冲刺造成（1.4375*攻击力）外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
+      "baseDescription": "20尺，正面施放\n起手即附加效果并冲向目标，抵达时造成10点伤害\n常态：附加【棒打狗头·锁足】2秒，并附加【心怵·一】6秒（受到伤害增加6%）\n若目标已有【心怵·一】：改为附加【棒打狗头·定身】2秒，移除【心怵·一】，并附加【心怵·二】6秒（受到伤害增加6%），本次进入16秒冷却",
+      "overrideDescription": "向目标冲刺造成（1.4375*攻击力）外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "bang_hua_sui_liu",
+      "name": "傍花随柳",
+      "currentDescription": "使目标8秒内获得3层“傍花随柳”效果，前2层“傍花随柳”目标施展任何招式将受到伤害，最后1层“傍花随柳”时将直接沉默目标4秒。",
+      "baseDescription": "运功1秒（可移动、可在空中施放）。读条完成后对目标附加【傍花随柳】3层（30秒）：目标每次出招消耗1层并受到2点伤害；消耗第3层时额外施加【束发】沉默4秒",
+      "overrideDescription": "使目标8秒内获得3层“傍花随柳”效果，前2层“傍花随柳”目标施展任何招式将受到伤害，最后1层“傍花随柳”时将直接沉默目标4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "bao_can_shi",
+      "name": "抱残式",
+      "currentDescription": "使目标跳跃能力降低，移动速度降低48%，持续8秒。",
+      "baseDescription": "瞬发，射程8\n附加【抱残式】8秒：跳跃高度降低50%，移动速度降低48%",
+      "overrideDescription": "使目标跳跃能力降低，移动速度降低48%，持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "bu_feng_shi",
+      "name": "捕风式",
+      "currentDescription": "对目标造成（0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
+      "baseDescription": "瞬发，射程20\n造成1点伤害并附加【捕风式】3秒（减速20%）",
+      "overrideDescription": "对目标造成（0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "bu_wei_an_xing",
+      "name": "怖畏暗刑",
+      "currentDescription": "使目标无法使用武器，持续4秒。",
+      "baseDescription": "4尺，瞬发，不进入公共冷却\n使目标获得【怖畏暗刑】4秒：缴械，无法施展需要武器的招式",
+      "overrideDescription": "使目标无法使用武器，持续4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "cang_yue",
+      "name": "沧月",
+      "currentDescription": "击倒当前目标2秒，并击退其周围6尺内最多5个其他的敌对目标，造成(0.1000*攻击力)伤害。",
+      "baseDescription": "瞬发，射程4\n对目标造成1点伤害并击倒2秒\n以目标为中心6尺内的其他敌人被击退30尺（30尺/秒）",
+      "overrideDescription": "击倒当前目标2秒，并击退其周围6尺内最多5个其他的敌对目标，造成(0.1000*攻击力)伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "chan_xiao",
+      "name": "蟾啸",
+      "currentDescription": "使目标及其8尺周围内的最多8个目标每2秒受到？点伤害，持续16秒，同时目标2秒内无法施展招式。",
+      "baseDescription": "造成10点伤害\n目标沉默2秒\n附加【蟾啸】16秒：每2秒受到1点伤害",
+      "overrideDescription": "使目标及其8尺周围内的最多8个目标每2秒受到？点伤害，持续16秒，同时目标2秒内无法施展招式。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "changzhen",
+      "name": "长针",
+      "currentDescription": "恢复友方目标138598点气血值。",
+      "baseDescription": "自我施放，正读条3秒\n必须站立施放，移动或跳跃会中断\n运功完成时瞬间回复20点气血\n触发GCD但无冷却",
+      "overrideDescription": "恢复友方目标138598点气血值。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "cheng_huang_zhi_wei",
+      "name": "乘黄之威",
+      "currentDescription": "向前跳跃10尺，落地时回头对起跳方向长啸，使矩形范围内命中的目标获得2秒恐惧效果。",
+      "baseDescription": "瞬发，可在移动或空中施放\n向前冲刺12尺（20尺/秒），结束后立即转身180°\n并对身后6尺、120°内的敌人施加【恐惧】3秒：沉默并强制远离施法者",
+      "overrideDescription": "向前跳跃10尺，落地时回头对起跳方向长啸，使矩形范围内命中的目标获得2秒恐惧效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "chong_yin_yang",
+      "name": "冲阴阳",
+      "currentDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的内功伤害降低30%，气场持续10秒。",
+      "baseDescription": "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落冲阴阳阵，持续10秒，半径15尺。阵中自身获得【冲阴阳】：内功减伤30%",
+      "overrideDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的内功伤害降低30%，气场持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "chu_he_han_jie",
+      "name": "楚河汉界",
+      "currentDescription": "在自身前方生成一道20尺刀气阻碍，敌方玩家目标无法穿越，持续4秒。",
+      "baseDescription": "瞬发，无公共调息，3层充能，每层12秒恢复，施放间隔0.5秒\n在面向前方立起一道高3.5尺、长20尺的墙，持续4秒；墙可被攻击（100气血），只阻挡敌方穿行、施法与穿墙范围技能，友方可自由穿过",
+      "overrideDescription": "在自身前方生成一道20尺刀气阻碍，敌方玩家目标无法穿越，持续4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "chuan",
+      "name": "穿",
+      "currentDescription": "对目标及其周围4尺内总共5个敌对目标造成(0.7187*攻击力)点伤害，使目标移动速度降低65%，周围目标移动速度降低40%，持续12秒，该效果无法被解除。",
+      "baseDescription": "瞬发，可在移动或跳跃中施放，射程4\n对目标造成1点伤害\n附加【穿】8秒：移动速度降低65%（无法被解控移除）\n触发GCD",
+      "overrideDescription": "对目标及其周围4尺内总共5个敌对目标造成(0.7187*攻击力)点伤害，使目标移动速度降低65%，周围目标移动速度降低40%，持续12秒，该效果无法被解除。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "chuan_xin_nu",
+      "name": "穿心弩",
+      "currentDescription": "使目标受到的疗伤成效降低50%，并使目标每3秒受到(0.125*攻击力)点伤害，持续18秒，可在移动中施展。",
+      "baseDescription": "读条1.5秒（可移动/跳跃），完成后对目标附加：\n【穿心弩】18秒：每3秒造成1点伤害\n【穿心弩·减疗】18秒：治疗效果降低50%\n2层充能，每层12秒恢复。射程27",
+      "overrideDescription": "使目标受到的疗伤成效降低50%，并使目标每3秒受到(0.125*攻击力)点伤害，持续18秒，可在移动中施展。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "chun_ni_hu_hua",
+      "name": "春泥护花",
+      "currentDescription": "给友方目标一个5层的护盾，使其受到的所有伤害降低40%，运功不会被伤害击退，被攻击则消耗一层，每消耗一层恢复自身3%气血最大值，持续20秒。",
+      "baseDescription": "瞬发，可在空中或移动中施放\n获得【春泥护花】5层：每次受击失去1层并回复3点气血（贯体）；持有至少1层时减伤40%（不叠加）\n触发GCD",
+      "overrideDescription": "给友方目标一个5层的护盾，使其受到的所有伤害降低40%，运功不会被伤害击退，被攻击则消耗一层，每消耗一层恢复自身3%气血最大值，持续20秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "da_dao_wu_shu",
+      "name": "大道无术",
+      "currentDescription": "使目标定身，持续6秒。",
+      "baseDescription": "瞬发，射程8。将目标定身6秒",
+      "overrideDescription": "使目标定身，持续6秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "da_shizi_hou",
+      "name": "大狮子吼",
+      "currentDescription": "使周围6尺内5个目标眩晕5秒，眩晕期间招式调息速度降低50%。",
+      "baseDescription": "怒吼震慑周围敌人，眩晕5秒并降低其技能冷却回复50%",
+      "overrideDescription": "使周围6尺内5个目标眩晕5秒，眩晕期间招式调息速度降低50%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "dican_longxiang",
+      "name": "帝骖龙翔",
+      "currentDescription": "对周围8尺内最多5个目标造成（0.01*攻击力)点伤害并定身，持续4秒。",
+      "baseDescription": "自我施放\n使8尺范围内敌方获得【帝骖龙翔】5秒：眩晕",
+      "overrideDescription": "对周围8尺内最多5个目标造成（0.01*攻击力)点伤害并定身，持续4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "dienong_zu",
+      "name": "蝶弄足",
+      "currentDescription": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制（击倒除外）并使自身免疫控制效果（被拉除外），持续3秒。",
+      "baseDescription": "解除锁足、减速、等级1控制\n获得【迅影】15秒：移速提高55%\n获得【音韵】3秒：免疫等级1控制\n不触发GCD",
+      "overrideDescription": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制（击倒除外）并使自身免疫控制效果（被拉除外），持续3秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "dong_zhu_ji_wei",
+      "name": "洞烛机微",
+      "currentDescription": "解除自身受控状态，使自身移动速度提高100%，免疫所有控制效果持续8秒。",
+      "baseDescription": "九霄风雷期间可用\n解除自身控制，并获得【洞烛机微】8秒：移动速度提高100%，免疫控制\n无冷却，进入公共冷却",
+      "overrideDescription": "解除自身受控状态，使自身移动速度提高100%，免疫所有控制效果持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "dou_zhuan_xing_yi",
+      "name": "斗转星移",
+      "currentDescription": "立刻与敌对目标侠士交换位置（免疫被拉的目标除外）。",
+      "baseDescription": "需要目标，射程25\n与目标瞬间互换位置\n目标处于免拉状态时无法施放\n触发GCD",
+      "overrideDescription": "立刻与敌对目标侠士交换位置（免疫被拉的目标除外）。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "duangu_jue",
+      "name": "锻骨诀",
+      "currentDescription": "使你突破一切限制，解除自身控制效果，卸除自身所有内功不利效果、点穴效果、持续伤害不利效果。施展后不受招式控制和无法施展内功招式效果的影响，持续8秒。",
+      "baseDescription": "解除等级1控制\n获得【折骨】8秒：免疫根骨减速与等级1/2/3控制\n不触发GCD",
+      "overrideDescription": "使你突破一切限制，解除自身控制效果，卸除自身所有内功不利效果、点穴效果、持续伤害不利效果。施展后不受招式控制和无法施展内功招式效果的影响，持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "dun_li",
+      "name": "盾立",
+      "currentDescription": "保护自身不受伤害，2秒内反弹敌方对自身释放的所有招式的伤害及效果，该招式只对玩家生效。",
+      "baseDescription": "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔1秒\n获得【盾立】2秒：免疫所有伤害；期间若受到敌方直接指定你的技能，则改为由你对原施法者施放该技能",
+      "overrideDescription": "保护自身不受伤害，2秒内反弹敌方对自身释放的所有招式的伤害及效果，该招式只对玩家生效。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "duoming_gu",
+      "name": "夺命蛊",
+      "currentDescription": "使自身受到的伤害提高30%，招式伤害提高30%，持续12秒。",
+      "baseDescription": "瞬发自我施放\n获得【夺命蛊】12秒：受到伤害提高30%，造成伤害提高30%\n不触发GCD",
+      "overrideDescription": "使自身受到的伤害提高30%，招式伤害提高30%，持续12秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "fei_ren_hui_zhuan",
+      "name": "飞刃回转",
+      "currentDescription": "向敌方挥出旋转的刀气，会自动追踪附近敌对目标，并持续造成伤害，持续6秒。",
+      "baseDescription": "瞬发，需选定目标\n于目标处展开半径5尺的法阵，持续6秒\n每0.5秒造成2点伤害；法阵以5尺/秒跟随目标\n施法距离15尺",
+      "overrideDescription": "向敌方挥出旋转的刀气，会自动追踪附近敌对目标，并持续造成伤害，持续6秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "feng_liu_yun_san",
+      "name": "风流云散",
+      "currentDescription": "冲刺至目标点，并获得2层“云散”效果：施展“一阳指”套路招式时会闪现移动至一个随机攻击位置。",
+      "baseDescription": "瞬发，以鼠标悬停位置为终点施放（射程20）\n向鼠标悬停区域冲刺20尺（0.5秒完成）\n获得【云散】2层（30秒）：施放【截阳】或【引窍】运功完成后，若与目标距离小于17尺则向后疾退至17-18尺；若已在17-18尺则向左或向右疾冲10-12尺，落在另一处17-18尺位置，撞墙则停；每次消耗1层\n不触发GCD",
+      "overrideDescription": "冲刺至目标点，并获得2层“云散”效果：施展“一阳指”套路招式时会闪现移动至一个随机攻击位置。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "fenglai_wushan",
+      "name": "风来吴山",
+      "currentDescription": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。\n在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
+      "baseDescription": "在5秒内，对10尺内目标造成多次伤害（每次5点）",
+      "overrideDescription": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次伤害。\n在此过程中你无法跳跃，不受控制招式影响（被拉除外）。",
+      "hasDescriptionOverride": true,
+      "originalDescription": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计10次伤害。在此过程中你无法跳跃，不受控制招式影响（被拉除外）。"
+    },
+    {
+      "id": "fengxiu_diang",
+      "name": "风袖低昂",
+      "currentDescription": "恢复友方目标369598点气血值，并使其10秒内受到的伤害降低40%",
+      "baseDescription": "恢复30点生命值\n获得【风袖低昂】10秒：受到伤害降低40%",
+      "overrideDescription": "恢复友方目标369598点气血值，并使其10秒内受到的伤害降低40%",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "fu_rong_bing_di",
+      "name": "芙蓉并蒂",
+      "currentDescription": "对目标造成(0.5989*攻击力)点伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。额外造成X点",
+      "baseDescription": "瞬发，定身目标1秒并附加【芙蓉并蒂】6秒：受到伤害增加10%\n若技能栏内有【商阳指】【兰摧玉折】或【钟林毓秀】，额外施放对应持续伤害效果\n射程20",
+      "overrideDescription": "对目标造成(0.5989*攻击力)点伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。额外造成X点",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "fuguang_lueying",
+      "name": "浮光掠影",
+      "currentDescription": "施展后进入隐身状态，前5秒可以移动但移动速度降低50%，后15秒内移动会结束隐身效果。施展任何招式将提前结束隐身效果。",
+      "baseDescription": "隐身20秒；前5秒遁影减速50%",
+      "overrideDescription": "施展后进入隐身状态，前5秒可以移动但移动速度降低50%，后15秒内移动会结束隐身效果。施展任何招式将提前结束隐身效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "fuyao_zhishang",
+      "name": "扶摇直上",
+      "currentDescription": "江湖轻功，身轻如燕，能跳得更高，并能施展踏云。",
+      "baseDescription": "获得【弹跳】：下次跳跃高度提升至12单位\n拥有【梯云纵】时不可施放",
+      "overrideDescription": "江湖轻功，身轻如燕，能跳得更高，并能施展踏云。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "gu_feng_sa_ta",
+      "name": "孤风飒踏",
+      "currentDescription": "解除自身控制，投掷锁链至目标点，使自身冲向其位置。",
+      "baseDescription": "以鼠标指定地面位置施放（射程20）\n向指定位置冲刺20尺（0.5秒完成）\n解除控制效果\n不触发GCD",
+      "overrideDescription": "解除自身控制，投掷锁链至目标点，使自身冲向其位置。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "gu_ying_hua_shuang",
+      "name": "孤影化双",
+      "currentDescription": "解除自身控制效果并在自身位置创建残影保存自身技能调息时间、气血、内力状态，持续7秒。\n结束后解除自身所有受控状态并召唤影子附着自身，使自身技能调息时间、气血、内力状态恢复至记录时的状态。",
+      "baseDescription": "瞬发，解除控制\n记录当前气血和所有技能冷却\n7秒后恢复为记录时的气血和冷却",
+      "overrideDescription": "解除自身控制效果并在自身位置创建残影保存自身技能调息时间、气血、内力状态，持续7秒。\n结束后解除自身所有受控状态并召唤影子附着自身，使自身技能调息时间、气血、内力状态恢复至记录时的状态。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "guchong_xianji",
+      "name": "蛊虫献祭",
+      "currentDescription": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制（击退和被拉除外）持续5秒。",
+      "baseDescription": "自我施放（当前气血需大于35%，不计护盾）\n解除等级1控制\n立即对自身造成30%最大气血伤害\n获得【献祭护盾】10秒：提供50%最大气血护盾并每秒回复3%气血（贯体）\n若献祭护盾被打破则该效果提前结束\n获得【献祭控制免疫】5秒：免疫等级1控制\n不触发GCD",
+      "overrideDescription": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制（击退和被拉除外）持续5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "han_di",
+      "name": "撼地",
+      "currentDescription": "使用轻功腾空跳向目标区域，对半径5尺范围内最多5个目标造成眩晕和伤害。持续3秒。",
+      "baseDescription": "轻功，以鼠标指定地面位置施放（射程20）\n向指定位置冲刺20尺（0.5秒完成）\n落地时眩晕5尺范围内的敌人3秒\n触发GCD",
+      "overrideDescription": "使用轻功腾空跳向目标区域，对半径5尺范围内最多5个目标造成眩晕和伤害。持续3秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "han_ru_lei",
+      "name": "撼如雷",
+      "currentDescription": "使自身会心几率提高10%，会心效果提高20%，持续20秒，并使15尺内的10个敌对目标8秒内无法进入隐身状态，已经进入隐身状态的目标则立刻解除隐身状态。",
+      "baseDescription": "瞬发自我施放\n获得【撼如雷】20秒：外功会心和内功会心提高10%，外功会心效果和内功会心效果提高20%\n同时震散15尺内所有敌方隐身，并使其获得【撼如雷·反隐】20秒：尝试进入隐身时立刻破隐",
+      "overrideDescription": "使自身会心几率提高10%，会心效果提高20%，持续20秒，并使15尺内的10个敌对目标8秒内无法进入隐身状态，已经进入隐身状态的目标则立刻解除隐身状态。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "he_gui_gu_shan",
+      "name": "鹤归孤山",
+      "currentDescription": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成（3.1625*攻击力)点伤害并使其晕眩3秒，对周围4尺内的目标造成额外50%伤害。",
+      "baseDescription": "轻功，向目标冲刺15尺（1秒）\n落地时对10尺内敌人造成2点伤害并眩晕3秒\n4尺内额外造成2点伤害\n触发GCD",
+      "overrideDescription": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成（3.1625*攻击力)点伤害并使其晕眩3秒，对周围4尺内的目标造成额外50%伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "heng_sao_liu_he",
+      "name": "横扫六合",
+      "currentDescription": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，若只命中单个目标则伤害提高100%",
+      "baseDescription": "瞬发，对自身周围5尺内所有敌方目标造成4点伤害，并附加【横扫六合】12秒：每2秒受到1点伤害。\n若本次只命中1名敌人，初始伤害翻倍（8点），持续伤害不变。\n范围：自身半径5尺",
+      "overrideDescription": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，若只命中单个目标则伤害提高100%",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "hong_meng_tian_jin",
+      "name": "鸿蒙天禁",
+      "currentDescription": "天钺：将目标禁锢至“天禁空间”并使其召唤物全部失效，且无法提前解除，禁锢持续6秒，若目标为团队成员则卸除掉“阴性不利效果”“阳性不利效果”“混元不利效果”“毒不利效果”“持续伤害不利效果”各2个，同一目标20秒内只会被禁锢一次。",
+      "baseDescription": "选中20尺内任意目标施放【鸿蒙天禁】6秒（减益）\n期间目标不会被任何人选中，不会显示在其他人视野中，不受范围技能影响，并免疫所有伤害，但仍可自由行动\n若目标为自己，则额外驱散“阴性/阳性/混元/毒性/持续伤害”不利效果各2个\n【鸿蒙天禁】结束时获得【曙色】20秒：不会受到【鸿蒙天禁】效果",
+      "overrideDescription": "天钺：将目标禁锢至“天禁空间”并使其召唤物全部失效，且无法提前解除，禁锢持续6秒，若目标为团队成员则卸除掉“阴性不利效果”“阳性不利效果”“混元不利效果”“毒不利效果”“持续伤害不利效果”各2个，同一目标20秒内只会被禁锢一次。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "houyao",
+      "name": "后撤",
+      "currentDescription": "向后方快速撤退。",
+      "baseDescription": "向身后方向后撤2.7格（持续1秒）\n只能在地面施放",
+      "overrideDescription": "向后方快速撤退。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "hua_die",
+      "name": "化蝶",
+      "currentDescription": "随风：跳跃一段距离。跳到空中后，消失在敌人视野中，并不受任何伤害，持续1秒。并向前冲刺一段距离。",
+      "baseDescription": "瞬发，自身施放。斜向升高4尺并前进2尺（1秒），随后向前冲刺27尺（1秒），第二段冲刺期间隐身并免疫伤害",
+      "overrideDescription": "随风：跳跃一段距离。跳到空中后，消失在敌人视野中，并不受任何伤害，持续1秒。并向前冲刺一段距离。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "hua_xue_biao",
+      "name": "化血镖",
+      "currentDescription": "使目标每3秒受到（0.179*攻击力）点伤害，可叠加2层，持续24秒。",
+      "baseDescription": "范围25，无冷却，附加【化血镖】毒效果，最多2层，每层每3秒造成1点伤害，持续24秒",
+      "overrideDescription": "使目标每3秒受到（0.179*攻击力）点伤害，可叠加2层，持续24秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "huayu_suxin",
+      "name": "花语酥心",
+      "currentDescription": "使自身每秒恢复气血最大值的6%，持续5秒。",
+      "baseDescription": "自我施放\n获得【花语酥心】5秒：每秒回复6点气血（贯体）",
+      "overrideDescription": "使自身每秒恢复气血最大值的6%，持续5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "hun_ya_nu_tao",
+      "name": "魂压怒涛",
+      "currentDescription": "击退自身周围6尺敌对目标，使其眩晕4秒",
+      "baseDescription": "九霄风雷期间可用\n击退10尺内敌方目标10尺，击退在0.5秒内完成，结束后附加【冲撞】眩晕4秒\n8秒冷却，不进入公共冷却",
+      "overrideDescription": "击退自身周围6尺敌对目标，使其眩晕4秒",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ji",
+      "name": "疾",
+      "currentDescription": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成（3.3750*攻击力)点外功伤害。",
+      "baseDescription": "向前冲刺37格（1秒），对冲刺路径上的敌方单位造成10点伤害",
+      "overrideDescription": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成（3.3750*攻击力)点外功伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ji_dian_chi_yu",
+      "name": "疾电叱羽",
+      "currentDescription": "召唤海雕飞向自身位置，盘旋至升空，保护自身6尺范围内的小队成员，使范围内的小队成员不会受到伤害，最多承受286120点伤害，持续8秒。",
+      "baseDescription": "瞬发，自身施放\n于脚下展开疾电叱羽阵，半径8尺，持续8秒，气血上限43万\n阵中我方获得【疾电叱羽】：受到的所有伤害转移到本阵\n本阵气血归零或消失时，护盾解除",
+      "overrideDescription": "召唤海雕飞向自身位置，盘旋至升空，保护自身6尺范围内的小队成员，使范围内的小队成员不会受到伤害，最多承受286120点伤害，持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ji_le_yin",
+      "name": "极乐引",
+      "currentDescription": "将自身周围10尺范围内最多6个敌对目标拉至身边，使其眩晕4秒。",
+      "baseDescription": "瞬发，自身施放。将10尺范围内的敌人拉拽至身侧1尺，随后施加【极乐引】眩晕4秒",
+      "overrideDescription": "将自身周围10尺范围内最多6个敌对目标拉至身边，使其眩晕4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jian_fei_jing_tian",
+      "name": "剑飞惊天",
+      "currentDescription": "对目标造成(0.7187*攻击力)点伤害，使目标下马并且移动速度降低60%，持续5秒。若你攻击的目标正在运功，则使该目标5秒内无法运功。",
+      "baseDescription": "20尺，瞬发对目标造成1点伤害\n若目标正在读条且该读条可被打断，则打断读条并附加【剑飞惊天】沉默5秒\n若打断未生效（目标拥有【沉默免疫】或不在读条中），改为附加【惊惧】50%减速5秒",
+      "overrideDescription": "对目标造成(0.7187*攻击力)点伤害，使目标下马并且移动速度降低60%，持续5秒。若你攻击的目标正在运功，则使该目标5秒内无法运功。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jian_zhu_tian_di",
+      "name": "剑主天地",
+      "currentDescription": "对目标造成86-95点(+[2.0781*最终阴性内功攻击])伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。",
+      "baseDescription": "瞬发，射程20。造成1点伤害，附加【剑主天地】持续伤害（每3秒1点，持续18秒，最多3层）。当目标已有3层时，立即引爆消耗所有层数，直接结算剩余伤害",
+      "overrideDescription": "对目标造成86-95点(+[2.0781*最终阴性内功攻击])伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jian_zhuan_liu_yun",
+      "name": "剑转流云",
+      "currentDescription": "卸除目标阴性、混元性、阳性、毒性内功增益气劲各一个。",
+      "baseDescription": "瞬发，驱散目标阴性、混元、阳性、毒性内功增益气劲各一个\n可在空中或移动中施放",
+      "overrideDescription": "卸除目标阴性、混元性、阳性、毒性内功增益气劲各一个。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jiang_chun_zhu_xiu",
+      "name": "绛唇珠袖",
+      "currentDescription": "以剑气击伤敌人心脉，使其施展轻功则2秒内无法施展招式，并受到伤害307-312点，持续9秒。",
+      "baseDescription": "瞬发，射程22\n对目标施加「绛唇珠袖」9秒：\n  使用轻功时，立即沉默2秒并受到1点伤害",
+      "overrideDescription": "以剑气击伤敌人心脉，使其施展轻功则2秒内无法施展招式，并受到伤害307-312点，持续9秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jianpo_xukong",
+      "name": "剑破虚空",
+      "currentDescription": "对目标及其周围最多2个目标造成伤害，使当前目标减速且无法施展轻功招式，持续2秒，并获得一层“急曲”效果。",
+      "baseDescription": "需要目标，正面180°\n造成10点伤害并附加【剑破虚空】2秒（减速20%，无法施展轻功）\n叠加【急曲】18秒：每3秒受到1点伤害，最多3层",
+      "overrideDescription": "对目标及其周围最多2个目标造成伤害，使当前目标减速且无法施展轻功招式，持续2秒，并获得一层“急曲”效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jie_chu_wei_zhuang",
+      "name": "解除伪装",
+      "currentDescription": "伪装期间可用\n结束伪装，恢复原技能栏\n无冷却，不进入公共冷却",
+      "baseDescription": "伪装期间可用\n结束伪装，恢复原技能栏\n无冷却，不进入公共冷却",
+      "overrideDescription": null,
+      "hasDescriptionOverride": false,
+      "originalDescription": null
+    },
+    {
+      "id": "jieyang",
+      "name": "截阳",
+      "currentDescription": "对目标造成伤害，对目标添加3层无法卸除持续30秒的“绝脉”效果：招式调息速度降低1%。",
+      "baseDescription": "瞬发，对目标造成5点伤害\n附加【绝脉】3层（30秒）：每层使技能调息速度降低1%\n3层充能，每层12秒恢复",
+      "overrideDescription": "对目标造成伤害，对目标添加3层无法卸除持续30秒的“绝脉”效果：招式调息速度降低1%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jing_hong_you_long",
+      "name": "惊鸿游龙",
+      "currentDescription": "自身躲闪率提高65%，受到的内功伤害降低45%，持续10秒。",
+      "baseDescription": "瞬发，自身施放。获得【惊鸿游龙】10秒：外功闪避率提高65%，受到内功伤害降低45%",
+      "overrideDescription": "自身躲闪率提高65%，受到的内功伤害降低45%，持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jing_shi_po_mo_ji",
+      "name": "净世破魔击",
+      "currentDescription": "冲刺并对12尺内的目标造成3次513-533点(+[1.1197*最终阴性内功攻击])伤害，且每次卸除目标混元、阳性、阴性、毒性增益气劲各一个。",
+      "baseDescription": "瞬发，向目标冲刺（最多12尺，速20尺/秒），立即造成3点伤害并驱散目标混元、阳性、阴性、毒性增益气劲各三次\n无视闪避",
+      "overrideDescription": "冲刺并对12尺内的目标造成3次513-533点(+[1.1197*最终阴性内功攻击])伤害，且每次卸除目标混元、阳性、阴性、毒性增益气劲各一个。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jiru_feng",
+      "name": "疾如风",
+      "currentDescription": "解除所有移动限制，并且不受招式控制(击退和被拉除外)，移动速度提高100%，持续6秒。",
+      "baseDescription": "解除控制（等级1）\n5秒内免疫控制（不含击退/拉拽），移动速度提升100%",
+      "overrideDescription": "解除所有移动限制，并且不受招式控制(击退和被拉除外)，移动速度提高100%，持续6秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jiu_xiao_feng_lei",
+      "name": "九霄风雷",
+      "currentDescription": "使自身进入“机甲”状态，运功过程免疫控制和伤害，进入“机甲”状态可施展特殊招式，机甲状态持续20秒。",
+      "baseDescription": "瞬发，可空中施放，进入公共冷却\n开始3秒运功，运功期间无法移动并获得【九霄风雷·无敌】\n运功完成后获得【九霄风雷】20秒：技能栏临时替换为洞烛机微、魂压怒涛、真·下车，期间无法跳跃",
+      "overrideDescription": "使自身进入“机甲”状态，运功过程免疫控制和伤害，进入“机甲”状态可施展特殊招式，机甲状态持续20秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "jiu_zhuan_gui_yi",
+      "name": "九转归一",
+      "currentDescription": "对目标造成伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
+      "baseDescription": "将目标击退12尺（20尺/秒，0.6秒完成）\n击退期间目标被锁定1秒\n若击退过程中撞墙，则附加羽化眩晕4秒\n射程8，触发GCD",
+      "overrideDescription": "对目标造成伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "kang_long_you_hui",
+      "name": "亢龙有悔",
+      "currentDescription": "对目标造成2次150-165(+[3.4750*最终外功攻击])伤害，并添加“亢龙有悔”持续伤害效果，该效果最高可叠加2层，持续24秒。",
+      "baseDescription": "瞬发，射程6\n对目标造成两次3点伤害；施放后定身自身1秒\n附加【亢龙有悔】每2秒受到1点伤害，持续24秒，最多2层",
+      "overrideDescription": "对目标造成2次150-165(+[3.4750*最终外功攻击])伤害，并添加“亢龙有悔”持续伤害效果，该效果最高可叠加2层，持续24秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "kong_que_ling",
+      "name": "孔雀翎",
+      "currentDescription": "对目标及其周围3个目标造成28-31(+[3.2375*最终外功攻击])伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外伤害（每0.5秒最多触发一次）。",
+      "baseDescription": "范围25，即刻对目标造成4点伤害，并附加【孔雀翎受击】（8层，每次受攻击触发额外1点伤害）和【孔雀翎】（减速50%），各持续6秒",
+      "overrideDescription": "对目标及其周围3个目标造成28-31(+[3.2375*最终外功攻击])伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外伤害（每0.5秒最多触发一次）。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ku_can_gu",
+      "name": "枯残蛊",
+      "currentDescription": "使自身移动速度降低90%，招式施展距离提高12尺，持续12秒。",
+      "baseDescription": "瞬发，自身施放\n获得【枯残蛊】12秒（减益）：自身移动速度降低90%，所有招式射程提高12尺",
+      "overrideDescription": "使自身移动速度降低90%，招式施展距离提高12尺，持续12秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "kuang_long_luan_wu",
+      "name": "狂龙乱舞",
+      "currentDescription": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成80-100(+[2.8750*最终外功攻击])伤害，雷云持续6秒。",
+      "baseDescription": "运功2秒，于前方2尺处唤起雷云，雷云半径8尺，每0.5秒造成3点伤害，持续6秒",
+      "overrideDescription": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成80-100(+[2.8750*最终外功攻击])伤害，雷云持续6秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lan_cui_yu_zhe",
+      "name": "兰摧玉折",
+      "currentDescription": "使目标每3秒受到67点伤害(+[0.104*最终混元内功攻击])，持续18秒。",
+      "baseDescription": "正读条1秒，面向目标，可在空中或移动中施放\n读条完成后附加【兰摧玉折】18秒：每3秒受到1点伤害\n射程20",
+      "overrideDescription": "使目标每3秒受到67点伤害(+[0.104*最终混元内功攻击])，持续18秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lei_ting_zhen_nu",
+      "name": "雷霆震怒",
+      "currentDescription": "使目标眩晕，不受任何增益效果影响，持续15秒。",
+      "baseDescription": "瞬发，对目标附加【雷霆震怒】15秒：眩晕，且免疫一切伤害。\n眩晕递减适用，倒地中无法被施加。被摩诃无量倒地可解除此效果。\n免疫其他控制/锁足效果；解控招式可解除。\n射程17",
+      "overrideDescription": "使目标眩晕，不受任何增益效果影响，持续15秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "leizhenzi",
+      "name": "雷震子",
+      "currentDescription": "使目标眩晕，持续4秒。",
+      "baseDescription": "需要目标，正面180°\n附加【雷震子】4秒：眩晕",
+      "overrideDescription": "使目标眩晕，持续4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lian_huan_nu",
+      "name": "连环弩",
+      "currentDescription": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成100-100点(+[0.8125*最终外功攻击])外功伤害，第二枚箭造成187-374点(+[1.0500*最终外功攻击])外功伤害，第三枚箭造成364-728点(+[1.3125*最终外功攻击])外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
+      "baseDescription": "运功3秒，运功期间须站定，免疫除击退/拉拽外的控制及沉默\n每1秒对目标造成1/2/3点伤害，施法距离25尺\n命中时若目标在15尺内，将其向后击退4尺（20尺/秒）",
+      "overrideDescription": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成100-100点(+[0.8125*最终外功攻击])外功伤害，第二枚箭造成187-374点(+[1.0500*最终外功攻击])外功伤害，第三枚箭造成364-728点(+[1.3125*最终外功攻击])外功伤害。每枚箭额外附带100%武器伤害。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断，消耗一枚弩箭。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "liang_yi_hua_xing",
+      "name": "两仪化形",
+      "currentDescription": "对目标造成96-96点(+[4.5260*最终混元内功攻击])伤害。",
+      "baseDescription": "瞬发，造成2点伤害",
+      "overrideDescription": "对目标造成96-96点(+[4.5260*最终混元内功攻击])伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lie_ri_zhan",
+      "name": "烈日斩",
+      "currentDescription": "对目标造成460-508点(+[3.2968*最终阳性内功攻击])伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成伤害。",
+      "baseDescription": "瞬发，对目标造成4点伤害，并附加【烈日斩】12秒：受到伤害增加15%。\n若目标已有【银月斩】，伤害翻倍（8点）。\n射程6",
+      "overrideDescription": "对目标造成460-508点(+[3.2968*最终阳性内功攻击])伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lin_shi_fei_zhua",
+      "name": "临时飞爪",
+      "currentDescription": "将自身牵引至标记位置，非战斗中使用时将返还部分调息时间。",
+      "baseDescription": "轻功，以鼠标指定地面位置施放（射程40）。以飞爪冲刺至指定位置，期间可施放技能；冲刺不提供无敌，受到控制立即中断",
+      "overrideDescription": "将自身牵引至标记位置，非战斗中使用时将返还部分调息时间。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ling_ran_tian_feng",
+      "name": "凌然天风",
+      "currentDescription": "凌空而起，免疫控制（击退和被拉除外），并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃（自身按W/A/S/D空格进行跳跃时）变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
+      "baseDescription": "轻功，瞬发，自身施放，可移动中或空中施放\n向上跃起9尺（0.5秒）\n获得【凌然天风】7秒：特殊跳跃状态，免疫控制（被拉和击退除外），招式施展距离增加5尺，期间禁用普通跳跃\n施放时获得1次特殊跳跃次数；期间每次施放招式都会刷新至1次",
+      "overrideDescription": "凌空而起，免疫控制（击退和被拉除外），并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃（自身按W/A/S/D空格进行跳跃时）变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ling_tai_xu",
+      "name": "凌太虚",
+      "currentDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的外功伤害降低30%，气场持续10秒。",
+      "baseDescription": "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落凌太虚阵，持续10秒，半径15尺。阵中自身获得【凌太虚】：外功减伤30%",
+      "overrideDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的外功伤害降低30%，气场持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lingxiao_lansheng",
+      "name": "凌霄揽胜",
+      "currentDescription": "江湖轻功，向左侧迅速移动，可以避开敌人的攻击。过程中不受招式控制。",
+      "baseDescription": "向左侧冲刺7格",
+      "overrideDescription": "江湖轻功，向左侧迅速移动，可以避开敌人的攻击。过程中不受招式控制。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "long_xiao_jiu_tian",
+      "name": "龙啸九天",
+      "currentDescription": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成伤害。施展过程中不受控制效果的影响（被拉除外）。同时能够击毁攻击范围内最多5个气场和可见机关。",
+      "baseDescription": "瞬发，自身施放。\n空中、移动中、被控制时均可施放\n施放后解除自身所有控制\n获得【龙威】3秒：免疫控制\n获得【龙啸九天】6秒：受到的伤害降低60%\n施放后【龙啸九天·定身】1秒：自身定身（含Z轴）\n摧毁周围6码内敌方气场和机关\n并对周围6码内敌人造成1点伤害，并将其击退10码（0.5秒）",
+      "overrideDescription": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成伤害。施展过程中不受控制效果的影响（被拉除外）。同时能够击毁攻击范围内最多5个气场和可见机关。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "long_yin",
+      "name": "龙吟",
+      "currentDescription": "龙吟一击，对目标造成67-73(+[0.6500*最终外功攻击])点伤害。若招式会心则立刻重置调息时间。",
+      "baseDescription": "需要目标，射程4\n造成2点伤害\n若本次造成会心，则重置自身冷却（仍触发GCD）",
+      "overrideDescription": "龙吟一击，对目标造成67-73(+[0.6500*最终外功攻击])点伤害。若招式会心则立刻重置调息时间。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "long_zhan_yu_ye",
+      "name": "龙战于野",
+      "currentDescription": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成240-264(+[3.4187*最终外功攻击])伤害。",
+      "baseDescription": "瞬发，自身施放\n对前方10尺、60°范围内的敌人施加拉拽，以20尺/秒拉至身前\n不触发GCD",
+      "overrideDescription": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成240-264(+[3.4187*最终外功攻击])伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "lv_ye_man_sheng",
+      "name": "绿野蔓生",
+      "currentDescription": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成伤害，敌方无法通过对自身冲刺接近6尺（对区域的冲刺则不受影响）。期间免疫控制（击退和被拉除外），持续5秒。",
+      "baseDescription": "瞬发，自身施放，解除控制\n获得【绿野蔓生】6秒：免疫控制（击退/拉拽除外）\n期间自身周围6尺范围生成跟随自身移动的领域；敌方突进至领域时会被拦停在边缘，领域内敌方攻击你时会被击退至6尺边缘并受到3点伤害",
+      "overrideDescription": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成伤害，敌方无法通过对自身冲刺接近6尺（对区域的冲刺则不受影响）。期间免疫控制（击退和被拉除外），持续5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "menghu_xiasha",
+      "name": "回风扫叶",
+      "currentDescription": "对目标造成伤害。",
+      "baseDescription": "造成1点伤害",
+      "overrideDescription": "对目标造成伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "mi_xin_gu",
+      "name": "迷心蛊",
+      "currentDescription": "使自身无法施展轻功招式，运功不会被打退、打断，不受缴械和无法运功效果的影响，持续12秒。",
+      "baseDescription": "瞬发，自身施放\n获得【迷心蛊】12秒（减益）：封轻功，但免疫所有锁招与沉默",
+      "overrideDescription": "使自身无法施展轻功招式，运功不会被打退、打断，不受缴械和无法运功效果的影响，持续12秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "mie",
+      "name": "灭",
+      "currentDescription": "当自身血量高于20%时对目标造成264-291(+[2.6937*最终外功攻击])伤害，若自身气血低于10%，则对目标造成264-291(+[11.2437*最终外功攻击])伤害，并使自身3秒内不会重伤。",
+      "baseDescription": "瞬发，需要目标，射程4\n立即造成2点伤害\n若自身气血低于10%，改为造成12点伤害并获得【灭】3秒：气血不会降至1以下",
+      "overrideDescription": "当自身血量高于20%时对目标造成264-291(+[2.6937*最终外功攻击])伤害，若自身气血低于10%，则对目标造成264-291(+[11.2437*最终外功攻击])伤害，并使自身3秒内不会重伤。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "mohe_wuliang",
+      "name": "摩诃无量",
+      "currentDescription": "对目标造成0-28点(+[4.4947*最终阳性内功攻击])伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
+      "baseDescription": "造成10点伤害并击倒3秒；击倒自然结束时若目标气血低于30%，额外眩晕2秒",
+      "overrideDescription": "对目标造成0-28点(+[4.4947*最终阳性内功攻击])伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "na_yun_shi",
+      "name": "拿云式",
+      "currentDescription": "目标血量低于30%方可施展，对其造成122-134点(+[6.7447*最终阳性内功攻击])伤害外加最大生命值10%的真实伤害。",
+      "baseDescription": "瞬发，射程4\n只能对气血低于30%的目标施放\n造成5点普通伤害（受减伤、护盾、闪避影响）\n并造成目标10%最大气血真实伤害（无视减伤、护盾与闪避，仅被无敌阻挡）",
+      "overrideDescription": "目标血量低于30%方可施展，对其造成122-134点(+[6.7447*最终阳性内功攻击])伤害外加最大生命值10%的真实伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "niao_xiang_bi_kong",
+      "name": "鸟翔碧空",
+      "currentDescription": "突破内功限制，能够在空中连续跳跃多次，持续15秒。",
+      "baseDescription": "获得【鸟翔碧空】15秒：最多可连续跳跃5次，每段跳跃均为高跳",
+      "overrideDescription": "突破内功限制，能够在空中连续跳跃多次，持续15秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "nieyun_zhuyue",
+      "name": "蹑云逐月",
+      "currentDescription": "江湖轻功，解除被击僵直，向前冲刺一段距离。冲刺过程中不受招式控制。",
+      "baseDescription": "向对手方向冲刺20格",
+      "overrideDescription": "江湖轻功，解除被击僵直，向前冲刺一段距离。冲刺过程中不受招式控制。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "nuwa_butian",
+      "name": "女娲补天",
+      "currentDescription": "祈求女娲指引，进入补天姿态，基础攻击力提高100%，免疫锁足、减速效果，移动速度降低50%，受到的伤害降低50%，运功不会被伤害打退，持续20秒。若骑乘坐骑将使你脱离这个姿态。",
+      "baseDescription": "持续20秒：攻击力提升100%，免疫锁足与减速，移动速度降低50%，受到伤害降低50%",
+      "overrideDescription": "祈求女娲指引，进入补天姿态，基础攻击力提高100%，免疫锁足、减速效果，移动速度降低50%，受到的伤害降低50%，运功不会被伤害打退，持续20秒。若骑乘坐骑将使你脱离这个姿态。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "po_cang_qiong",
+      "name": "破苍穹",
+      "currentDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标内功会心提高10%，会心效果提高15%，气场持续10秒。",
+      "baseDescription": "正读条1.5秒（可移动、可在空中施放）。读条完成后于脚下降落破苍穹阵，持续30秒，半径15尺。阵中自身获得【破苍穹】：内功会心提高10%，内功会心效果提高15%",
+      "overrideDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标内功会心提高10%，会心效果提高15%，气场持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "po_feng",
+      "name": "破风",
+      "currentDescription": "击破目标护甲，使其防御等级降低-1150点，每2秒受到150点伤害(+[0.15*最终外功攻击])，持续12秒，若目标免疫击倒则额外添加一个“流血”效果，使其每2秒受到300点伤害，持续12秒。",
+      "baseDescription": "瞬发，射程4。造成1点伤害，附加【破风】（额外受到5%伤害，持续12秒）和【流血】（每2秒1点伤害，持续12秒，最多2层）。若目标拥有控制免疫，额外附加一层【流血】",
+      "overrideDescription": "击破目标护甲，使其防御等级降低-1150点，每2秒受到150点伤害(+[0.15*最终外功攻击])，持续12秒，若目标免疫击倒则额外添加一个“流血”效果，使其每2秒受到300点伤害，持续12秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qian_long_wu_yong",
+      "name": "潜龙勿用",
+      "currentDescription": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成54-59(+[1.6187*最终外功攻击])伤害。",
+      "baseDescription": "瞬发，自身施放\n对前方8尺、60°范围内的敌人造成2点伤害\n可在冲刺、被击退或被拉拽时施放\n不触发GCD",
+      "overrideDescription": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成54-59(+[1.6187*最终外功攻击])伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qiandie_turui",
+      "name": "千蝶吐瑞",
+      "currentDescription": "需持续运功，8秒内每0.5秒为半径20尺范围内气血百分比最低的一名小队或团队成员恢复14489点气血值，该招式不会被打退、打断，持续期间自身不受控制招式影响",
+      "baseDescription": "逆读条8秒，每0.5秒回复5点气血；运功期间免控，移动会打断并失去效果",
+      "overrideDescription": "需持续运功，8秒内每0.5秒为半径20尺范围内气血百分比最低的一名小队或团队成员恢复14489点气血值，该招式不会被打退、打断，持续期间自身不受控制招式影响",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qiang_zhu_shi",
+      "name": "抢珠式",
+      "currentDescription": "打断目标运功，使其不能施展轻功以外的招式，持续4秒。",
+      "baseDescription": "8尺，瞬发，可空中施放，不进入公共冷却\n使目标获得【抢珠式】4秒：无法使用轻功以外招式",
+      "overrideDescription": "打断目标运功，使其不能施展轻功以外的招式，持续4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qin_yin_gong_ming",
+      "name": "琴音共鸣",
+      "currentDescription": "移除敌对目标身上2个增益效果，并添加给自身。",
+      "baseDescription": "瞬发，射程20。偷取目标身上最多2个可偷取增益气劲，持续时间与原气劲剩余时间相同",
+      "overrideDescription": "移除敌对目标身上2个增益效果，并添加给自身。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qionglong_huasheng",
+      "name": "穹隆化生",
+      "currentDescription": "自身将向前冲刺，持续2秒，可以转向，结束后在脚下生成“生太极”气场，并回复自身10%的最大气血值。",
+      "baseDescription": "向前冲刺2秒\n施放时解除锁足与减速\n冲刺期间处于位移状态且免疫等级1/2控制\n结束时恢复10点气血并展开【生太极】24秒",
+      "overrideDescription": "自身将向前冲刺，持续2秒，可以转向，结束后在脚下生成“生太极”气场，并回复自身10%的最大气血值。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qixing_gongrui",
+      "name": "七星拱瑞",
+      "currentDescription": "以七星罡气禁锢目标，使其定身，气血恢复速度提高，持续10秒，如果目标为非侠士单位，则持续1秒。任何伤害都会眩晕4秒，同一时间内只能使一个目标被定身，只能对人形目标施展。",
+      "baseDescription": "需要目标，面向目标，需要站立，运功1.5秒（正读条）\n运功完成后：对目标施加【七星拱瑞】15秒——冻结（无法移动/施放技能）且每秒回复5点气血（贯体）\n【七星拱瑞】存在时受到伤害立即解除并附加【七星拱瑞·眩晕】4秒\n触发GCD；移动或跳跃打断运功",
+      "overrideDescription": "以七星罡气禁锢目标，使其定身，气血恢复速度提高，持续10秒，如果目标为非侠士单位，则持续1秒。任何伤害都会眩晕4秒，同一时间内只能使一个目标被定身，只能对人形目标施展。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "qu_ye_duan_chou",
+      "name": "驱夜断愁",
+      "currentDescription": "对目标造成123-135点(+[4.2395*最终阴性内功攻击])伤害，造成伤害的50%将治疗自身。",
+      "baseDescription": "瞬发，射程4\n造成2点伤害并回复造成伤害的50%",
+      "overrideDescription": "对目标造成123-135点(+[4.2395*最终阴性内功攻击])伤害，造成伤害的50%将治疗自身。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "que_ta_zhi",
+      "name": "鹊踏枝",
+      "currentDescription": "使你被命中几率降低70%，持续5秒，清除自身所有移动限制，并使你不受招式控制(击退和被拉除外)，持续3.5秒。",
+      "baseDescription": "解除等级1控制\n获得【素衿】3.5秒：免疫等级1控制\n获得【鹊踏枝】5秒：70%闪避率\n2层充能，每层5秒恢复，施放间隔1秒",
+      "overrideDescription": "使你被命中几率降低70%，持续5秒，清除自身所有移动限制，并使你不受招式控制(击退和被拉除外)，持续3.5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ren_chi_cheng",
+      "name": "任驰骋",
+      "currentDescription": "军中秘传马技，使你可在战斗中上马并解除自身锁足效果，并在5秒内不受控制招式影响。",
+      "baseDescription": "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【骑御】、【任驰骋】12秒（攻击力提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+      "overrideDescription": "军中秘传马技，使你可在战斗中上马并解除自身锁足效果，并在5秒内不受控制招式影响。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ren_jian_he_yi",
+      "name": "人剑合一",
+      "currentDescription": "引爆自身13尺范围内的气场，对气场周围6尺内最多5个目标造成伤害，若引爆友方的气场，则使他们定身5秒。",
+      "baseDescription": "瞬发，自身施放\n摧毁周围13码内所有气场\n若其中包含己方气场，则周围13码内敌方玩家获得【破势】5秒：定身",
+      "overrideDescription": "引爆自身13尺范围内的气场，对气场周围6尺内最多5个目标造成伤害，若引爆友方的气场，则使他们定身5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ru_yi_fa",
+      "name": "如意法",
+      "currentDescription": "清除自身当前所受的移动限制效果，使自身不受招式控制，持续3秒，并使自身接下来10秒内的下一个伤害招式附带该移动限制效果。",
+      "baseDescription": "瞬发，自身施放\n解除自身锁足/定身/眩晕/倒地/锁招\n获得【如意法】3秒：免疫所有控制（含击退、拉拽）\n若成功解除锁足/定身/眩晕/倒地，则获得【如意法·待发】3秒：下次攻击额外附加对应控制，并按原完整持续时间结算",
+      "overrideDescription": "清除自身当前所受的移动限制效果，使自身不受招式控制，持续3秒，并使自身接下来10秒内的下一个伤害招式附带该移动限制效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "san_cai_hua_sheng",
+      "name": "三才化生",
+      "currentDescription": "对自身周围8尺内的最多6个目标造成锁足效果，持续9秒。目标在被锁足的后半段时间里若被伤害招式命中，则有50%几率解除其锁足效果",
+      "baseDescription": "无GCD，瞬发，对自身周围8尺内最多6个目标施加【三才化生】9秒：锁足。\n锁足后半段被伤害招式命中有50%概率解除。\n范围：自身半径8尺",
+      "overrideDescription": "对自身周围8尺内的最多6个目标造成锁足效果，持续9秒。目标在被锁足的后半段时间里若被伤害招式命中，则有50%几率解除其锁足效果",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "sanhuan_taoyue",
+      "name": "三环套月",
+      "currentDescription": "对目标造成46-50点(+[4.1000*最终外功攻击])伤害，并添加“三环套月”效果，当“三环套月”叠加至3层时会额外附带一次伤害。",
+      "baseDescription": "造成1点伤害，并叠加【三环套月】；叠满3层时引爆并额外造成1点伤害（持续10秒）",
+      "overrideDescription": "对目标造成46-50点(+[4.1000*最终外功攻击])伤害，并添加“三环套月”效果，当“三环套月”叠加至3层时会额外附带一次伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "sanliu_xia",
+      "name": "散流霞",
+      "currentDescription": "解除受控效果，向前翻越10尺，使自身5秒内无法被敌人选中且移动速度提高20%，\n效果期间每秒回复2%气血最大值，主动施展技能将提前解除该效果。",
+      "baseDescription": "解控并向前翻越10尺\n起跳获得【散流霞隐藏】1秒：不可选中且自我沉默\n落地后获得【散流霞】5秒：不可选中、移动速度提高20%，首秒无治疗，随后4秒内回复5次贯体（每次2%）",
+      "overrideDescription": "解除受控效果，向前翻越10尺，使自身5秒内无法被敌人选中且移动速度提高20%，\n效果期间每秒回复2%气血最大值，主动施展技能将提前解除该效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shang_yang_zhi",
+      "name": "商阳指",
+      "currentDescription": "使目标每3秒受到22点伤害(+[0.074*最终混元内功攻击])，持续18秒。",
+      "baseDescription": "瞬发，附加【商阳指】18秒：每3秒受到1点伤害\n可在空中或移动中施放，射程20",
+      "overrideDescription": "使目标每3秒受到22点伤害(+[0.074*最终混元内功攻击])，持续18秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shao_ming_zhi",
+      "name": "少明指",
+      "currentDescription": "对目标造成28-28点(+[0.7239*最终混元内功攻击])伤害，并解除其身上的混元、阳性、阴性、毒性有益气劲各两个。",
+      "baseDescription": "运功1秒（可移动，不可跳跃），射程20。造成1点伤害，驱散目标身上的混元、阳性、阴性、毒性有益气劲各两个",
+      "overrideDescription": "对目标造成28-28点(+[0.7239*最终混元内功攻击])伤害，并解除其身上的混元、阳性、阴性、毒性有益气劲各两个。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "she_shen_jue",
+      "name": "舍身诀",
+      "currentDescription": "解除友方目标的受控效果（击倒除外），使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
+      "baseDescription": "瞬发，友方目标\n移除目标控制效果（倒地除外）\n使目标获得【舍身诀】10秒：伤害降低30%，转移受到的伤害\n施法者获得【舍身诀·承伤】10秒：代替目标承受转移伤害，转移伤害不受减伤与护盾影响，但可被免伤抵消",
+      "overrideDescription": "解除友方目标的受控效果（击倒除外），使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "she_ying",
+      "name": "蛇影",
+      "currentDescription": "使目标每2秒受到260点伤害，受到的锁足控制时间延长20%(+[0.086*最终毒性内功攻击])，持续12秒。",
+      "baseDescription": "瞬发，附加【蛇影】12秒：每2秒受到1点伤害\n可在空中或移动中施放，射程20",
+      "overrideDescription": "使目标每2秒受到260点伤害，受到的锁足控制时间延长20%(+[0.086*最终毒性内功攻击])，持续12秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "sheng_ming_you",
+      "name": "圣明佑",
+      "currentDescription": "立刻恢复自身20%气血最大值，同时10秒内使自身被命中几率降低20%。",
+      "baseDescription": "瞬发，可在空中或移动中施放\n立即回复20点气血（贯体）\n获得【圣明佑】10秒：闪避率提高20%\n不触发GCD",
+      "overrideDescription": "立刻恢复自身20%气血最大值，同时10秒内使自身被命中几率降低20%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "sheng_tai_ji",
+      "name": "生太极",
+      "currentDescription": "在自身脚下产生一个20尺范围气场，在气场范围内自身和友方目标将免疫控制(被推被拉除外)，气场持续10秒。",
+      "baseDescription": "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落生太极阵，持续10秒，半径15尺。阵中自身获得【生太极·护体】：免疫控制；阵中敌方获得【生太极·迟滞】：移动减速40%",
+      "overrideDescription": "在自身脚下产生一个20尺范围气场，在气场范围内自身和友方目标将免疫控制(被推被拉除外)，气场持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shengsi_jie",
+      "name": "生死劫",
+      "currentDescription": "对目标造成271-299点(+[0.2604*最终阳性内功攻击])伤害，眩晕目标4秒，使目标12秒内受到的疗伤成效降低50%。",
+      "baseDescription": "造成1点伤害\n附加【日劫】眩晕4秒\n附加【月劫】治疗效果降低50%",
+      "overrideDescription": "对目标造成271-299点(+[0.2604*最终阳性内功攻击])伤害，眩晕目标4秒，使目标12秒内受到的疗伤成效降低50%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shi_fang_xuan_ji",
+      "name": "十方玄机",
+      "currentDescription": "运功3秒，选择一个敌对玩家进行伪装，可以完全切换成其外观表现，并且自身与所有人成为友好势力，清除自身仇恨效果，免疫任何伤害，持续20秒。自身使用任何门派技能都会使伪装失效。",
+      "baseDescription": "选中20尺内目标后在地面运功3秒，可在运功中移动；若目标离开20尺则运功中断\n运功结束时目标仍需在20尺内，完成后获得【十方玄机】20秒：所有人视其为友方目标，血条变为绿色\n期间不可被选中，不受范围技能影响，并免疫所有伤害\n施放除6个基础通用技能外的任意招式时失去该效果",
+      "overrideDescription": "运功3秒，选择一个敌对玩家进行伪装，可以完全切换成其外观表现，并且自身与所有人成为友好势力，清除自身仇恨效果，免疫任何伤害，持续20秒。自身使用任何门派技能都会使伪装失效。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shi_xin_gu",
+      "name": "蚀心蛊",
+      "currentDescription": "使目标玩家不受控制，作用期间目标移动速度提高50%，受到的伤害降低50%，持续6秒。若对队友施展，则持续时间减半。",
+      "baseDescription": "选中20尺内任意目标施放【蚀心蛊】6秒\n目标被沉默、移速提高50%、受到伤害降低50%，并随机陷入朝固定方向移动或原地不动的失控状态\n若目标为自己，则持续时间减半；若目标已有【蚀心】，则本次持续时间再减半",
+      "overrideDescription": "使目标玩家不受控制，作用期间目标移动速度提高50%，受到的伤害降低50%，持续6秒。若对队友施展，则持续时间减半。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shou_que_shi",
+      "name": "守缺式",
+      "currentDescription": "对目标造成34-34点(+[3.0000*最终阳性内功攻击])伤害，3秒内连续施展时对目标额外造成30%伤害且小范围击退目标。",
+      "baseDescription": "需要目标，射程8，瞬发，可在移动或空中施放\n造成2点伤害\n自身获得【守缺式】3秒：期间再次施放【守缺式】时伤害提高30%，并将目标击退2尺（0.2秒）\n2层充能，每层10秒恢复\n触发GCD",
+      "overrideDescription": "对目标造成34-34点(+[3.0000*最终阳性内功攻击])伤害，3秒内连续施展时对目标额外造成30%伤害且小范围击退目标。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "shou_ru_shan",
+      "name": "守如山",
+      "currentDescription": "使自身受到的伤害降低80%，持续8秒。",
+      "baseDescription": "瞬发，自身获得【守如山】8秒：受到伤害降低80%",
+      "overrideDescription": "使自身受到的伤害降低80%，持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "sui_xing_chen",
+      "name": "碎星辰",
+      "currentDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标外功会心提高10%，会心效果提高15%，气场持续10秒。",
+      "baseDescription": "正读条1.5秒（可移动、可在空中施放）。读条完成后于脚下降落碎星辰阵，持续30秒，半径15尺。阵中自身获得【碎星辰】：外功会心提高10%，外功会心效果提高15%",
+      "overrideDescription": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标外功会心提高10%，会心效果提高15%，气场持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "tai_ji_wu_ji",
+      "name": "太极无极",
+      "currentDescription": "对目标造成0-0点(+[4.4937*最终外功攻击])伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
+      "baseDescription": "瞬发，射程20\n造成2点伤害\n命中时，若目标处于眩晕/冰冻/锁足状态，附加【太极无极】12秒：受到的伤害增加20%（最多5层）",
+      "overrideDescription": "对目标造成0-0点(+[4.4937*最终外功攻击])伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "tai_yin_zhi",
+      "name": "太阴指",
+      "currentDescription": "向后疾退，解除自身锁足效果，疾退过程中自身被命中几率降低100%。",
+      "baseDescription": "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足，向后冲刺30尺（0.7秒完成）\n冲刺期间获得【太阴指】：100%闪避率\n触发GCD",
+      "overrideDescription": "向后疾退，解除自身锁足效果，疾退过程中自身被命中几率降低100%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "taxingxing",
+      "name": "踏星行",
+      "currentDescription": "门派轻功，解除自身减速、锁足效果，使自身虚化浮空，被命中几率降低65%，移动速度提高30%，期间免疫控制且可自由漂浮，无法施展招式。",
+      "baseDescription": "轻功化形5秒：以12.5尺/秒向前冲刺\n施放时解除锁足与减速\n起跳抬升8尺，撞墙后立刻下坠\n期间处于位移状态并免疫等级1/2控制\n期间闪避率65%",
+      "overrideDescription": "门派轻功，解除自身减速、锁足效果，使自身虚化浮空，被命中几率降低65%，移动速度提高30%，期间免疫控制且可自由漂浮，无法施展招式。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ti_yun_zong",
+      "name": "梯云纵",
+      "currentDescription": "当你处于战斗状态时，下一次跳跃能跳得更高，抗摔伤力提高，持续30秒；\n当处于非战斗状态时，可以连续跳跃，持续12秒。施展后，重置“蹑云逐月”的调息时间。",
+      "baseDescription": "轻功，瞬发，自身施放\n刷新【蹑云逐月】冷却\n获得【梯云纵】12秒：每次跳跃额外获得12码高度\n（与【鸟翔碧空】可同时存在，叠加为超级跳）\n拥有【弹跳】时不可施放\n不可在空中施放",
+      "overrideDescription": "当你处于战斗状态时，下一次跳跃能跳得更高，抗摔伤力提高，持续30秒；\n当处于非战斗状态时，可以连续跳跃，持续12秒。施展后，重置“蹑云逐月”的调息时间。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "tian_di_di_ang",
+      "name": "天地低昂",
+      "currentDescription": "使自身化解受到的伤害55%，持续10秒。并不产生威胁值，运功不被打退，持续1秒。该招式的施放无视控制效果。",
+      "baseDescription": "瞬发，自身减少受到的伤害40%，持续10秒\n可在眩晕/控制中施放",
+      "overrideDescription": "使自身化解受到的伤害55%，持续10秒。并不产生威胁值，运功不被打退，持续1秒。该招式的施放无视控制效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "tian_jue_di_mie",
+      "name": "天绝地灭",
+      "currentDescription": "林寒涧肃：在目标位置投放“天绝地灭”机关，持续时间固定9秒，结束后将自动引爆。将“天绝地灭”周围15尺范围内最多五个敌方目标拉扯到“天绝地灭”所在点。",
+      "baseDescription": "瞬发，于鼠标位置或目标处展开法阵，初始半径6尺\n每秒扩大4尺，最多至15尺，总持续9秒\n9秒后爆炸：以40尺/秒将范围内敌人拉至中心，并造成10点伤害\n施法距离20尺",
+      "overrideDescription": "林寒涧肃：在目标位置投放“天绝地灭”机关，持续时间固定9秒，结束后将自动引爆。将“天绝地灭”周围15尺范围内最多五个敌方目标拉扯到“天绝地灭”所在点。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "tiandi_wuji",
+      "name": "天地无极",
+      "currentDescription": "对目标造成124-129(+[3.6000*最终外功攻击])伤害，并隐身3秒，施展任何招式都将提前解除隐身效果。",
+      "baseDescription": "对前方20尺目标造成2点伤害\n隐身3秒",
+      "overrideDescription": "对目标造成124-129(+[3.6000*最终外功攻击])伤害，并隐身3秒，施展任何招式都将提前解除隐身效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ting_feng_chui_xue",
+      "name": "听风吹雪",
+      "currentDescription": "平衡自身与友方目标气血值百分比后，再额外恢复双方气血最大值20%。",
+      "baseDescription": "瞬发，友方目标\n令自身与目标的当前气血变为双方当前气血平均值\n随后双方各回复20点贯体气血",
+      "overrideDescription": "平衡自身与友方目标气血值百分比后，再额外恢复双方气血最大值20%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ting_lei",
+      "name": "听雷",
+      "currentDescription": "对目标造成35-49(+[1.7312*最终外功攻击])伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
+      "baseDescription": "瞬发，可在空中或移动中施放\n射程4，对目标造成3点伤害\n命中后自身获得「听雷·伤」：伤害提升10%（12秒，最多3层）",
+      "overrideDescription": "对目标造成35-49(+[1.7312*最终外功攻击])伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "tun_ri_yue",
+      "name": "吞日月",
+      "currentDescription": "产生一个15尺的气场，范围内敌方不能施展轻功，持续15秒。",
+      "baseDescription": "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落吞日月阵，持续10秒，半径15尺。阵中敌方获得【吞日月】：封轻功",
+      "overrideDescription": "产生一个15尺的气场，范围内敌方不能施展轻功，持续15秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wan_jian_gui_zong",
+      "name": "万剑归宗",
+      "currentDescription": "对周围6尺内的最多6个目标造成69-76(+[2.1562*最终外功攻击])伤害，并使这些目标锁足3秒，减疗50%持续10秒。",
+      "baseDescription": "瞬发，可在空中或移动中施放\n锁足6尺范围内的敌人3秒\n附加【玄一】5层（30秒）：每层使治疗效果降低10%",
+      "overrideDescription": "对周围6尺内的最多6个目标造成69-76(+[2.1562*最终外功攻击])伤害，并使这些目标锁足3秒，减疗50%持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "weituo_xianchu",
+      "name": "韦陀献杵",
+      "currentDescription": "对目标造成271-299点(+[4.4947*最终阳性内功攻击])伤害，并使目标内外防等级降低30%，自身内外防提高30%，持续5秒。",
+      "baseDescription": "需要目标，正面180°\n瞬发造成5点伤害\n附加【韦陀献杵易伤】5秒：防御力降低30%\n自身获得【韦陀献杵防御】5秒：防御力提高30%\n可在移动与跳跃中施放",
+      "overrideDescription": "对目标造成271-299点(+[4.4947*最终阳性内功攻击])伤害，并使目标内外防等级降低30%，自身内外防提高30%，持续5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wu_an_mi_yun",
+      "name": "雾暗迷云",
+      "currentDescription": "施展招式后使目标陷入持续7秒的“迷云”状态：施展招式时生效的目标随机选择，不分敌我。迷云状态结束后，目标获得“雾释”效果，效果持续期间不会再次陷入“迷云”。",
+      "baseDescription": "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】8秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
+      "overrideDescription": "施展招式后使目标陷入持续7秒的“迷云”状态：施展招式时生效的目标随机选择，不分敌我。迷云状态结束后，目标获得“雾释”效果，效果持续期间不会再次陷入“迷云”。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wu_jianyu",
+      "name": "无间狱",
+      "currentDescription": "立即“修罗”附体，对10尺180°范围发起三段挥砍，对最多6个目标造成伤害，期间蓄力旋转一次链刃击退自身周围10尺最多6个目标造成伤害，持续10秒。修罗会汲取造成伤害的30%恢复自身气血值。",
+      "baseDescription": "修罗附体\n2秒后正面180°/10码造成5伤害\n3秒后正面180°/10码造成5伤害\n4秒后正面180°/10码造成5伤害\n同时360°/10码造成10伤害并击退3码，击退期间沉默0.8秒\n所有伤害30%吸血",
+      "overrideDescription": "立即“修罗”附体，对10尺180°范围发起三段挥砍，对最多6个目标造成伤害，期间蓄力旋转一次链刃击退自身周围10尺最多6个目标造成伤害，持续10秒。修罗会汲取造成伤害的30%恢复自身气血值。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wu_wo_wu_jian",
+      "name": "无我无剑",
+      "currentDescription": "对目标造成93-93(+[6.8875*最终外功攻击])点伤害。",
+      "baseDescription": "瞬发，可在空中或移动中施放\n对目标造成7点伤害\n射程4，触发GCD",
+      "overrideDescription": "对目标造成93-93(+[6.8875*最终外功攻击])点伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wu_xiang_jue",
+      "name": "无相诀",
+      "currentDescription": "10秒内受到的伤害降低50%，血量每减少25%，减伤效果提高10%，减伤效果自然结束血量低于10%则立刻恢复50%气血最大值。",
+      "baseDescription": "瞬发，自身施放\n施放时按当前气血快照获得【无相诀·五十/六十/七十/八十/九十】10秒：气血高于75%/50%/25%/10%时分别减伤50%/60%/70%/80%，10%及以下减伤90%\n【无相诀】自然结束时若气血低于10%，立刻回复50%最大气血（贯体）",
+      "overrideDescription": "10秒内受到的伤害降低50%，血量每减少25%，减伤效果提高10%，减伤效果自然结束血量低于10%则立刻恢复50%气血最大值。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wufang_xingjin",
+      "name": "五方行尽",
+      "currentDescription": "使自身会心效果提高20%，对选择区域范围内的最多6个目标均造成23-23点(+[0.5989*最终混元内功攻击])伤害，并使其锁足10.5秒。目标在被锁足的后半段持续时间里若被伤害招式命中，则有50%几率解除其锁足效果。",
+      "baseDescription": "可选目标或地面施放（范围8）\n命中后立刻造成1点伤害\n附加【五方行尽】10秒：锁足；后半段被击时有50%概率解除\n若命中至少1名敌方目标，获得【会神】8秒：伤害提高20%",
+      "overrideDescription": "使自身会心效果提高20%，对选择区域范围内的最多6个目标均造成23-23点(+[0.5989*最终混元内功攻击])伤害，并使其锁足10.5秒。目标在被锁足的后半段持续时间里若被伤害招式命中，则有50%几率解除其锁足效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "wuyun_jiekong",
+      "name": "五蕴皆空",
+      "currentDescription": "使目标眩晕5秒，并使其8秒内“蹑云逐月”招式移动速度降低70%。",
+      "baseDescription": "瞬发，射程4\n对目标造成1点伤害\n附加【五蕴皆空】5秒：眩晕\n附加【五蕴皆空·聂云缩减】8秒：施放蹑云逐月时冲刺距离和时间降低70%\n触发GCD",
+      "overrideDescription": "使目标眩晕5秒，并使其8秒内“蹑云逐月”招式移动速度降低70%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xi_bing_yu",
+      "name": "洗兵雨",
+      "currentDescription": "击飞非治疗心法敌方目标的武器，使目标无法施展轻功以外的招式，持续5秒，武器将掉落至目标6尺位置，若目标拾取到地上的武器则提前解除此效果。",
+      "baseDescription": "4尺，瞬发，可空中施放，不进入公共冷却\n使目标获得【洗兵雨】5秒：缴械，无法施展需要武器的招式，并在距目标6尺处生成1尺拾武区域；目标走入后立刻解除该效果",
+      "overrideDescription": "击飞非治疗心法敌方目标的武器，使目标无法施展轻功以外的招式，持续5秒，武器将掉落至目标6尺位置，若目标拾取到地上的武器则提前解除此效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xia_liu_bao_shi",
+      "name": "霞流宝石",
+      "currentDescription": "立即对周围6尺内的最多10个目标均造成伤害并清除其阳性、混元性、阴性、毒性气劲各一个，并使其4秒内无法使用武器。",
+      "baseDescription": "自身周围6尺，瞬发，可空中施放，不进入公共冷却\n对附近敌人造成1点伤害，驱散其身上的阳性、混元、阴性、毒性有利气劲各一个，并使其获得【霞流宝石】4秒：缴械，无法施展需要武器的招式",
+      "overrideDescription": "立即对周围6尺内的最多10个目标均造成伤害并清除其阳性、混元性、阴性、毒性气劲各一个，并使其4秒内无法使用武器。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xiang_ji_bi_luo",
+      "name": "翔极碧落",
+      "currentDescription": "凝气成雕，造成伤害，若其正在运功，则将运功打断并使其沉默4秒。",
+      "baseDescription": "20尺，可空中或移动中施放\n瞬发对目标造成1点伤害\n若目标正在读条且该读条可被打断，则打断读条并附加【沉默】4秒\n若目标拥有【沉默免疫】则不会触发打断与沉默效果",
+      "overrideDescription": "凝气成雕，造成伤害，若其正在运功，则将运功打断并使其沉默4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xiao_ru_hu",
+      "name": "啸如虎",
+      "currentDescription": "招式伤害提高30%，不受任何控制影响，20秒内受到攻击不会重伤。",
+      "baseDescription": "瞬发，触发GCD\n获得【啸如虎】12秒：气血不会降至1以下（无法被击杀）；造成伤害提高30%；不受控制，但仍受锁招影响",
+      "overrideDescription": "招式伤害提高30%，不受任何控制影响，20秒内受到攻击不会重伤。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xiao_zui_kuang",
+      "name": "笑醉狂",
+      "currentDescription": "解除自身控制效果，持续运功9秒，持续期间受到的伤害降低50%且免疫控制效果，每1秒回复最大气血值5%，完整运功额外回复30%最大气血值。",
+      "baseDescription": "解控，运功9秒，减伤50%，免控，贯体每秒回复5%气血，完整运功额外回复30%气血",
+      "overrideDescription": "解除自身控制效果，持续运功9秒，持续期间受到的伤害降低50%且免疫控制效果，每1秒回复最大气血值5%，完整运功额外回复30%最大气血值。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xinglou_yueying",
+      "name": "星楼月影",
+      "currentDescription": "清除自身所有移动限制，并使自身不受招式控制(击退和被拉除外)，持续8秒。",
+      "baseDescription": "解除等级1控制\n获得【星楼月影】8秒：免疫等级1控制\n不触发GCD",
+      "overrideDescription": "清除自身所有移动限制，并使自身不受招式控制(击退和被拉除外)，持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xinzheng",
+      "name": "心诤",
+      "currentDescription": "持续舞棍3秒，过程免疫全部控制效果。持续左右交替挥舞手中棍棒六次，对6尺180度范围内最多5个目标造成中等伤害，每次造成伤害自身获得1层“讼言”，最多30层。每层“讼言”提高会心3%。舞棍结束后打出一次12尺范围终结扫击并消耗全部“讼言”。",
+      "baseDescription": "逆读条3秒，期间免控；每0.5秒对前方180°/6尺造成2点伤害；结束时额外对前方180°/12尺造成10点伤害",
+      "overrideDescription": "持续舞棍3秒，过程免疫全部控制效果。持续左右交替挥舞手中棍棒六次，对6尺180度范围内最多5个目标造成中等伤害，每次造成伤害自身获得1层“讼言”，最多30层。每层“讼言”提高会心3%。舞棍结束后打出一次12尺范围终结扫击并消耗全部“讼言”。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xu_ru_lin",
+      "name": "徐如林",
+      "currentDescription": "天策府秘传武技，在自己的伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%，持续20秒。",
+      "baseDescription": "瞬发，自身施放\n获得【徐如林】30秒：命中敌人有50%几率获得【徐如林·回复】1秒；【徐如林·回复】结束时回复5点生命；持有【徐如林·回复】期间不会再次获得（1秒内置CD）",
+      "overrideDescription": "天策府秘传武技，在自己的伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%，持续20秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "xuanshui_gu",
+      "name": "玄水蛊",
+      "currentDescription": "毒手：对20尺内的敌方玩家施展，使自身受到的55%伤害将由敌方玩家承担，持续8秒。",
+      "baseDescription": "瞬发，射程10\n对目标造成1点伤害\n目标获得【毒手】8秒：承受施放者55%的受击伤害（伤害转移）\n施放者获得【玄水蛊】8秒：携带毒手的目标为我承受55%的伤害\n触发GCD",
+      "overrideDescription": "毒手：对20尺内的敌方玩家施展，使自身受到的55%伤害将由敌方玩家承担，持续8秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yan_yu_xing",
+      "name": "烟雨行",
+      "currentDescription": "解除自身锁足和减速不利效果，快速冲向前方，施展过程中不受控制招式影响。",
+      "baseDescription": "轻功，瞬发，可在空中或移动中施放\n解除减速与锁足\n向前冲刺20尺，冲刺期间显示【烟雨行】：免疫控制\n2充能，每10秒恢复1充能\n不触发GCD",
+      "overrideDescription": "解除自身锁足和减速不利效果，快速冲向前方，施展过程中不受控制招式影响。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yaotai_zhenhe",
+      "name": "瑶台枕鹤",
+      "currentDescription": "江湖轻功，向右侧迅速移动，可以避开敌人攻击。过程中不受招式控制。",
+      "baseDescription": "向右侧冲刺7格",
+      "overrideDescription": "江湖轻功，向右侧迅速移动，可以避开敌人攻击。过程中不受招式控制。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yin_qiao",
+      "name": "引窍",
+      "currentDescription": "对目标造成伤害，引爆所有“绝脉”。",
+      "baseDescription": "需要目标，射程20，需要站立，运功1.5秒（正读条）\n运功完成后对目标造成2点伤害，并消耗其全部【绝脉】；每层【绝脉】额外造成1点伤害\n运功完成后若自身有【云散】，按云散规则向后疾退或向侧面疾冲10-12尺并消耗1层",
+      "overrideDescription": "对目标造成伤害，引爆所有“绝脉”。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yin_yue_zhan",
+      "name": "银月斩",
+      "currentDescription": "对目标造成460-508点(+[3.2968*最终阴性内功攻击])伤害，并对其每2秒造成272点伤害(+[0.074*最终阴性内功攻击])，持续12秒，当目标拥有“烈日斩”效果时将对其额外造成伤害。",
+      "baseDescription": "瞬发，对目标造成2点伤害，并附加【银月斩】6秒：每2秒造成1点伤害。\n若目标已有【烈日斩】，所有伤害翻倍。\n射程6",
+      "overrideDescription": "对目标造成460-508点(+[3.2968*最终阴性内功攻击])伤害，并对其每2秒造成272点伤害(+[0.074*最终阴性内功攻击])，持续12秒，当目标拥有“烈日斩”效果时将对其额外造成伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "ying_tian_shou_ming",
+      "name": "应天授命",
+      "currentDescription": "开启后8秒内受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间免疫受击僵直，每次受到攻击回复6%已损生命值。",
+      "baseDescription": "瞬发，自身施放\n获得【应天授命】8秒：受到的伤害不立刻结算，每秒结算一次（上限为自身最大气血20%）；每次受击立即回复6%已损气血（贯体）",
+      "overrideDescription": "开启后8秒内受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间免疫受击僵直，每次受到攻击回复6%已损生命值。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yingfeng_huilang",
+      "name": "迎风回浪",
+      "currentDescription": "向后疾退，避开敌人的攻击。过程中不受招式控制。",
+      "baseDescription": "向身后方向冲刺10格",
+      "overrideDescription": "向后疾退，避开敌人的攻击。过程中不受招式控制。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "you_feng_piao_zong",
+      "name": "游风飘踪",
+      "currentDescription": "将自身所受的控制效果（不包括被推、被拉）转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果（不包括被推、被拉）。非受控状态下施展将返回7秒调息时间。",
+      "baseDescription": "瞬发，自身施放，2层充能，每层5秒恢复，施放间隔1秒\n解除自身锁足/定身/眩晕/倒地/锁招\n获得【游风飘踪】8秒：免疫控制（击退/拉拽除外）\n若有当前目标且成功解除锁足/定身/眩晕/倒地，则立即对其施加对应控制5秒\n反射部分仍受递减影响",
+      "overrideDescription": "将自身所受的控制效果（不包括被推、被拉）转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果（不包括被推、被拉）。非受控状态下施展将返回7秒调息时间。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "you_yue_lun",
+      "name": "幽月轮",
+      "currentDescription": "对目标造成19-21点(+[1.4010*最终阴性内功攻击])伤害，可以连续施展3次。",
+      "baseDescription": "瞬发，射程4\n造成1点伤害",
+      "overrideDescription": "对目标造成19-21点(+[1.4010*最终阴性内功攻击])伤害，可以连续施展3次。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yu_shi_ju_fen",
+      "name": "玉石俱焚",
+      "currentDescription": "对目标造成114-126点(+[0.5989*最终混元内功攻击])伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效并额外造成一次伤害。",
+      "baseDescription": "瞬发，立即造成2点伤害\n若目标正受到来自自身【商阳指】【兰摧玉折】【钟林毓秀】【蛇影】【蟾啸】的持续伤害，立即结算所有剩余伤害并解除对应效果\n射程20",
+      "overrideDescription": "对目标造成114-126点(+[0.5989*最终混元内功攻击])伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效并额外造成一次伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yu_yu_cheng_feng",
+      "name": "驭羽骋风",
+      "currentDescription": "命令海雕将自身抓上天空，解除自身受控制状态，使自身免疫控制3秒并减少30%受到的伤害。",
+      "baseDescription": "瞬发，自身施放\n解除自身所有控制\n向上冲刺12码（1秒）\n获得【驭羽骋风】3秒：免疫所有控制（含击退、拉拽）\n获得【驭羽骋风·减伤】3秒：受到伤害降低30%",
+      "overrideDescription": "命令海雕将自身抓上天空，解除自身受控制状态，使自身免疫控制3秒并减少30%受到的伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yuan",
+      "name": "渊",
+      "currentDescription": "冲刺到友方目标身边，为其承受1次伤害，并击飞其周围5个目标。",
+      "baseDescription": "瞬发，友方目标，6-20码\n冲向目标\n击退目标周围6码内敌人12码，持续0.25秒\n目标获得【渊】，自身获得【渊·承伤】：目标下一次受到的伤害改由施法者承受，触发后两者同时消失",
+      "overrideDescription": "冲刺到友方目标身边，为其承受1次伤害，并击飞其周围5个目标。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yue_chao_zhan_bo",
+      "name": "跃潮斩波",
+      "currentDescription": "立即冲向目标释放一道掌法并造成伤害。",
+      "baseDescription": "轻功，需要目标，射程25\n向目标冲刺（停在8尺处）\n落地时造成15点伤害\n触发GCD",
+      "overrideDescription": "立即冲向目标释放一道掌法并造成伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yun_fei_yu_huang",
+      "name": "云飞玉皇",
+      "currentDescription": "对目标造成1032-1140(+[10.2562*最终外功攻击])伤害，若目标处于自身4尺内则额外造成伤害。",
+      "baseDescription": "需要目标，运功2秒（不可移动），对目标造成10点伤害；运功完成时目标在4码内额外造成5点伤害",
+      "overrideDescription": "对目标造成1032-1140(+[10.2562*最终外功攻击])伤害，若目标处于自身4尺内则额外造成伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yun_qi_song",
+      "name": "云栖松",
+      "currentDescription": "恢复5%气血值，解除自身阳性、混元性、阴性、毒性不利效果各两个并使自身被命中概率降低60%，持续10秒。",
+      "baseDescription": "自身获得【云栖松】12秒：外功闪避率提高60%\n同时获得【栖松】5秒：每秒回复1点气血（贯体）\n并驱散自身阳性、混元、阴性、毒性不利效果各两个",
+      "overrideDescription": "恢复5%气血值，解除自身阳性、混元性、阴性、毒性不利效果各两个并使自身被命中概率降低60%，持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "yuqi",
+      "name": "骑御",
+      "currentDescription": "在非战斗状态施展后能成功驾驭和下马，施展驾驭需3秒。",
+      "baseDescription": "未骑御时：需站立运功3秒，移动或跳跃会打断；完成后获得【骑御】\n已骑御时：瞬发解除【骑御】并下马\n骑御期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+      "overrideDescription": "在非战斗状态施展后能成功驾驭和下马，施展驾驭需3秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhan_wu_chang",
+      "name": "斩无常",
+      "currentDescription": "可移动释放，挥舞武器进行持续旋转，每0.5秒对自身周围6尺内最多6个敌对目标造成伤害，\n过程中自身受到伤害降低50%，免疫控制且可以格挡远程弹道技能的伤害，持续4秒。降低伤害和格挡远程弹道技能的效果可以对自身6尺范围内的小队成员生效。",
+      "baseDescription": "瞬发，可在空中施放，可边运功边移动\n运功4秒：免控、免远程弹道技能、减伤50%\n每0.5秒对附近4尺内敌人造成1点伤害",
+      "overrideDescription": "可移动释放，挥舞武器进行持续旋转，每0.5秒对自身周围6尺内最多6个敌对目标造成伤害，\n过程中自身受到伤害降低50%，免疫控制且可以格挡远程弹道技能的伤害，持续4秒。降低伤害和格挡远程弹道技能的效果可以对自身6尺范围内的小队成员生效。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhen_chi_tu_nan",
+      "name": "振翅图南",
+      "currentDescription": "命令海雕在指定位置扇出一道飓风，持续对周围造成12次伤害，持续6秒。飓风会自动跟随附近敌对目标（优先自身目标）。",
+      "baseDescription": "瞬发，不进入公共冷却\n于目标处或鼠标位置展开半径5尺的法阵，持续6秒\n每0.5秒造成1点伤害；若有选中目标，法阵以5尺/秒跟随目标\n施法距离20尺",
+      "overrideDescription": "命令海雕在指定位置扇出一道飓风，持续对周围造成12次伤害，持续6秒。飓风会自动跟随附近敌对目标（优先自身目标）。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhen_shan_he",
+      "name": "镇山河",
+      "currentDescription": "产生一个10尺的气场，范围内队友获得镇山河，并解除外功、阴性、混元性、阳性、毒性和点穴的不利效果，持续8秒。该招式的施放无视任何控制效果。",
+      "baseDescription": "展开镇山河8秒，自身立即获得2秒无敌\n区域内友方每0.1秒刷新0.1秒无敌\n首次获得区域效果时附加【玄剑】12秒；自然结束后转为【化生势】180秒，期间无法再次获得镇山河效果",
+      "overrideDescription": "产生一个10尺的气场，范围内队友获得镇山河，并解除外功、阴性、混元性、阳性、毒性和点穴的不利效果，持续8秒。该招式的施放无视任何控制效果。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhen_xia_che",
+      "name": "真·下车",
+      "currentDescription": "什么都是假的，只有下车是真的。",
+      "baseDescription": "九霄风雷期间可用\n结束九霄风雷，恢复原技能栏，并移除洞烛机微\n可在受控、被击退、被拉拽、位移或沉默中施放",
+      "overrideDescription": "什么都是假的，只有下车是真的。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhenshen_xingsi",
+      "name": "龙牙",
+      "currentDescription": "冲向目标，对目标造成124-129(+[9.5000*最终外功攻击])点伤害。",
+      "baseDescription": "需要目标，冲向敌人（最远20码）\n施放时造成15点伤害",
+      "overrideDescription": "冲向目标，对目标造成124-129(+[9.5000*最终外功攻击])点伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhong_lin_yu_xiu",
+      "name": "钟林毓秀",
+      "currentDescription": "使目标攻击降低-776点，每3秒受到64点伤害(+[0.099*最终混元内功攻击])，持续18秒。",
+      "baseDescription": "正读条1秒，必须站立施放，移动或跳跃会中断读条\n读条完成后附加【钟林毓秀】18秒：每3秒受到1点伤害\n射程20",
+      "overrideDescription": "使目标攻击降低-776点，每3秒受到64点伤害(+[0.099*最终混元内功攻击])，持续18秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhu_yun_han_rui",
+      "name": "逐云寒蕊",
+      "currentDescription": "解除自身控制，免疫控制持续3秒，并在自身脚下生成10尺范围的“逐云寒蕊”，持续10秒。小队成员在进入“逐云寒蕊”短暂延迟后将隐匿其中，身形莫测无法被选中，“逐云寒蕊”消失、离开“逐云寒蕊”或者角色发动攻击后隐匿消失。“逐云寒蕊”免疫控制，可以被攻击，受到范围伤害降低20%。",
+      "baseDescription": "瞬发，解除控制，可空中施放与控制中施放\n在自身下方放置【逐云寒蕊】(气血50，半径10码，持续12秒)\n友方进入区域1秒后获得【隐藏】，离开或攻击时破隐\n自身获得3秒免控（所有控制等级）",
+      "overrideDescription": "解除自身控制，免疫控制持续3秒，并在自身脚下生成10尺范围的“逐云寒蕊”，持续10秒。小队成员在进入“逐云寒蕊”短暂延迟后将隐匿其中，身形莫测无法被选中，“逐云寒蕊”消失、离开“逐云寒蕊”或者角色发动攻击后隐匿消失。“逐云寒蕊”免疫控制，可以被攻击，受到范围伤害降低20%。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhuan_qiankun",
+      "name": "转乾坤",
+      "currentDescription": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制（击退和被拉除外），持续4秒。",
+      "baseDescription": "解除等级1控制\n获得【转乾坤减伤】8秒：减伤60%，抗沉默\n获得【转乾坤免控】4秒：免疫等级1控制\n不触发GCD",
+      "overrideDescription": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制（击退和被拉除外），持续4秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhuiming_jian",
+      "name": "追命箭",
+      "currentDescription": "对目标造成1032-1140(+[6.4937*最终外功攻击])伤害，若目标血量高于60%则追加50%额外伤害。",
+      "baseDescription": "需要目标，运功2秒（正读条）\n需要站立施放，移动或跳跃会中断\n完成时造成10点伤害；若目标气血高于60%，额外造成6点伤害",
+      "overrideDescription": "对目标造成1032-1140(+[6.4937*最终外功攻击])伤害，若目标血量高于60%则追加50%额外伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zhuo_ying_shi",
+      "name": "捉影式",
+      "currentDescription": "将前方一定距离内的敌方目标拉到身前，之后使目标无法施展轻功，持续5秒。",
+      "baseDescription": "需要目标，射程35，运功0.5秒（正读条）\n读条完成后以20单位/秒将目标拉拽至身前1尺（最多35单位），并附加【滞影】5秒（封轻功）",
+      "overrideDescription": "将前方一定距离内的敌方目标拉到身前，之后使目标无法施展轻功，持续5秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zi_qi_dong_lai",
+      "name": "紫气东来",
+      "currentDescription": "使自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒。",
+      "baseDescription": "瞬发自我施放\n获得【紫气东来】12秒：攻击力提高25%，外功会心和内功会心提高25%，外功会心效果和内功会心效果提高25%\n不触发GCD",
+      "overrideDescription": "使自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    },
+    {
+      "id": "zuowang_wuwo",
+      "name": "坐忘无我",
+      "currentDescription": "以混元气劲护持自身，化解自身气血最大值5%伤害。",
+      "baseDescription": "自我施放\n获得【坐忘无我】120秒：提供5%气血护盾",
+      "overrideDescription": "以混元气劲护持自身，化解自身气血最大值5%伤害。",
+      "hasDescriptionOverride": true,
+      "originalDescription": null
+    }
+  ]
+}

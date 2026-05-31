@@ -8,6 +8,7 @@ import {
 } from "../../state/types";
 import { resolveHealAmountRoll } from "../../utils/combatMath";
 import { applyHealToTarget } from "../../utils/health";
+import { applyYumenKuangShaHealPenalty } from "../../utils/yumenSafeZone";
 import { pushEvent } from "../events";
 
 /**
@@ -32,7 +33,8 @@ export function handleHeal(
     base,
   });
 
-  const applied = applyHealToTarget(target as any, healRoll.heal);
+  const healAmount = applyYumenKuangShaHealPenalty(ability.id, target as any, healRoll.heal);
+  const applied = applyHealToTarget(target as any, healAmount);
 
   if (applied > 0) {
     pushEvent(state, {

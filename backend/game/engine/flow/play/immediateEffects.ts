@@ -267,8 +267,9 @@ function syncStolenBuffRuntime(params: {
   sourcePlayer: any;
   stolenBuff: any;
   appliedBuff: any;
+  stolenShieldAmount?: number;
 }) {
-  const { sourcePlayer, stolenBuff, appliedBuff } = params;
+  const { sourcePlayer, stolenBuff, appliedBuff, stolenShieldAmount } = params;
 
   appliedBuff.expiresAt = stolenBuff.expiresAt;
   if (stolenBuff.periodicMs !== undefined) appliedBuff.periodicMs = stolenBuff.periodicMs;
@@ -288,9 +289,10 @@ function syncStolenBuffRuntime(params: {
   if (stolenBuff.sourceAbilityId) appliedBuff.sourceAbilityId = stolenBuff.sourceAbilityId;
   if (stolenBuff.sourceAbilityName) appliedBuff.sourceAbilityName = stolenBuff.sourceAbilityName;
 
-  if (typeof stolenBuff.shieldAmount === "number") {
+  const nextShieldAmount = typeof stolenShieldAmount === "number" ? stolenShieldAmount : stolenBuff.shieldAmount;
+  if (typeof nextShieldAmount === "number") {
     const previousShield = appliedBuff.shieldAmount ?? 0;
-    const nextShield = stolenBuff.shieldAmount;
+    const nextShield = nextShieldAmount;
     const shieldDelta = nextShield - previousShield;
     if (shieldDelta !== 0) {
       sourcePlayer.shield = Math.max(0, (sourcePlayer.shield ?? 0) + shieldDelta);
@@ -1346,15 +1348,34 @@ export function applyImmediateEffects(params: {
         break;
 
       case "CLEANSE":
-        handleCleanse(source, {
-          cleanseRootSlow:
-            (ability as any).cleanseRootSlow === true ||
-            (effect as any).cleanseRootSlow === true,
-        });
+        {
+          const abilityRootFlag = (ability as any).cleanseRootSlow;
+          const effectRootFlag = (effect as any).cleanseRootSlow;
+          const resolvedRootFlag =
+            effectRootFlag === true || effectRootFlag === false
+              ? effectRootFlag
+              : (abilityRootFlag === true || abilityRootFlag === false ? abilityRootFlag : undefined);
+
+          handleCleanse(
+            source,
+            resolvedRootFlag === undefined ? undefined : { cleanseRootSlow: resolvedRootFlag === true }
+          );
+        }
         break;
 
       case "YOU_FENG_PIAO_ZONG": {
+        const hadCleanseableControl = (source.buffs ?? []).some((buff: any) => {
+          const effects = Array.isArray(buff?.effects) ? buff.effects : [];
+          const hasRoot = effects.some((e: any) => e?.type === "ROOT");
+          const hasControl = effects.some((e: any) => e?.type === "CONTROL");
+          const hasAttackLock = effects.some((e: any) => e?.type === "ATTACK_LOCK");
+          const isMoheKnockdown = buff?.buffId === 1002 && buff?.sourceAbilityId === "mohe_wuliang";
+          const isNamedKnockdown = typeof buff?.name === "string" && buff.name.includes("倒地");
+          return hasRoot || hasControl || hasAttackLock || isMoheKnockdown || isNamedKnockdown;
+        });
+
         const capturedControls = captureAndCleanseControls(source, Date.now());
+        (source as any)._youFengNoControlRemoved = !hadCleanseableControl;
 
         const immunityBuff = getAbilityBuffDefinition(ability, YOU_FENG_IMMUNITY_BUFF_ID);
         if (immunityBuff) {
@@ -1548,7 +1569,7 @@ export function applyImmediateEffects(params: {
         const cappedDurationTicks = Math.max(1, Math.round((cappedValue / 40) * 30));
         const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const, value: cappedValue, durationTicks: cappedDurationTicks };
         handleDirectionalDash(state, source, { x: gTargetX, y: gTargetY }, ability, gtdEffect);
-        // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height
+        // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height.
         const gTargetZ = castContext?.groundTarget?.z;
         if (gTargetZ !== undefined && source.activeDash) {
           const heightDiff = gTargetZ - (source.position.z ?? 0);
@@ -1685,7 +1706,7 @@ export function applyImmediateEffects(params: {
           z: center.z ?? 0,
           height: radius,
           radius,
-          expiresAt: now + 1_000,
+          expiresAt: now + 500,
           damagePerInterval: 0,
           intervalMs: 1_000,
           lastTickAt: now,
@@ -1751,7 +1772,7 @@ export function applyImmediateEffects(params: {
           z: center.z ?? 0,
           height: radius,
           radius,
-          expiresAt: now + 1_000,
+          expiresAt: now + 500,
           damagePerInterval: 0,
           intervalMs: 1_000,
           lastTickAt: now,
@@ -2079,7 +2100,20 @@ export function applyImmediateEffects(params: {
       case "AOE_APPLY_BUFFS": {
         if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) break;
         const radius = gameplayUnitsToWorldUnits(effect.range ?? 10, state.unitScale);
+        const now = Date.now();
+        const damageValue = Number((effect as any).damageValue ?? 0);
         for (const victim of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
+          if (damageValue > 0) {
+            applyImmediateDamageToEnemyTarget({
+              state,
+              source,
+              ability,
+              target: victim,
+              baseDamage: damageValue,
+              effectType: "DAMAGE",
+              now,
+            });
+          }
           for (const buffDef of ability.buffs) {
             addBuff({
               state,
@@ -2265,7 +2299,8 @@ export function applyImmediateEffects(params: {
           const remainingMs = Math.max(0, settleBuff.expiresAt - settleNow);
           const remainingTicks = Math.max(0, Math.ceil(remainingMs / settleBuff.periodicMs));
           const dmgPerTick = settleBuff.effects.find((e: any) => e.type === "PERIODIC_DAMAGE")?.value ?? 0;
-          const totalDmg = remainingTicks * dmgPerTick;
+          const settleMultiplier = Number((effect as any).settleMultiplier ?? 1);
+          const totalDmg = remainingTicks * dmgPerTick * settleMultiplier;
           // Remove the buff first
           const idx = effTarget.buffs.indexOf(settleBuff);
           if (idx !== -1) effTarget.buffs.splice(idx, 1);
@@ -2402,7 +2437,8 @@ export function applyImmediateEffects(params: {
         const hasLieRi = effTarget.buffs.some((b: any) => isRuntimeBuffActive(b, now) && b.buffId === LIE_RI_ZHAN_DEBUFF_ID);
         const mult = hasLieRi ? 2 : 1;
 
-        const baseDmg = (effect.value ?? 2) * mult;
+        const extraDamageValue = Number((effect as any).extraDamageValue ?? 0);
+        const baseDmg = ((effect.value ?? 2) + (hasLieRi ? extraDamageValue : 0)) * mult;
         const yyzDmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, abilityId: ability.id, damageType: (ability as any).damageType });
         if (yyzDmg > 0) {
           const { adjustedDamage: adjYyz, redirectPlayer: rtYyz, redirectAmt: raYyz } = preCheckRedirect(state, effTarget as any, yyzDmg);
@@ -2457,9 +2493,9 @@ export function applyImmediateEffects(params: {
         if (!enemyApplied) break;
         const now = Date.now();
         const hasYinYue = effTarget.buffs.some((b: any) => isRuntimeBuffActive(b, now) && b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID);
-        const mult = hasYinYue ? 2 : 1;
-
-        const baseDmg = (effect.value ?? 4) * mult;
+        const baseDamage = Number(effect.value ?? 4);
+        const extraDamage = hasYinYue ? Number((effect as any).extraDamageValue ?? baseDamage) : 0;
+        const baseDmg = baseDamage + extraDamage;
         const lrzDmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, abilityId: ability.id, damageType: (ability as any).damageType });
         if (lrzDmg > 0) {
           const { adjustedDamage: adjLrz, redirectPlayer: rtLrz, redirectAmt: raLrz } = preCheckRedirect(state, effTarget as any, lrzDmg);
@@ -2614,6 +2650,8 @@ export function applyImmediateEffects(params: {
         if (!primary || primary.userId === source.userId || (primary.hp ?? 0) <= 0) break;
         if (blocksEnemyTargeting(primary)) break;
 
+        const primaryDamage = Number((effect as any).damageValue ?? 1);
+
         // 1) Primary damage (1)
         applyImmediateDamageToEnemyTarget({
           state,
@@ -2622,7 +2660,7 @@ export function applyImmediateEffects(params: {
           target: isImmediateEntityTarget(primary)
             ? { kind: "entity", target: primary }
             : { kind: "player", target: primary },
-          baseDamage: 1,
+          baseDamage: primaryDamage,
           effectType: "DAMAGE",
           now,
         });
@@ -2827,12 +2865,28 @@ export function applyImmediateEffects(params: {
 
       // ─── 梯云纵: refresh 蹑云逐月 cooldown on caster. ───────────────────
       case "TI_YUN_ZONG_REFRESH": {
-        const inst = (source as any).hand?.find?.(
-          (a: any) => a.abilityId === "nieyun_zhuyue",
-        );
-        if (inst) {
-          inst.cooldown = 0;
-          inst._cooldownProgress = 0;
+        const tiYunAbility = ABILITIES[ability.id] as any;
+        const sourceInCombat = (source as any).inCombat === true;
+        const buffId = sourceInCombat ? 9004 : 9003;
+        const buff = tiYunAbility?.buffs?.find?.((entry: any) => entry.buffId === buffId);
+        if (buff) {
+          addBuff({
+            state,
+            sourceUserId: source.userId,
+            targetUserId: source.userId,
+            ability: tiYunAbility ?? ability,
+            buffTarget: source as any,
+            buff,
+          });
+        }
+        if (!sourceInCombat) {
+          const inst = (source as any).hand?.find?.(
+            (a: any) => a.abilityId === "nieyun_zhuyue",
+          );
+          if (inst) {
+            inst.cooldown = 0;
+            inst._cooldownProgress = 0;
+          }
         }
         break;
       }
@@ -2937,6 +2991,15 @@ export function applyImmediateEffects(params: {
             anchor: { x: anchorX, y: anchorY, z: anchorZ },
             mapCtx,
           });
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: candidate,
+            baseDamage: Number((effect as any).damageValue ?? 3.4187),
+            effectType: "DAMAGE",
+            now: Date.now(),
+          });
         }
         break;
       }
@@ -2949,13 +3012,14 @@ export function applyImmediateEffects(params: {
           rangeUnits: Math.max(0, Number(effect.value ?? 8)),
           coneAngleDeg: Number((effect as any).coneAngleDeg ?? 60),
         });
+        const baseDamage = Number((effect as any).damageValue ?? 2);
         for (const candidate of coneTargets) {
           applyImmediateDamageToEnemyTarget({
             state,
             source,
             ability,
             target: candidate,
-            baseDamage: 2,
+            baseDamage,
             effectType: "QIAN_LONG_WU_YONG",
             now,
           });
@@ -3003,6 +3067,9 @@ export function applyImmediateEffects(params: {
           if (idx === -1) continue;
 
           const buffDefinition = buildStolenBuffDefinition(stolenBuff);
+          const stolenShieldAmount = typeof stolenBuff.shieldAmount === "number"
+            ? Math.max(0, Math.floor(stolenBuff.shieldAmount))
+            : undefined;
 
           removeLinkedShield(stealTarget as any, stolenBuff);
           stealTarget.buffs.splice(idx, 1);
@@ -3030,6 +3097,7 @@ export function applyImmediateEffects(params: {
               sourcePlayer: source,
               stolenBuff,
               appliedBuff,
+              stolenShieldAmount,
             });
           }
         }
@@ -3358,6 +3426,16 @@ export function applyImmediateEffects(params: {
           if (!target || target.userId === source.userId || (target.hp ?? 0) <= 0) continue;
           if (blocksEnemyTargeting(target)) continue;
 
+          applyImmediateDamageToEnemyTarget({
+            state,
+            source,
+            ability,
+            target: candidate,
+            baseDamage: Number((effect as any).explodeDamage ?? 0),
+            effectType: "DAMAGE",
+            now: Date.now(),
+          });
+
           addBuff({
             state,
             sourceUserId: source.userId,
@@ -3636,7 +3714,8 @@ export function applyImmediateEffects(params: {
           const remainingMs2 = Math.max(0, existing2614.expiresAt - Date.now());
           const periodicMs2 = existing2614.periodicMs ?? jztdBuffDef?.periodicMs ?? 3000;
           const remainTicks2 = Math.max(0, Math.ceil(remainingMs2 / periodicMs2));
-          const burstDmg = remainTicks2 * dmgPerTick2 + 1; // +1 for the hit itself
+          const strikeDamage = Number((effect as any).strikeDamage ?? 1);
+          const burstDmg = remainTicks2 * dmgPerTick2 + strikeDamage;
           effTarget.buffs = effTarget.buffs.filter((b: any) => b.buffId !== 2614);
           pushBuffExpired(state, {
             targetUserId: effTarget.userId,
@@ -3684,7 +3763,8 @@ export function applyImmediateEffects(params: {
           }
         } else {
           // Normal hit: 1 damage + apply/stack buff 2614
-          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: 1, abilityId: ability.id, damageType: (ability as any).damageType });
+          const strikeDamage = Number((effect as any).strikeDamage ?? 1);
+          const dmg1 = resolveScheduledDamage({ source, target: effTarget, base: strikeDamage, abilityId: ability.id, damageType: (ability as any).damageType });
           if (dmg1 > 0 && !hasDamageImmune(effTarget as any)) {
             const { adjustedDamage: adjJ1, redirectPlayer: rtJ1, redirectAmt: raJ1 } = preCheckRedirect(state, effTarget as any, dmg1);
             const applyJ1 = adjJ1;
@@ -3726,7 +3806,8 @@ export function applyImmediateEffects(params: {
       // ─── 破风: 1 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
       case "PO_FENG_STRIKE": {
         if (!enemyApplied) break;
-        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 1, abilityId: ability.id, damageType: (ability as any).damageType });
+        const strikeDamage = Number((effect as any).strikeDamage ?? 1);
+        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: strikeDamage, abilityId: ability.id, damageType: (ability as any).damageType });
         if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
           const { adjustedDamage: adjPf, redirectPlayer: rtPf, redirectAmt: raPf } = preCheckRedirect(state, effTarget as any, pfDmg);
           const applyPf = adjPf;
@@ -3795,7 +3876,7 @@ export function applyImmediateEffects(params: {
         if (hasDamageImmune(effTarget as any)) break;
         const mieMaxHp = source.maxHp ?? 100;
         const mieIsLowHp = source.hp < mieMaxHp * 0.1;
-        const mieBase = mieIsLowHp ? 12 : (effect.value ?? 2);
+        const mieBase = mieIsLowHp ? Number((effect as any).extraDamageValue ?? 12) : (effect.value ?? 2);
         const mieDmg = resolveScheduledDamage({
           source,
           target: effTarget,

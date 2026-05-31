@@ -3,6 +3,7 @@ import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEdito
 import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
 import { SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, SAND_DISGUISE_CONSUMABLE_NAME } from "../engine/utils/disguise";
 import { YUE_YING_SHA_BUFF, YUE_YING_SHA_CONSUMABLE_ID, YUE_YING_SHA_CONSUMABLE_NAME } from "../engine/utils/yueYingSha";
+import { YUMEN_KUANG_SHA_BUFF, YUMEN_PREP_BUFF, YUMEN_PREP_ABILITY_ID, YUMEN_SPECTATOR_BUFF, YUMEN_ZHANYI_BUFF, YUMEN_ZHUI_MING_BUFF } from "../engine/utils/yumenSafeZone";
 
 const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
   "心诤": "/icons/心诤-buff.png",
@@ -45,13 +46,6 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     : { overrides: {} as Record<string, BuffEditorOverrideEntry> };
   const { overrides: abilityEditorOverrides } = loadAbilityEditorOverrides();
 
-  const TEST_COOLDOWN_CAP_TICKS = 90; // 3 seconds at 30Hz
-  const clampCooldownTicksForTesting = (ticks: number | undefined) => {
-    if (ticks === undefined) return 0;
-    if (ticks <= 0) return 0;
-    return Math.min(ticks, TEST_COOLDOWN_CAP_TICKS);
-  };
-
   for (const ability of Object.values(ABILITIES)) {
     const cardPayload = {
       id: ability.id,
@@ -72,11 +66,11 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       minRange: (ability as any).minRange,
 
       // Cooldown length for arc display
-      cooldownTicks: clampCooldownTicksForTesting((ability as any).cooldownTicks),
+      cooldownTicks: typeof (ability as any).cooldownTicks === "number" ? (ability as any).cooldownTicks : 0,
 
       // Charge metadata (for multi-charge abilities)
       maxCharges: (ability as any).maxCharges,
-      chargeRecoveryTicks: clampCooldownTicksForTesting((ability as any).chargeRecoveryTicks),
+      chargeRecoveryTicks: typeof (ability as any).chargeRecoveryTicks === "number" ? (ability as any).chargeRecoveryTicks : 0,
       chargeCastLockTicks: (ability as any).chargeCastLockTicks,
 
       // Common movement abilities are always shown regardless of draft
@@ -123,7 +117,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       // 可在缴械时施放的特殊技能。
       noWeaponRequired: !!(ability as any).noWeaponRequired,
 
-      // 御骑期间允许施放的招式。
+      // 骑御期间允许施放的招式。
       canCastWhileMounted: !!(ability as any).canCastWhileMounted,
 
       // Editor/runtime cast exception flags.
@@ -189,6 +183,36 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     manualCancelable: true,
     sourceAbilityId: YUE_YING_SHA_CONSUMABLE_ID,
     sourceAbilityName: YUE_YING_SHA_CONSUMABLE_NAME,
+  });
+
+  buffs.push({
+    ...YUMEN_KUANG_SHA_BUFF,
+    sourceAbilityId: "yumen_sandstorm",
+    sourceAbilityName: "玉门关风暴",
+  });
+
+  buffs.push({
+    ...YUMEN_ZHUI_MING_BUFF,
+    sourceAbilityId: "yumen_sandstorm",
+    sourceAbilityName: "玉门关风暴",
+  });
+
+  buffs.push({
+    ...YUMEN_SPECTATOR_BUFF,
+    sourceAbilityId: "yumen_spectator",
+    sourceAbilityName: "玉门观战",
+  });
+
+  buffs.push({
+    ...YUMEN_ZHANYI_BUFF,
+    sourceAbilityId: "yumen_zhanyi",
+    sourceAbilityName: "战意",
+  });
+
+  buffs.push({
+    ...YUMEN_PREP_BUFF,
+    sourceAbilityId: YUMEN_PREP_ABILITY_ID,
+    sourceAbilityName: "准备时间",
   });
 
   buffs.push({
@@ -647,6 +671,9 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     }
     if (override?.manualCancelable === true) {
       buff.manualCancelable = true;
+    }
+    if (override?.timerVisible === false) {
+      (buff as any).hideTimerInStatusBar = true;
     }
     // Apply duration override so the engine uses the editor-set duration
     if (typeof override?.durationMs === "number") {

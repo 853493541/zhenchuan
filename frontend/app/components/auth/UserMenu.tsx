@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Activity,
+  Archive,
   ArrowRightLeft,
   KeyRound,
   LogOut,
@@ -99,6 +100,16 @@ export default function UserMenu({ user }: Props) {
     router.push(path);
   }
 
+  function downloadOfflinePack() {
+    setOpen(false);
+    const link = document.createElement("a");
+    link.href = "/resource-pack/package";
+    link.download = "zhenchuan-resource-pack.tgz";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+  }
+
   return (
     <div className={styles.wrap} ref={wrapperRef}>
       <button
@@ -165,6 +176,11 @@ export default function UserMenu({ user }: Props) {
               <button className={styles.menuItem} onClick={() => openRoute("/network-diagnostics")}>
                 <Activity size={18} />
                 网络诊断
+              </button>
+
+              <button className={styles.menuItem} onClick={downloadOfflinePack}>
+                <Archive size={18} />
+                下载离线包
               </button>
 
               <div className={styles.divider} />

@@ -143,7 +143,7 @@ function getPhaseLabel(file: AbilitySoundFile) {
   if (isAbilityName(file.abilityName, ["笑醉狂"])) return "读条";
   if (file.totalInAbility <= 1) return isFenglaiWushanName(file.abilityName) ? "读条" : "释放";
   if (isAbilityName(file.abilityName, ["盾立"]) && file.ordinal === 2) return "反击";
-  if (isAbilityName(file.abilityName, ["御骑", "千蝶吐瑞", "无间狱"]) && file.ordinal === 2) return "读条";
+  if (isAbilityName(file.abilityName, ["骑御", "御骑", "千蝶吐瑞", "无间狱"]) && file.ordinal === 2) return "读条";
   if (isAbilityName(file.abilityName, ["真·下车"])) return "释放";
   if (file.ordinal === 1) return "释放";
   if (file.ordinal === file.totalInAbility) return "完成";

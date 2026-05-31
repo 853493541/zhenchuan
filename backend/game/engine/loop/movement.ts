@@ -4,7 +4,7 @@
  * Handles applying player input to position/velocity
  */
 
-import { PlayerState, MovementInput, NEW_WORLD_UNIT_SCALE } from "../state/types";
+import { PlayerState, MovementInput, NEW_WORLD_UNIT_SCALE, type PlayAreaBounds } from "../state/types";
 import type { MapObject } from "../state/types/map";
 import * as THREE from "three";
 import { worldMap } from "../../map/worldMap";
@@ -42,6 +42,8 @@ export interface MapContext {
   playerRadius?: number;
   /** Server-authoritative exported collision shell for collision-test mode. */
   collisionSystem?: ExportedMapCollisionSystem | null;
+  /** Optional hard rectangular play area inside the map. */
+  playArea?: PlayAreaBounds;
 }
 
 const BVH_STEP_UP_LIMIT = 56;
@@ -64,6 +66,47 @@ function clampToCircle(player: PlayerState, cx: number, cy: number, maxR: number
   const ny = dy / dist;
   player.position.x = cx + nx * maxR;
   player.position.y = cy + ny * maxR;
+}
+
+function getPlayAreaClampBounds(mapCtx: MapContext | undefined, arenaW: number, arenaH: number, playerRadius: number) {
+  const source = mapCtx?.playArea;
+  const rawMinX = Math.max(0, Math.min(arenaW, Number(source?.minX ?? 0)));
+  const rawMaxX = Math.max(0, Math.min(arenaW, Number(source?.maxX ?? arenaW)));
+  const rawMinY = Math.max(0, Math.min(arenaH, Number(source?.minY ?? 0)));
+  const rawMaxY = Math.max(0, Math.min(arenaH, Number(source?.maxY ?? arenaH)));
+  const left = Math.min(rawMinX, rawMaxX);
+  const right = Math.max(rawMinX, rawMaxX);
+  const top = Math.min(rawMinY, rawMaxY);
+  const bottom = Math.max(rawMinY, rawMaxY);
+
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  return {
+    minX: right - left <= playerRadius * 2 ? centerX : left + playerRadius,
+    maxX: right - left <= playerRadius * 2 ? centerX : right - playerRadius,
+    minY: bottom - top <= playerRadius * 2 ? centerY : top + playerRadius,
+    maxY: bottom - top <= playerRadius * 2 ? centerY : bottom - playerRadius,
+  };
+}
+
+function clampToPlayArea(player: PlayerState, mapCtx: MapContext | undefined, arenaW: number, arenaH: number, playerRadius: number, stopVelocity: boolean): void {
+  const bounds = getPlayAreaClampBounds(mapCtx, arenaW, arenaH, playerRadius);
+  if (player.position.x < bounds.minX) {
+    player.position.x = bounds.minX;
+    if (stopVelocity && player.velocity.vx < 0) player.velocity.vx = 0;
+  }
+  if (player.position.x > bounds.maxX) {
+    player.position.x = bounds.maxX;
+    if (stopVelocity && player.velocity.vx > 0) player.velocity.vx = 0;
+  }
+  if (player.position.y < bounds.minY) {
+    player.position.y = bounds.minY;
+    if (stopVelocity && player.velocity.vy < 0) player.velocity.vy = 0;
+  }
+  if (player.position.y > bounds.maxY) {
+    player.position.y = bounds.maxY;
+    if (stopVelocity && player.velocity.vy > 0) player.velocity.vy = 0;
+  }
 }
 
 /**
@@ -220,6 +263,48 @@ function getExportedGroundHeight(
   return groundExportY === null
     ? 0
     : groundExportY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
+}
+
+function getTopDownObjectHeight(px: number, py: number, objects: MapObject[]): number {
+  let top = 0;
+  for (const obj of objects) {
+    if (px >= obj.x && px <= obj.x + obj.w && py >= obj.y && py <= obj.y + obj.d && obj.h > top) {
+      top = obj.h;
+    }
+  }
+  return top;
+}
+
+function getExportedTopDownHitHeight(
+  px: number,
+  py: number,
+  arenaW: number,
+  arenaH: number,
+  collisionSystem: ExportedMapCollisionSystem,
+): number | null {
+  const halfW = arenaW / 2;
+  const halfH = arenaH / 2;
+  const worldX = (px - halfW - EXPORTED_COLLISION_GROUP_POS_X) / EXPORTED_COLLISION_RENDER_SF_XZ;
+  const worldZ = (halfH - py - EXPORTED_COLLISION_GROUP_POS_Z) / EXPORTED_COLLISION_RENDER_SF_XZ;
+  const hitY = collisionSystem.getTopDownHitY(worldX, worldZ);
+  return hitY === null
+    ? null
+    : hitY * EXPORTED_COLLISION_RENDER_SF_Y + EXPORTED_COLLISION_GROUP_POS_Y;
+}
+
+export function getTopDownHitHeightForMap(
+  px: number,
+  py: number,
+  mapCtx?: MapContext,
+): number {
+  const mapObjects = mapCtx?.objects ?? worldMap.objects;
+  const arenaW = mapCtx?.width ?? ARENA_WIDTH;
+  const arenaH = mapCtx?.height ?? ARENA_HEIGHT;
+  const objectTop = getTopDownObjectHeight(px, py, mapObjects);
+  const exportedTop = hasExportedCollision(mapCtx)
+    ? getExportedTopDownHitHeight(px, py, arenaW, arenaH, mapCtx.collisionSystem)
+    : null;
+  return Math.max(0, objectTop, exportedTop ?? 0);
 }
 
 export function getGroundHeightForMap(
@@ -455,6 +540,34 @@ function getMovementTargetVelocity(
     vx: (inputX / inputLen) * effectiveMoveSpeed,
     vy: (inputY / inputLen) * effectiveMoveSpeed,
   };
+}
+
+function getDashSteeringDirection(
+  dash: NonNullable<PlayerState["activeDash"]>,
+  player: PlayerState,
+  input: MovementInput | null | undefined,
+): { x: number; y: number } | null {
+  if (dash.preferMomentumDirection) {
+    const movementIntent = getMovementTargetVelocity(input, 1);
+    const momentumIntentDir = normalizePlanar(movementIntent.vx, movementIntent.vy);
+    if (momentumIntentDir) {
+      player.facing = { x: momentumIntentDir.x, y: momentumIntentDir.y };
+      return momentumIntentDir;
+    }
+  }
+
+  if (input?.facing) {
+    const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
+    if (flen > 0.01) {
+      player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
+    }
+  }
+
+  const facingNow = player.facing;
+  if (!facingNow) return null;
+  const flen = Math.sqrt(facingNow.x * facingNow.x + facingNow.y * facingNow.y);
+  if (flen <= 0.01) return null;
+  return { x: facingNow.x / flen, y: facingNow.y / flen };
 }
 
 function startAirShift(
@@ -727,23 +840,11 @@ export function applyMovement(
 
     // Steering mode: keep moving forward, but heading follows live facing.
     if (dash.steerByFacing && !dashFacingLocked && !facingInputLocked) {
-      if (input?.facing) {
-        const flen = Math.sqrt(input.facing.x * input.facing.x + input.facing.y * input.facing.y);
-        if (flen > 0.01) {
-          player.facing = { x: input.facing.x / flen, y: input.facing.y / flen };
-        }
-      }
-
-      const facingNow = player.facing;
-      if (facingNow) {
-        const flen = Math.sqrt(facingNow.x * facingNow.x + facingNow.y * facingNow.y);
-        if (flen > 0.01) {
-          const nx = facingNow.x / flen;
-          const ny = facingNow.y / flen;
-          const speed = dash.speedPerTick ?? Math.sqrt(dash.vxPerTick * dash.vxPerTick + dash.vyPerTick * dash.vyPerTick);
-          dash.vxPerTick = nx * speed;
-          dash.vyPerTick = ny * speed;
-        }
+      const steeringDir = getDashSteeringDirection(dash, player, input);
+      if (steeringDir) {
+        const speed = dash.speedPerTick ?? Math.sqrt(dash.vxPerTick * dash.vxPerTick + dash.vyPerTick * dash.vyPerTick);
+        dash.vxPerTick = steeringDir.x * speed;
+        dash.vyPerTick = steeringDir.y * speed;
       }
     }
 
@@ -778,6 +879,7 @@ export function applyMovement(
         if (player.position.x > maxX) { player.position.x = maxX; }
         if (player.position.y < minY) { player.position.y = minY; }
         if (player.position.y > maxY) { player.position.y = maxY; }
+        clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, false);
       }
       // Collision resolution per sub-step
       if (hasExportedCollision(mapCtx)) {
@@ -786,6 +888,9 @@ export function applyMovement(
         for (const obj of mapObjects) {
           resolveObjectCollision(player, obj, pr);
         }
+      }
+      if (!mapCtx?.circular) {
+        clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, false);
       }
     }
 
@@ -1119,6 +1224,7 @@ export function applyMovement(
         player.jumpCount += 1;
         player.tiYunZongPenaltyConsumed = true;
       }
+      player.buffs = player.buffs.filter((buff: any) => buff.buffId !== 9004);
 
       clearAirShift(player);
       rememberAirborneSpeedCarry(player, jumpStartPlanarSpeed);
@@ -1220,6 +1326,7 @@ export function applyMovement(
     if (player.position.x > maxX) { player.position.x = maxX; player.velocity.vx = 0; }
     if (player.position.y < minY) { player.position.y = minY; player.velocity.vy = 0; }
     if (player.position.y > maxY) { player.position.y = maxY; player.velocity.vy = 0; }
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
   }
 
   // ── Collision resolution ──
@@ -1229,6 +1336,9 @@ export function applyMovement(
     for (const obj of mapObjects) {
       resolveObjectCollision(player, obj, pr);
     }
+  }
+  if (!mapCtx?.circular) {
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
   }
 
   // ── Z axis: asymmetric gravity (combined buff > power jump > regular) ──
@@ -1334,6 +1444,9 @@ export function movePlayerTowards(
       resolveObjectCollision(player, obj, pr);
     }
   }
+  if (!mapCtx?.circular) {
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
+  }
 
   // Stop velocity when forced to move
   player.velocity.vx = 0;
@@ -1397,10 +1510,16 @@ export function resolveMapCollisions(player: PlayerState, mapCtx?: MapContext): 
   const pr = mapCtx?.playerRadius ?? DEFAULT_PLAYER_RADIUS;
   if (hasExportedCollision(mapCtx)) {
     resolveExportedRecovery(player, arenaW, arenaH, pr, mapCtx.collisionSystem);
+    if (!mapCtx?.circular) {
+      clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
+    }
     return;
   }
   for (const obj of mapObjects) {
     resolveObjectCollision(player, obj, pr);
+  }
+  if (!mapCtx?.circular) {
+    clampToPlayArea(player, mapCtx, arenaW, arenaH, pr, true);
   }
 }
 

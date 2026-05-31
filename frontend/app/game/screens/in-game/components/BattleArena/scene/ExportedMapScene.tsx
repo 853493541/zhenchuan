@@ -48,6 +48,8 @@ interface ExportedMapSceneProps {
   blueprintMode?: boolean;
   /** Hides terrain / GLB visuals while keeping pointer hits active. */
   hideVisuals?: boolean;
+  /** Rewrites the depth buffer with terrain only after GLBs, for close-range structure x-ray guides. */
+  terrainDepthPrepass?: boolean;
   onCollisionSystemReady?: (sys: MapCollisionSystem) => void;
   onLoadTiming?: (event: SceneLoadTimingEvent) => void;
   onPointerMove?: (e: any) => void;
@@ -165,6 +167,7 @@ export default function ExportedMapScene({
   showCollisionShells = false,
   blueprintMode = false,
   hideVisuals = false,
+  terrainDepthPrepass = false,
   onCollisionSystemReady,
   onLoadTiming,
   onPointerMove,
@@ -175,6 +178,7 @@ export default function ExportedMapScene({
   const contentGroupRef = useRef<THREE.Group | null>(null); // entity + terrain meshes
   const shellLinesRef = useRef<THREE.LineSegments | null>(null);
   const collisionWorldTrianglesRef = useRef<Float32Array | null>(null);
+  const terrainDepthPrepassVisibleRef = useRef(false);
   const [collisionVisualVersion, setCollisionVisualVersion] = useState(0);
   // Keep latest callbacks in refs so the canvas event listener doesn't need to re-register
   const onPointerMoveRef = useRef(onPointerMove);
@@ -183,6 +187,14 @@ export default function ExportedMapScene({
   useEffect(() => { onPointerMoveRef.current = onPointerMove; });
   useEffect(() => { onPointerDownRef.current = onPointerDown; });
   useEffect(() => { onLoadTimingRef.current = onLoadTiming; });
+
+  useEffect(() => {
+    const visible = terrainDepthPrepass && !blueprintMode && !hideVisuals;
+    terrainDepthPrepassVisibleRef.current = visible;
+    contentGroupRef.current?.traverse((child: any) => {
+      if (child?.userData?.terrainDepthPrepass === true) child.visible = visible;
+    });
+  }, [terrainDepthPrepass, blueprintMode, hideVisuals]);
 
   // Blueprint mode: hide content; collision lines are built lazily below.
   useEffect(() => {
@@ -348,7 +360,7 @@ export default function ExportedMapScene({
         const terrainResultPromise = trackStage(
           'map-terrain',
           '地形高度与贴图',
-          () => loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed),
+          () => loadTerrain(contentGroup, mapConfig, terrainTexIndex, disposed, () => terrainDepthPrepassVisibleRef.current),
           (result) => `${result.stats.tiles} tiles, ${result.stats.textured} textured`,
           (result) => ({ tiles: result.stats.tiles, textured: result.stats.textured, heightmaps: result.heightmaps.size }),
         );
@@ -655,6 +667,7 @@ async function loadEntities(
         }
         inst.instanceMatrix.needsUpdate = true;
         inst.frustumCulled = false;
+        inst.renderOrder = 30;
         group.add(inst);
         stats.submeshes++;
       }
@@ -684,6 +697,7 @@ async function loadTerrain(
   mapConfig: any,
   terrainTexIndex: any | null,
   disposed: boolean,
+  isTerrainDepthPrepassVisible: () => boolean,
 ) {
   const cfg = mapConfig.landscape;
   if (!cfg) return { stats: { tiles: 0, textured: 0 }, heightmaps: new Map<string, Float32Array>() };
@@ -817,7 +831,21 @@ async function loadTerrain(
 
       const mesh = new THREE.Mesh(geometry, material);
       mesh.receiveShadow = true;
-      return { regionKey, heightmap: hd, mesh, textured };
+      mesh.renderOrder = 10;
+      const depthMesh = new THREE.Mesh(
+        geometry,
+        new THREE.MeshBasicMaterial({
+          colorWrite: false,
+          depthWrite: true,
+          depthTest: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      depthMesh.renderOrder = 39;
+      depthMesh.visible = isTerrainDepthPrepassVisible();
+      depthMesh.frustumCulled = false;
+      depthMesh.userData.terrainDepthPrepass = true;
+      return { regionKey, heightmap: hd, mesh, depthMesh, textured };
     } catch {
       return null;
     }
@@ -827,6 +855,7 @@ async function loadTerrain(
     if (!result) continue;
     heightmaps.set(result.regionKey, result.heightmap);
     group.add(result.mesh);
+    group.add(result.depthMesh);
     stats.tiles++;
     if (result.textured) stats.textured++;
   }

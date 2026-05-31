@@ -11,6 +11,9 @@ import { GameLoop } from "../engine/loop/GameLoop";
 import { randomUUID } from "crypto";
 import { NEW_WORLD_UNIT_SCALE } from "../engine/state/types";
 import { blocksCardTargeting } from "../engine/rules/guards";
+import { isYumen1v1BasicMode } from "../modes";
+import { hasActiveYumenSpectatorBuff } from "../engine/utils/yumenSafeZone";
+import { recordLagProbe } from "../../utils/lagProbe";
 
 const router = express.Router();
 const pendingLeaveEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -18,6 +21,7 @@ const pendingLeaveEndTimers = new Map<string, ReturnType<typeof setTimeout>>();
 async function finalizeLeaveEnd(gameId: string, endedByUserId: string, endsAt: number) {
   const game = await GameSession.findById(gameId);
   if (!game) return;
+  if (isYumen1v1BasicMode((game as any).mode)) return;
 
   const loop = GameLoop.get(gameId);
   const state = loop?.getState() ?? game.state;
@@ -78,6 +82,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   ERR_PICKUP_TOO_FAR: "Too far away to interact",
   ERR_PICKUP_CLAIM_TOO_FAR: "Too far away to pick up",
   ERR_PICKUP_HAND_FULL: "只能拾取6个技能",
+  ERR_YUMEN_SPECTATOR_LOCKED: "观战中无法调整技能栏",
   ERR_ABILITY_NOT_FOUND: "Ability definition not found",
   ERR_CONSUMABLE_NOT_FOUND: "Consumable definition not found",
   ERR_CONSUMABLE_NOT_IMPLEMENTED: "Consumable is not implemented yet",
@@ -723,6 +728,35 @@ router.post("/end", async (req, res) => {
       return sendGameError(res, 400, "ERR_INVALID_GAME_STATE");
     }
 
+    if (isYumen1v1BasicMode((game as any).mode)) {
+      const existingTimer = pendingLeaveEndTimers.get(gameId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        pendingLeaveEndTimers.delete(gameId);
+      }
+
+      const diff: Array<{ path: string; value: any }> = [];
+      if ((state as any).leaveNotice) {
+        delete (state as any).leaveNotice;
+        state.version = (state.version ?? 0) + 1;
+        diff.push({ path: "/leaveNotice", value: undefined });
+        loop?.updateState(state);
+        game.state = state as any;
+        game.markModified("state");
+        void game.save().catch((err: any) => {
+          console.error("[game/end:yumen] async save failed:", err?.message ?? err);
+        });
+        broadcastGameUpdate({
+          gameId,
+          version: state.version,
+          diff,
+          timestamp: Date.now(),
+        });
+      }
+
+      return res.json({ ok: true, pending: false, version: state.version, diff, serverTimestamp: Date.now() });
+    }
+
     const existingNotice = (state as any).leaveNotice;
     if (existingNotice?.endsAt && existingNotice?.userId) {
       scheduleLeaveEnd(gameId, existingNotice.userId, existingNotice.endsAt);
@@ -792,19 +826,6 @@ router.post("/movement", async (req, res) => {
     }
 
     try {
-      // Get player index
-      const state = loop.getState();
-      if (!state || !state.players) {
-        console.error('[MOVEMENT] Invalid game state');
-        return sendGameError(res, 400, "ERR_INVALID_GAME_STATE");
-      }
-
-      const playerIndex = state.players.findIndex((p) => p.userId === userId);
-      if (playerIndex === -1) {
-        console.warn(`[MOVEMENT] User ${userId} not found in game ${gameId}`);
-        return sendGameError(res, 403, "ERR_NOT_IN_GAME");
-      }
-
       // Update movement input
       let input: MovementInput | null = direction
         ? {
@@ -845,30 +866,43 @@ router.post("/movement", async (req, res) => {
       const movementClientStartedAt = typeof req.body.movementClientStartedAt === 'number' && Number.isFinite(req.body.movementClientStartedAt)
         ? req.body.movementClientStartedAt
         : undefined;
-      const accepted = loop.setPlayerInput(
-        playerIndex,
+      const movementAck = loop.setPlayerInputForUser(
+        userId,
         input,
         seq,
         movementClientSessionId
           ? { id: movementClientSessionId, startedAt: movementClientStartedAt ?? 0 }
           : undefined,
       );
+      if (!movementAck) {
+        console.warn(`[MOVEMENT] User ${userId} not found in game ${gameId}`);
+        return sendGameError(res, 403, "ERR_NOT_IN_GAME");
+      }
       
       // Return current position immediately so client can update without waiting for broadcast
       // Also include any pending input so client can predict the next position
-      const player = state.players[playerIndex];
       const serverRespondedAt = Date.now();
+      const serverProcessingMs = serverRespondedAt - serverReceivedAt;
+      if (serverProcessingMs >= 40) {
+        recordLagProbe("movement-route-slow", {
+          gameId,
+          userId,
+          seq: seq ?? null,
+          accepted: movementAck.accepted,
+          serverProcessingMs,
+        });
+      }
       res.json({ 
         success: true,
-        accepted,
+        accepted: movementAck.accepted,
         seq,
-        position: player.position,
-        velocity: player.velocity,
+        position: movementAck.position,
+        velocity: movementAck.velocity,
         input: input, // Send input back so client can predict next position
         serverReceivedAt,
         serverRespondedAt,
         serverTimestamp: serverRespondedAt,
-        serverProcessingMs: serverRespondedAt - serverReceivedAt,
+        serverProcessingMs,
       });
     } catch (loopErr: any) {
       console.error(`[MOVEMENT] GameLoop error: ${loopErr.message}`);
@@ -1048,6 +1082,10 @@ router.post("/pickup/claim", async (req, res) => {
 
     // Check distance — claim allows up to PICKUP_CLAIM_RANGE so player can walk away after channeling
     const player = loopState.players[playerIndex];
+    const game = await GameSession.findById(gameId);
+    if (isYumen1v1BasicMode((game as any)?.mode) && hasActiveYumenSpectatorBuff(player as any)) {
+      return sendGameError(res, 400, "ERR_YUMEN_SPECTATOR_LOCKED");
+    }
     const storedUnitScale = loopState.unitScale ?? NEW_WORLD_UNIT_SCALE;
     const claimRange = PICKUP_CLAIM_RANGE * storedUnitScale;
     const dx = player.position.x - pickup.position.x;
@@ -1089,7 +1127,6 @@ router.post("/pickup/claim", async (req, res) => {
     loop.updateState(loopState);
 
     // Persist to DB
-    const game = await GameSession.findById(gameId);
     if (game) {
       game.state.players[playerIndex] = {
         ...game.state.players[playerIndex],

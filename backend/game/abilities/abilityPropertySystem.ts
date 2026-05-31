@@ -56,17 +56,24 @@ export const TAG_GROUP_DEFINITIONS: Record<TagGroupId, TagGroupDefinition> = {
 export interface AbilityEditorOverrideEntry {
   properties?: Partial<Record<AbilityPropertyId, boolean>>;
   numeric?: Record<string, number>;
+  description?: string;
+  descriptionReviewStatus?: DescriptionReviewStatus;
+  adControlStatus?: DescriptionReviewStatus;
+  cooldownReviewStatus?: DescriptionReviewStatus;
   /** tag group → tag value (e.g. { rarity: "稀世", school: "少林" }) */
   tags?: Record<string, string>;
   /** Whether this ability is a ranged projectile (blocked by PROJECTILE_IMMUNE) */
   isProjectile?: boolean;
   /** Whether this ability is whitelisted from 盾立 reflect (damage immunity still applies) */
   dunLiWhitelisted?: boolean;
+  /** Whether this ability ignores target dodge chance. */
+  ignoreDodge?: boolean;
   /** Whether this ability can be cast while disarmed. False is a meaningful manual exclusion. */
   noWeaponRequired?: boolean;
 }
 
 export type AbilityEditorOverrideMap = Record<string, AbilityEditorOverrideEntry>;
+export type DescriptionReviewStatus = "fixed" | "needs-more" | "unfixed";
 
 export interface AbilityEditorPropertyDefinition {
   id: AbilityPropertyId;
@@ -127,6 +134,8 @@ export interface AbilityEditorAbilityEntry {
   properties: AbilityEditorPropertyState[];
   coreSettings: AbilityEditorNumericSetting[];
   damageSettings: AbilityEditorNumericSetting[];
+  adControlStatus: DescriptionReviewStatus;
+  cooldownReviewStatus: DescriptionReviewStatus;
   channelInfo?: AbilityEditorChannelInfo;
 }
 
@@ -150,6 +159,10 @@ interface StoredAbilityEditorOverrides {
   version: number;
   updatedAt: string | null;
   abilities: AbilityEditorOverrideMap | Record<string, Partial<Record<AbilityPropertyId, boolean>>>;
+}
+
+export function isDescriptionReviewStatus(value: unknown): value is DescriptionReviewStatus {
+  return value === "fixed" || value === "needs-more" || value === "unfixed";
 }
 
 interface ChannelAccessor {
@@ -186,6 +199,9 @@ const MS_PER_GAME_TICK = 1000 / 30;
 
 const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>> = {
   DAMAGE: "直接伤害倍率",
+  BANG_DA_GOU_TOU: "棒打狗头伤害倍率",
+  HENG_SAO_LIU_HE_AOE: "横扫六合伤害倍率",
+  WUFANG_XINGJIN_AOE: "五方行尽伤害倍率",
   BONUS_DAMAGE_IF_TARGET_HP_GT: "追加伤害倍率",
   PERIODIC_DAMAGE: "持续伤害倍率",
   CHANNEL_AOE_TICK: "引导范围伤害倍率",
@@ -200,10 +216,22 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
   STACK_ON_HIT_GUAN_TI_HEAL: "层数触发贯体回血",
   SCHEDULED_DAMAGE: "计划伤害倍率",
   DELAYED_DAMAGE: "延时伤害倍率",
+  YIN_YUE_ZHAN: "银月斩伤害倍率",
+  LIE_RI_ZHAN: "烈日斩伤害倍率",
+  MIE_STRIKE: "灭伤害倍率",
+  SHOU_QUE_SHI: "守缺式伤害倍率",
+  TRUE_DAMAGE: "真实伤害数值",
+  PLACE_GROUND_ZONE: "法阵每跳伤害倍率",
+  PLACE_FOLLOW_ZONE: "法阵每跳伤害倍率",
+  PLACE_GROW_PULL_ZONE: "爆炸伤害倍率",
+  CHANNEL_AOE_TICK_DAMAGE: "引导范围伤害倍率",
 };
 
 const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "DAMAGE",
+  "BANG_DA_GOU_TOU",
+  "HENG_SAO_LIU_HE_AOE",
+  "WUFANG_XINGJIN_AOE",
   "BONUS_DAMAGE_IF_TARGET_HP_GT",
   "PERIODIC_DAMAGE",
   "CHANNEL_AOE_TICK",
@@ -217,6 +245,15 @@ const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "STACK_ON_HIT_DAMAGE",
   "SCHEDULED_DAMAGE",
   "DELAYED_DAMAGE",
+  "YIN_YUE_ZHAN",
+  "LIE_RI_ZHAN",
+  "MIE_STRIKE",
+  "SHOU_QUE_SHI",
+  "TRUE_DAMAGE",
+  "PLACE_GROUND_ZONE",
+  "PLACE_FOLLOW_ZONE",
+  "PLACE_GROW_PULL_ZONE",
+  "CHANNEL_AOE_TICK_DAMAGE",
 ]);
 
 function hasEffectFlag(
@@ -479,7 +516,6 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
         })
       );
     }
-
     if (effect.type === "DIRECTIONAL_DASH" && typeof effect.routeDamage === "number") {
       definitions.push(
         createNumericFieldDefinition({
@@ -488,6 +524,278 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 240 + effectIndex,
           path: ["effects", effectIndex, "routeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "qian_long_wu_yong" && effect.type === "QIAN_LONG_WU_YONG" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "潜龙勿用伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 246 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "jiu_zhuan_gui_yi" && effect.type === "KNOCKBACK_DASH" && typeof (effect as any).wallHitDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.wallHitDamage`,
+          label: "九转归一伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 撞墙时伤害倍率会乘以攻击力`,
+          order: 247 + effectIndex,
+          path: ["effects", effectIndex, "wallHitDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "lie_ri_zhan" && effect.type === "LIE_RI_ZHAN" && typeof (effect as any).extraDamageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.extraDamageValue`,
+          label: "烈日斩额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 额外伤害倍率会乘以攻击力`,
+          order: 248 + effectIndex,
+          path: ["effects", effectIndex, "extraDamageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "po_feng" && effect.type === "PO_FENG_STRIKE" && typeof (effect as any).strikeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.strikeDamage`,
+          label: "破风伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 249 + effectIndex,
+          path: ["effects", effectIndex, "strikeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (effect.type === "CANG_YUE_AOE" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "沧月伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 245 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (effect.type === "AOE_APPLY_BUFFS" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: baseAbility.id === "dican_longxiang" ? "帝骖龙翔伤害倍率" : "范围伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 246 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.01,
+        })
+      );
+    }
+
+    if (baseAbility.id === "han_di" && effect.type === "GROUND_TARGET_DASH" && typeof (effect as any).aoeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.aoeDamage`,
+          label: "撼地伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 落地范围伤害倍率会乘以攻击力`,
+          order: 247 + effectIndex,
+          path: ["effects", effectIndex, "aoeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "yue_chao_zhan_bo" && effect.type === "DASH" && typeof (effect as any).landingDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.landingDamage`,
+          label: "跃潮斩波伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 落地范围伤害倍率会乘以攻击力`,
+          order: 248 + effectIndex,
+          path: ["effects", effectIndex, "landingDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "he_gui_gu_shan" && effect.type === "DIRECTIONAL_DASH") {
+      if (typeof (effect as any).landDamage === "number") {
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `effects.${effectIndex}.landDamage`,
+            label: "鹤归孤山伤害倍率",
+            description: `技能效果 ${effectIndex + 1} · 落地范围伤害倍率会乘以攻击力`,
+            order: 249 + effectIndex,
+            path: ["effects", effectIndex, "landDamage"],
+            step: 0.1,
+          })
+        );
+      }
+      if (typeof (effect as any).closeBonusDamage === "number") {
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `effects.${effectIndex}.closeBonusDamage`,
+            label: "鹤归孤山额外伤害倍率",
+            description: `技能效果 ${effectIndex + 1} · 近距额外伤害倍率会乘以攻击力`,
+            order: 250 + effectIndex,
+            path: ["effects", effectIndex, "closeBonusDamage"],
+            step: 0.1,
+          })
+        );
+      }
+    }
+
+    if (baseAbility.id === "long_zhan_yu_ye" && effect.type === "LONG_ZHAN_YU_YE" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "龙战于野伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 251 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "yu_shi_ju_fen" && effect.type === "SETTLE_SOURCE_DOTS" && typeof (effect as any).settleMultiplier === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.settleMultiplier`,
+          label: "玉石俱焚额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 吞噬持续伤害的结算倍率`,
+          order: 252 + effectIndex,
+          path: ["effects", effectIndex, "settleMultiplier"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "yin_yue_zhan" && effect.type === "YIN_YUE_ZHAN" && typeof (effect as any).extraDamageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.extraDamageValue`,
+          label: "银月斩额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 额外伤害倍率会乘以攻击力`,
+          order: 253 + effectIndex,
+          path: ["effects", effectIndex, "extraDamageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "jian_zhu_tian_di" && effect.type === "JIAN_ZHU_TIAN_DI_STRIKE" && typeof (effect as any).strikeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.strikeDamage`,
+          label: "剑主天地伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 直接伤害倍率会乘以攻击力`,
+          order: 254 + effectIndex,
+          path: ["effects", effectIndex, "strikeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "ren_jian_he_yi" && effect.type === "REN_JIAN_HE_YI_AOE" && typeof (effect as any).explodeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.explodeDamage`,
+          label: "人剑合一引爆伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 引爆伤害倍率会乘以攻击力`,
+          order: 255 + effectIndex,
+          path: ["effects", effectIndex, "explodeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "mie" && effect.type === "MIE_STRIKE" && typeof (effect as any).extraDamageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.extraDamageValue`,
+          label: "灭额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 低血量额外伤害倍率会乘以攻击力`,
+          order: 256 + effectIndex,
+          path: ["effects", effectIndex, "extraDamageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "lv_ye_man_sheng" && effect.type === "PLACE_LV_YE_MAN_SHENG_FIELD" && typeof (effect as any).retaliateDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.retaliateDamage`,
+          label: "绿野蔓生伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 反击伤害倍率会乘以攻击力`,
+          order: 257 + effectIndex,
+          path: ["effects", effectIndex, "retaliateDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+  });
+
+  ((baseAbility as any).channelEffects ?? []).forEach((effect: AbilityEffect, effectIndex: number) => {
+    if (isDamageValueEffectType(effect.type) && typeof (effect as any).value === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `channelEffects.${effectIndex}.value`,
+          label: `读条完成 · ${getDamageEffectLabel(effect.type)}`,
+          description: `读条完成效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 260 + effectIndex,
+          path: ["channelEffects", effectIndex, "value"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "lian_huan_nu" && effect.type === "LIAN_HUAN_NU_TICK") {
+      const tickFields: Array<{ key: string; label: string; orderOffset: number }> = [
+        { key: "tickDamage1", label: "连环弩第一段伤害倍率", orderOffset: 1 },
+        { key: "tickDamage2", label: "连环弩第二段伤害倍率", orderOffset: 2 },
+        { key: "tickDamage3", label: "连环弩第三段伤害倍率", orderOffset: 3 },
+      ];
+      for (const field of tickFields) {
+        if (typeof (effect as any)[field.key] !== "number") continue;
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `channelEffects.${effectIndex}.${field.key}`,
+            label: field.label,
+            description: `读条完成效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+            order: 270 + effectIndex * 4 + field.orderOffset,
+            path: ["channelEffects", effectIndex, field.key],
+            step: 0.1,
+          })
+        );
+      }
+    }
+
+    if (baseAbility.id === "yin_qiao" && effect.type === "TIMED_AOE_DAMAGE" && typeof (effect as any).extraPerStackDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `channelEffects.${effectIndex}.extraPerStackDamage`,
+          label: "引窍额外伤害倍率",
+          description: `读条完成效果 ${effectIndex + 1} · 每层绝脉额外伤害倍率会乘以攻击力`,
+          order: 271 + effectIndex,
+          path: ["channelEffects", effectIndex, "extraPerStackDamage"],
           step: 0.1,
         })
       );
@@ -525,6 +833,19 @@ function buildCoreFieldDefinitions(baseAbility: AbilityWithDescription) {
       step: 1,
     }),
   ];
+
+  if (Number(baseAbility.maxCharges ?? 0) > 1) {
+    definitions.push(
+      createNumericFieldDefinition({
+        id: "chargeRecoveryTicks",
+        label: "充能 Tick",
+        description: "每层充能恢复时间，30 Tick = 1 秒",
+        order: 11,
+        path: ["chargeRecoveryTicks"],
+        step: 1,
+      })
+    );
+  }
 
   if (typeof baseAbility.range === "number") {
     definitions.push(
@@ -748,18 +1069,41 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
       ? entryRecord.dunLiWhitelisted
       : undefined;
 
+  // Parse top-level ignoreDodge field
+  const ignoreDodge =
+    "ignoreDodge" in entryRecord && typeof entryRecord.ignoreDodge === "boolean"
+      ? entryRecord.ignoreDodge
+      : undefined;
+
   // Parse top-level noWeaponRequired field
   const noWeaponRequired =
     "noWeaponRequired" in entryRecord && typeof entryRecord.noWeaponRequired === "boolean"
       ? entryRecord.noWeaponRequired
       : undefined;
+  const description = "description" in entryRecord && typeof entryRecord.description === "string"
+    ? entryRecord.description
+    : undefined;
+  const descriptionReviewStatus = isDescriptionReviewStatus(entryRecord.descriptionReviewStatus)
+    ? entryRecord.descriptionReviewStatus
+    : undefined;
+  const adControlStatus = isDescriptionReviewStatus(entryRecord.adControlStatus)
+    ? entryRecord.adControlStatus
+    : undefined;
+  const cooldownReviewStatus = isDescriptionReviewStatus(entryRecord.cooldownReviewStatus)
+    ? entryRecord.cooldownReviewStatus
+    : undefined;
 
   if (
     Object.keys(properties).length === 0 &&
     Object.keys(numeric).length === 0 &&
+    description === undefined &&
+    descriptionReviewStatus === undefined &&
+    adControlStatus === undefined &&
+    cooldownReviewStatus === undefined &&
     !tags &&
     isProjectile === undefined &&
     dunLiWhitelisted === undefined &&
+    ignoreDodge === undefined &&
     noWeaponRequired === undefined
   ) {
     return null;
@@ -768,9 +1112,14 @@ function normalizeAbilityOverrideEntry(rawEntry: unknown): AbilityEditorOverride
   return {
     properties: Object.keys(properties).length > 0 ? properties : undefined,
     numeric: Object.keys(numeric).length > 0 ? numeric : undefined,
+    description,
+    descriptionReviewStatus,
+    adControlStatus,
+    cooldownReviewStatus,
     tags,
     isProjectile,
     dunLiWhitelisted,
+    ignoreDodge,
     noWeaponRequired,
   };
 }
@@ -927,7 +1276,7 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
   {
     id: "canCastWhileMounted",
     label: "可以马上施展",
-    description: "角色处于御骑状态时，仍可施放该技能。",
+    description: "角色处于骑御状态时，仍可施放该技能。",
     group: "施放例外",
     isApplicable: () => true,
     getValue: (ability) => !!(ability as any).canCastWhileMounted,
@@ -1145,6 +1494,10 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       }
     }
 
+    if (typeof abilityOverrides?.description === "string") {
+      nextAbility.description = abilityOverrides.description;
+    }
+
     // Apply damageType tag to the resolved ability object so it is available at runtime
     if (abilityOverrides?.tags?.damageType) {
       (nextAbility as any).damageType = abilityOverrides.tags.damageType;
@@ -1162,6 +1515,13 @@ export function buildResolvedAbilities(baseAbilities: AbilityRecord, overrides: 
       (nextAbility as any).dunLiWhitelisted = true;
     } else if (abilityOverrides && "dunLiWhitelisted" in abilityOverrides && !abilityOverrides.dunLiWhitelisted) {
       (nextAbility as any).dunLiWhitelisted = false;
+    }
+
+    // Apply ignoreDodge so dodge resolution can treat the ability as guaranteed-hit.
+    if (abilityOverrides?.ignoreDodge === true) {
+      (nextAbility as any).ignoreDodge = true;
+    } else if (abilityOverrides && "ignoreDodge" in abilityOverrides && abilityOverrides.ignoreDodge === false) {
+      delete (nextAbility as any).ignoreDodge;
     }
 
     // Apply noWeaponRequired so disarm validation and preload can see editor overrides.
@@ -1257,10 +1617,15 @@ export function buildAbilityEditorEntry(params: {
     properties.some((property) => property.overridden) ||
     coreSettings.some((setting) => setting.overridden) ||
     damageSettings.some((setting) => setting.overridden) ||
+    overrides?.description !== undefined ||
+    overrides?.descriptionReviewStatus !== undefined ||
+    overrides?.adControlStatus !== undefined ||
+    overrides?.cooldownReviewStatus !== undefined ||
     channelTimingSettings.some((setting) => setting.overridden) ||
     (overrides?.tags ? Object.keys(overrides.tags).length > 0 : false) ||
     overrides?.isProjectile !== undefined ||
-    overrides?.dunLiWhitelisted !== undefined;
+    overrides?.dunLiWhitelisted !== undefined ||
+    overrides?.ignoreDodge !== undefined;
 
   return {
     id: ability.id,
@@ -1282,6 +1647,8 @@ export function buildAbilityEditorEntry(params: {
     properties,
     coreSettings,
     damageSettings,
+    adControlStatus: overrides?.adControlStatus ?? "unfixed",
+    cooldownReviewStatus: overrides?.cooldownReviewStatus ?? "unfixed",
     channelInfo,
   } satisfies AbilityEditorAbilityEntry;
 }

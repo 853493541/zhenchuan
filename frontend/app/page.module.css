@@ -30,18 +30,77 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  position: relative;
+  overflow: visible;
 }
 
-.modeSelect {
-  min-width: 180px;
+.modeMenuWrap {
+  position: relative;
+  min-width: 168px;
+  width: 168px;
+  max-width: 100%;
+}
+
+.modeMenuButton {
+  width: 100%;
+  max-width: 100%;
   height: 40px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
-  padding: 0 12px;
-  background: white;
+  padding: 0 10px 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: #ffffff;
   color: #0f172a;
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.modeMenuList {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 3000;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(90vw, 420px);
+  padding: 5px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+}
+
+.modeMenuListUp {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
+
+.modeMenuItem {
+  width: 100%;
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  padding: 8px 9px;
+  display: flex;
+  align-items: center;
+  background: transparent;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.modeMenuItem:hover,
+.modeMenuItemActive {
+  background: #e0f2fe;
+  color: #075985;
 }
 
 .bigStartWrap {
@@ -153,8 +212,38 @@
   background: #b45309;
 }
 
+.createBtnResourceImport {
+  background: #0f766e;
+}
+
 .createBtnResourceCheck {
   background: #475569;
+}
+
+.createBtnAutoJoinOn {
+  background: #0f766e;
+}
+
+.createBtnAutoJoinOff {
+  background: #64748b;
+}
+
+.resourceGateNotice {
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+  padding: 4px 2px 2px;
+}
+
+.resourceImportError {
+  font-size: 13px;
+  font-weight: 700;
+  color: #991b1b;
+  padding: 0 2px 2px;
+}
+
+.hiddenFileInput {
+  display: none;
 }
 
 .createBtn:disabled {
@@ -225,6 +314,12 @@
 ========================================================= */
 
 .empty {
+  grid-column: 1 / -1;
+  min-height: calc(100vh - 320px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   opacity: 0.6;
   font-style: italic;
 }
@@ -293,6 +388,18 @@
 
 .waiting:hover {
   background: #d1fae5;
+}
+
+.waitingLocked {
+  background: #e5e7eb;
+  border-color: #94a3b8;
+  cursor: not-allowed;
+  filter: grayscale(0.55);
+}
+
+.waitingLocked:hover {
+  background: #e5e7eb;
+  transform: none;
 }
 
 /* =========================================================

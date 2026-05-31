@@ -258,9 +258,12 @@ interface CharacterProps {
   isStealthed?: boolean;
   /** Hide the HP/name billboard for enemy-view special cases. */
   hideHpBar?: boolean;
+  /** Hide only the health meter while keeping visible enemy names. */
+  hideHealthMeter?: boolean;
   /** Replace the character with the exported-map cart mesh for 砂石伪装. */
   isDisguised?: boolean;
   cameraFadeEnabled?: boolean;
+  nameColorOverride?: string;
   hpColorOverride?: string;
   instantSnapAtRef?: MutableRefObject<number>;
   instantSnapWindowMs?: number;
@@ -288,8 +291,10 @@ export default function Character({
   worldHalfY,
   isStealthed = false,
   hideHpBar = false,
+  hideHealthMeter = false,
   isDisguised = false,
   cameraFadeEnabled = false,
+  nameColorOverride,
   hpColorOverride,
   instantSnapAtRef,
   instantSnapWindowMs = 0,
@@ -307,8 +312,10 @@ export default function Character({
   const arcDisplayYawRef = useRef(0);
   const { camera, size } = useThree();
 
-  // Show HP bar: always for self, within 60 units for others, unless hidden by a special state.
-  const showHpBar = !hideHpBar && (isMe || (distance !== undefined && distance <= 60));
+  const withinBillboardRange = isMe || (distance !== undefined && distance <= 60);
+  const showHealthMeter = !hideHpBar && !hideHealthMeter && withinBillboardRange;
+  const showNameLabel = !hideHpBar && !isMe && !!username && withinBillboardRange;
+  const showBillboard = showHealthMeter || showNameLabel;
 
   const handleSelect = (e: any) => {
     if (!onSelect) return;
@@ -449,7 +456,7 @@ export default function Character({
 
     // --- Billboard HP bar: always face camera, fixed screen size ---
     if (hpGroupRef.current) {
-      hpGroupRef.current.visible = showHpBar && visualAlpha > 0.02;
+      hpGroupRef.current.visible = showBillboard && visualAlpha > 0.02;
       hpGroupRef.current.quaternion.copy(camera.quaternion);
       if (hpGroupRef.current.visible) {
         // Scale inversely with distance so on-screen size stays constant
@@ -534,8 +541,8 @@ export default function Character({
           <mesh ref={capRef} position={[0, CHAR_HEIGHT + 0.02, 0]} onPointerDown={handleSelect}>
             <cylinderGeometry args={[CHAR_RADIUS * 0.95, CHAR_RADIUS * 0.95, 0.06, 16]} />
             <meshStandardMaterial
-              color={isMe ? '#aaccff' : '#ff9999'}
-              emissive={isMe ? '#6699ff' : '#ff5555'}
+              color={isMe ? '#aaccff' : color}
+              emissive={isMe ? '#6699ff' : emissive}
               emissiveIntensity={0.7}
               roughness={0.3}
               transparent
@@ -563,14 +570,14 @@ export default function Character({
       )}
 
       {/* HP bar + name — all in one billboard group (same 3D system = same scale rules) */}
-      {showHpBar && (
+      {showBillboard && (
         <group ref={hpGroupRef} position={[0, CHAR_HEIGHT + 0.7, 0]}>
           {/* Enemy name — Text from drei, above bar */}
-          {username && !isMe && (
+          {showNameLabel && (
             <Text
-              position={[0, 0.32, 0]}
+              position={[0, showHealthMeter ? 0.32 : 0.04, 0]}
               fontSize={0.28}
-              color={hpColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}
+              color={nameColorOverride ?? (isSelected ? '#ff99bb' : '#ff3333')}
               anchorX="center"
               anchorY="middle"
               outlineWidth={0.025}
@@ -582,23 +589,27 @@ export default function Character({
               {isSelected && distance !== undefined ? `${username} · ${distance.toFixed(1)}尺` : username}
             </Text>
           )}
-          {/* Thin black border */}
-          <sprite scale={[2.86, 0.274, 1]} renderOrder={0}>
-            <spriteMaterial color="#000000" depthTest={true} depthWrite={false} toneMapped={false} />
-          </sprite>
-          {/* Background */}
-          <sprite scale={[2.8, 0.224, 1]} renderOrder={1}>
-            <spriteMaterial color="#222222" transparent opacity={0.9} depthTest={true} depthWrite={false} toneMapped={false} />
-          </sprite>
-          {/* Colored fill */}
-          <sprite position={[(hpPct - 1) * 1.4, 0, 0]} scale={[2.8 * hpPct, 0.182, 1]} renderOrder={2}>
-            <spriteMaterial color={hpColor} depthTest={true} depthWrite={false} toneMapped={false} />
-          </sprite>
-          {/* Shield fill segment */}
-          {shieldPct > 0 && (
-            <sprite position={[-1.4 + (2.8 * hpPct) + (2.8 * shieldPct * 0.5), 0, 0]} scale={[2.8 * shieldPct, 0.182, 1]} renderOrder={3}>
-              <spriteMaterial color="#f0f6ff" depthTest={true} depthWrite={false} toneMapped={false} />
-            </sprite>
+          {showHealthMeter && (
+            <>
+              {/* Thin black border */}
+              <sprite scale={[2.86, 0.274, 1]} renderOrder={0}>
+                <spriteMaterial color="#000000" depthTest={true} depthWrite={false} toneMapped={false} />
+              </sprite>
+              {/* Background */}
+              <sprite scale={[2.8, 0.224, 1]} renderOrder={1}>
+                <spriteMaterial color="#222222" transparent opacity={0.9} depthTest={true} depthWrite={false} toneMapped={false} />
+              </sprite>
+              {/* Colored fill */}
+              <sprite position={[(hpPct - 1) * 1.4, 0, 0]} scale={[2.8 * hpPct, 0.182, 1]} renderOrder={2}>
+                <spriteMaterial color={hpColor} depthTest={true} depthWrite={false} toneMapped={false} />
+              </sprite>
+              {/* Shield fill segment */}
+              {shieldPct > 0 && (
+                <sprite position={[-1.4 + (2.8 * hpPct) + (2.8 * shieldPct * 0.5), 0, 0]} scale={[2.8 * shieldPct, 0.182, 1]} renderOrder={3}>
+                  <spriteMaterial color="#f0f6ff" depthTest={true} depthWrite={false} toneMapped={false} />
+                </sprite>
+              )}
+            </>
           )}
         </group>
       )}

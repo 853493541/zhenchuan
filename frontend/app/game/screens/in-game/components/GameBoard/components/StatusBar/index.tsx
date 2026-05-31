@@ -28,6 +28,7 @@ type Props = {
   maxPerRow?: number;
   categoryFilter?: "BUFF" | "DEBUFF";
   visibilityMode?: "visible" | "hidden-only";
+  onCopyBuffName?: (name: string) => void;
 };
 
 type ResolvedBuff = {
@@ -40,6 +41,7 @@ type ResolvedBuff = {
   iconPath?: string;
   attribute?: string;
   manualCancelable?: boolean;
+  hideTimer?: boolean;
   stacks?: number; // live stack count for stackable debuffs
   appliedAt?: number;
   originalOrder: number;
@@ -48,6 +50,7 @@ type ResolvedBuff = {
 type ActiveHint = {
   buff: ResolvedBuff;
   anchorRect: DOMRect;
+  showRemainingTime: boolean;
 };
 
 const ALWAYS_SHOW_STACK_BADGE = new Set([990100, 990101, 990102]);
@@ -92,6 +95,7 @@ export default function StatusBar({
   maxPerRow = 10,
   categoryFilter,
   visibilityMode = "visible",
+  onCopyBuffName,
 }: Props) {
   const preload = useGamePreload();
   const [activeHint, setActiveHint] = useState<ActiveHint | null>(null);
@@ -159,6 +163,7 @@ export default function StatusBar({
         iconPath:    meta.iconPath,
         attribute,
         manualCancelable: meta.manualCancelable === true,
+        hideTimer: meta.hideTimerInStatusBar === true,
         stacks:      b.stacks,
         appliedAt:   b.appliedAt,
         originalOrder,
@@ -182,10 +187,11 @@ export default function StatusBar({
     : [buffsPos, buffsNeg];
   const singleRow = statusRows.length === 1;
 
-  function openHint(anchorRect: DOMRect, b: ResolvedBuff) {
+  function openHint(anchorRect: DOMRect, b: ResolvedBuff, showRemainingTime: boolean) {
     setActiveHint({
       buff:       b,
       anchorRect,
+      showRemainingTime,
     });
   }
 
@@ -196,7 +202,8 @@ export default function StatusBar({
   function renderBuff(b: ResolvedBuff) {
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
     const secsLeft    = getRemainingSeconds(b);
-    const timer       = showTimers ? formatTimer(secsLeft) : null;
+    const showRemainingTime = showTimers && !b.hideTimer;
+    const timer       = showRemainingTime ? formatTimer(secsLeft) : null;
     const urgent      = timer?.urgent === true;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;
@@ -219,9 +226,20 @@ export default function StatusBar({
               backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath),
               cursor: cancelCursor,
             }}
-            onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
+            onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b, showRemainingTime)}
             onMouseLeave={closeHint}
+            onMouseDown={(e) => {
+              if (!e.ctrlKey || e.button !== 0 || !onCopyBuffName) return;
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={(e) => {
+              if (e.ctrlKey && onCopyBuffName) {
+                e.preventDefault();
+                e.stopPropagation();
+                onCopyBuffName(b.name);
+                return;
+              }
               if (!allowAnyCancel || !canManualCancel || !onCancelBuff) return;
               e.preventDefault();
               e.stopPropagation();
@@ -271,6 +289,7 @@ export default function StatusBar({
           name={activeHint.buff.name}
           description={activeHint.buff.description}
           remainingTurns={getRemainingSeconds(activeHint.buff)}
+          showRemainingTime={activeHint.showRemainingTime}
           attribute={activeHint.buff.attribute}
           anchorRect={activeHint.anchorRect}
           arenaRect={arenaRect}

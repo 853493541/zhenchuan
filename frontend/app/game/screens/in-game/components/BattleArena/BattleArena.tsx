@@ -7,9 +7,9 @@ import WASDButtons from './WASDButtons';
 import VirtualJoystick from './VirtualJoystick';
 import StatusBar from '../GameBoard/components/StatusBar';
 import { ChannelBar, ChannelBarHost, type ChannelBarData } from './ChannelBar';
-import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowUp, ArrowUpToLine, Check, ChevronDown, Clipboard, CornerDownLeft, Download, Eraser, Gamepad2, Image as ImageIcon, LayoutGrid, ListChecks, MessageCircle, Minus, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Settings, Smile, Star, Swords, Trash2, UploadCloud, UserRound, Volume2, Wind, X } from 'lucide-react';
+import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowUp, ArrowUpToLine, Check, ChevronDown, Clipboard, CornerDownLeft, Eraser, Gamepad2, Image as ImageIcon, LayoutGrid, ListChecks, MessageCircle, Minus, Pencil, Plus, Puzzle, RotateCcw, Save, Search, Settings, Smile, Star, Swords, Trash2, UserRound, Volume2, Wind, X } from 'lucide-react';
 import { toastError, toastSuccess } from '@/app/components/toast/toast';
-import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection } from '../../types';
+import type { ActiveBuff, ActiveChannel, ChatChannel, ChatMessage, PickupItem, GroundZone, TargetEntity, TargetSelection, PlayAreaBounds, SafeZone, YumenResults } from '../../types';
 import ArenaScene, { type DirLightConfig, type EnvDebugInfo, type EnvToggles, type SceneRuntimeMetrics } from './scene/ArenaScene';
 import { getMapForMode, type MapObject } from './worldMap';
 import type { MapCollisionSystem } from './scene/MapCollisionSystem';
@@ -19,12 +19,34 @@ import * as THREE from 'three';
 import { ensureResizeObserverSupport } from '../../ensureResizeObserverSupport';
 import { getAbilitySoundAudibleRange, getAbilitySoundCue, type AbilitySoundPhase } from './abilitySoundRegistry';
 import { installAbilityAudioUnlock, playAbilitySound, stopAbilityChannelSound } from './abilitySoundPlayer';
-import { formatCrashDiagnosticsReport, getClientCrashRecorder, type CrashRecorderSummary } from '@/app/game/diagnostics/clientCrashRecorder';
+import { getClientCrashRecorder } from '@/app/game/diagnostics/clientCrashRecorder';
 import { getClientLatencyRecorder } from '@/app/game/diagnostics/clientLatencyRecorder';
-import { predictDashRenderPosition, shouldLogDashServerGap, type DashRenderSample } from './dashRenderPrediction';
+import { DASH_RENDER_MAX_LEAD_TICKS, predictDashRenderPosition, shouldLogDashServerGap, type DashRenderPredictionOptions, type DashRenderSample } from './dashRenderPrediction';
+import { isExportedMapMode, isYumen1v1BasicMode } from '../../../../gameModes';
 
 type V3 = { x: number; y: number; z: number };
 type LoadStageStatus = '完成' | '进行中' | '失败';
+
+type CameraDashPredictionDebugSnapshot = {
+  active: boolean;
+  collisionAware: boolean;
+  collisionReady: boolean;
+  leadTicks: number;
+  requestedLeadTicks: number;
+  simulatedTicks: number;
+  collisionDelta: number;
+  stoppedByCollision: boolean;
+  serverRenderGap: number;
+  renderPredictionGap: number;
+  cameraPitch: number;
+  minPitch: number;
+  maxPitch: number;
+  cameraZoom: number;
+  serverPosition: V3 | null;
+  renderPosition: V3 | null;
+  predictedPosition: V3 | null;
+  linearPosition: V3 | null;
+};
 
 type LoadPerformanceStage = {
   id: string;
@@ -58,9 +80,13 @@ function quantizeMovementValue(value: number) {
   return Math.round(value * MOVEMENT_SIGNATURE_PRECISION) / MOVEMENT_SIGNATURE_PRECISION;
 }
 
+function isVectorMovementPayload(direction: MovementDirectionPayload): direction is { dx: number; dy: number; jump: boolean; backpedalOnly?: boolean } {
+  return !!direction && 'dx' in direction;
+}
+
 function movementPayloadSignature(direction: MovementDirectionPayload, facing: { x: number; y: number }) {
   const normalizedDirection = direction
-    ? ('dx' in direction || 'dy' in direction)
+    ? isVectorMovementPayload(direction)
       ? {
           dx: quantizeMovementValue(direction.dx ?? 0),
           dy: quantizeMovementValue(direction.dy ?? 0),
@@ -153,13 +179,6 @@ const formatLoadPerfBytes = (bytes: number | null | undefined) => {
   if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   if (bytes >= 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${Math.round(bytes)} B`;
-};
-
-const formatCrashDiagTime = (ts: number | null | undefined) => {
-  if (!ts) return '-';
-  const date = new Date(ts);
-  const time = date.toLocaleTimeString('en-GB', { hour12: false });
-  return `${time}.${String(ts % 1000).padStart(3, '0')}`;
 };
 
 const getSceneResourceLabel = (url: string) => {
@@ -322,6 +341,23 @@ type InGameWarningEvent = {
   text: string;
 };
 
+type YumenDefeatNotice = {
+  id: string;
+  attackerName?: string | null;
+  defeatedName: string;
+  attributed: boolean;
+};
+
+type YumenKillConfirmNotice = {
+  id: string;
+  defeatedName: string;
+};
+
+type YumenHudSize = {
+  width: number;
+  height: number;
+};
+
 type UiPosition = { left: number; top: number };
 type UiViewportSize = { w: number; h: number };
 type UiPositionStoragePayload = {
@@ -375,7 +411,7 @@ function normalizeUiPositionStoragePayload(raw: unknown): UiPositionStoragePaylo
     return EMPTY_UI_POSITION_STORAGE_PAYLOAD;
   }
 
-  const payload = raw as { positions?: unknown; viewport?: unknown };
+  const payload = raw as { positions?: unknown; viewport?: unknown; chat?: unknown };
   return {
     positions: sanitizeUiPositions(payload.positions ?? raw),
     viewport: isValidUiViewportSize(payload.viewport)
@@ -424,6 +460,8 @@ const GCD_VISIBILITY_STORAGE_KEY = 'zhenchuan-gcd-visibility';
 const ABILITY_SOUND_SETTINGS_STORAGE_KEY = 'zhenchuan-ability-sound-settings-v1';
 const CAMERA_SETTINGS_STORAGE_KEY = 'zhenchuan-camera-settings-v1';
 const ABILITY_PANEL_SCALE_STORAGE_KEY = 'zhenchuan-ability-panel-scale-v2';
+const YUMEN_DAMAGE_MODE_STORAGE_KEY = 'zhenchuan-yumen-safe-zone-damage-mode-v1';
+const YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY = 'zhenchuan-yumen-auto-full-shrink-v1';
 const ABILITY_PANEL_MIN_SCALE = 0.85;
 const ABILITY_PANEL_BASE_VISUAL_SCALE = 1.175;
 const ABILITY_PANEL_MAX_VISUAL_SCALE = 2;
@@ -467,11 +505,42 @@ const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
 const IN_GAME_WARNING_DURATION_MS = 1500;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
+const YUMEN_KILL_NOTICE_UI_KEY = 'yumen-kill-notice';
+const YUMEN_KILL_CONFIRM_UI_KEY = 'yumen-kill-confirm';
+const YUMEN_ALIVE_COUNT_UI_KEY = 'yumen-alive-count';
+const YUMEN_KILL_NOTICE_DURATION_MS = 5000;
+const YUMEN_KILL_CONFIRM_DURATION_MS = 3000;
+const YUMEN_KILL_NOTICE_SIZE_STORAGE_KEY = 'zhenchuan-yumen-kill-notice-size-v1';
+const YUMEN_KILL_CONFIRM_SIZE_STORAGE_KEY = 'zhenchuan-yumen-kill-confirm-size-v1';
+const YUMEN_ALIVE_COUNT_SIZE_STORAGE_KEY = 'zhenchuan-yumen-alive-count-size-v1';
+const YUMEN_KILL_NOTICE_BASE_WIDTH = 430;
+const YUMEN_KILL_NOTICE_BASE_HEIGHT = 86;
+const YUMEN_KILL_CONFIRM_BASE_WIDTH = 330;
+const YUMEN_KILL_CONFIRM_BASE_HEIGHT = 78;
+const YUMEN_ALIVE_COUNT_BASE_WIDTH = 168;
+const YUMEN_ALIVE_COUNT_BASE_HEIGHT = 74;
+const YUMEN_HUD_SETTING_MIN_SCALE = 0.5;
+const YUMEN_HUD_SETTING_MAX_SCALE = 2;
+const YUMEN_KILL_NOTICE_MIN_WIDTH = Math.round(YUMEN_KILL_NOTICE_BASE_WIDTH * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_NOTICE_MAX_WIDTH = Math.round(YUMEN_KILL_NOTICE_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_KILL_NOTICE_MIN_HEIGHT = Math.round(YUMEN_KILL_NOTICE_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_NOTICE_MAX_HEIGHT = Math.round(YUMEN_KILL_NOTICE_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_KILL_CONFIRM_MIN_WIDTH = Math.round(YUMEN_KILL_CONFIRM_BASE_WIDTH * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_CONFIRM_MAX_WIDTH = Math.round(YUMEN_KILL_CONFIRM_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_KILL_CONFIRM_MIN_HEIGHT = Math.round(YUMEN_KILL_CONFIRM_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_KILL_CONFIRM_MAX_HEIGHT = Math.round(YUMEN_KILL_CONFIRM_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_ALIVE_COUNT_MIN_WIDTH = Math.round(YUMEN_ALIVE_COUNT_BASE_WIDTH * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_ALIVE_COUNT_MAX_WIDTH = Math.round(YUMEN_ALIVE_COUNT_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
+const YUMEN_ALIVE_COUNT_MIN_HEIGHT = Math.round(YUMEN_ALIVE_COUNT_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
+const YUMEN_ALIVE_COUNT_MAX_HEIGHT = Math.round(YUMEN_ALIVE_COUNT_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
 const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
 const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
 const JUMP_CORRECTION_WARNING_MIN_XY = 0.6;
 const JUMP_CORRECTION_WARNING_MIN_Z = 0.6;
 const JUMP_CORRECTION_WARNING_COOLDOWN_MS = 500;
+const POSITION_CORRECTION_PROBE_MIN_XY = 0.75;
+const POSITION_CORRECTION_PROBE_MIN_Z = 0.75;
+const POSITION_CORRECTION_PROBE_COOLDOWN_MS = 500;
 const JUMP_CORRECTION_SERVER_LAG_TICKS = 10;
 const JUMP_CORRECTION_SERVER_LAG_MIN_XY = 1.1;
 const JUMP_CORRECTION_SERVER_LAG_MIN_Z = 1.1;
@@ -489,6 +558,82 @@ const PLAYER_GCD_BAR_UI_KEY = 'player-gcd-bar';
 const TARGET_ICON_BAR_UI_KEY = 'target-icon-bar';
 const TARGET_TARGET_ICON_BAR_UI_KEY = 'target-target-icon-bar';
 const TARGET_OWNED_ABILITY_BAR_UI_KEY = 'target-owned-ability-bar';
+
+function recordDashProbe(type: 'start' | 'end' | 'correction', payload: Record<string, unknown> = {}) {
+  if (typeof window === 'undefined') return;
+  const target = window as any;
+  const probe = target.__zhenchuanDashProbe ?? { starts: 0, ends: 0, corrections: [], events: [] };
+  if (type === 'start') probe.starts = Number(probe.starts ?? 0) + 1;
+  if (type === 'end') probe.ends = Number(probe.ends ?? 0) + 1;
+  const event = { type, ts: Date.now(), ...payload };
+  probe.events = [...(Array.isArray(probe.events) ? probe.events : []), event].slice(-80);
+  if (type === 'correction') {
+    probe.corrections = [...(Array.isArray(probe.corrections) ? probe.corrections : []), event].slice(-80);
+  }
+  target.__zhenchuanDashProbe = probe;
+}
+
+function createEmptyCameraDashPredictionSnapshot(): CameraDashPredictionDebugSnapshot {
+  return {
+    active: false,
+    collisionAware: false,
+    collisionReady: false,
+    leadTicks: 0,
+    requestedLeadTicks: 0,
+    simulatedTicks: 0,
+    collisionDelta: 0,
+    stoppedByCollision: false,
+    serverRenderGap: 0,
+    renderPredictionGap: 0,
+    cameraPitch: 0,
+    minPitch: 0,
+    maxPitch: 0,
+    cameraZoom: DEFAULT_CAMERA_ZOOM,
+    serverPosition: null,
+    renderPosition: null,
+    predictedPosition: null,
+    linearPosition: null,
+  };
+}
+
+function recordCameraDashPredictionProbe(snapshot: CameraDashPredictionDebugSnapshot) {
+  if (typeof window === 'undefined') return;
+  const target = window as any;
+  const probe = target.__zhenchuanCameraDashProbe ?? { active: false, dashes: [], samples: [] };
+  probe.last = snapshot;
+  probe.samples = [...(Array.isArray(probe.samples) ? probe.samples : []), { ts: Date.now(), ...snapshot }].slice(-240);
+
+  if (snapshot.active) {
+    if (!probe.active) {
+      probe.active = true;
+      probe.current = {
+        startedAt: Date.now(),
+        samples: 0,
+        maxCollisionDelta: 0,
+        maxRenderPredictionGap: 0,
+        maxServerRenderGap: 0,
+        stoppedByCollision: false,
+        collisionAware: false,
+      };
+    }
+    probe.current.samples += 1;
+    probe.current.maxCollisionDelta = Math.max(Number(probe.current.maxCollisionDelta ?? 0), snapshot.collisionDelta);
+    probe.current.maxRenderPredictionGap = Math.max(Number(probe.current.maxRenderPredictionGap ?? 0), snapshot.renderPredictionGap);
+    probe.current.maxServerRenderGap = Math.max(Number(probe.current.maxServerRenderGap ?? 0), snapshot.serverRenderGap);
+    probe.current.stoppedByCollision = probe.current.stoppedByCollision || snapshot.stoppedByCollision;
+    probe.current.collisionAware = probe.current.collisionAware || snapshot.collisionAware;
+  } else if (probe.active) {
+    const finished = {
+      ...(probe.current ?? {}),
+      endedAt: Date.now(),
+    };
+    probe.dashes = [...(Array.isArray(probe.dashes) ? probe.dashes : []), finished].slice(-80);
+    probe.active = false;
+    probe.current = null;
+  }
+
+  target.__zhenchuanCameraDashProbe = probe;
+}
 const OWNED_ABILITY_BAR_UI_KEY = 'owned-ability-bar';
 const HEIGHT_COUNTER_UI_KEY = 'height-counter';
 const DISTANCE_INDICATOR_UI_KEY = 'distance-indicator';
@@ -497,6 +642,7 @@ const ITEM_BAR_UI_KEY = 'item-bar';
 const MARTIAL_PANEL_UI_KEY = 'martial-panel';
 const CHAT_PANEL_UI_KEY = 'chat-panel';
 const CHAT_CLEAR_DIALOG_UI_KEY = 'chat-clear-dialog';
+const YUMEN_MINIMAP_UI_KEY = 'yumen-minimap';
 const getDetachedChatWindowUiKey = (detachedId: string) => `chat-detached-${detachedId}`;
 const isDetachedChatWindowUiKey = (key: string) => key.startsWith('chat-detached-');
 const CATCAKE_DEFAULT_UI_VIEWPORT: UiViewportSize = { w: 1920, h: 945 };
@@ -514,6 +660,9 @@ const CATCAKE_DEFAULT_UI_POSITIONS: Record<string, UiPosition> = {
   [HEIGHT_COUNTER_UI_KEY]: { left: 540, top: 816 },
   [DISTANCE_INDICATOR_UI_KEY]: { left: 1147, top: 383 },
   [IN_GAME_WARNING_UI_KEY]: { left: 960, top: 151 },
+  [YUMEN_KILL_NOTICE_UI_KEY]: { left: 745, top: 82 },
+  [YUMEN_KILL_CONFIRM_UI_KEY]: { left: 795, top: 420 },
+  [YUMEN_ALIVE_COUNT_UI_KEY]: { left: 1704, top: 292 },
   [ITEM_BAR_UI_KEY]: { left: 647, top: 751 },
   [HEART_STATS_UI_KEY]: { left: 194, top: 466 },
   [MARTIAL_PANEL_UI_KEY]: { left: 24, top: 88 },
@@ -530,18 +679,18 @@ const CONSUMABLE_BAR_MIN_SLOTS = 12;
 const CONSUMABLE_BAR_MAX_SLOTS = 16;
 const CONSUMABLE_BAR_DEFAULT_SLOTS = 12;
 const CONSUMABLE_ITEMS = [
-  { id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12 },
-  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 8 },
-  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 4 },
-  { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4 },
-  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0 },
-  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0 },
-  { id: 'sha_xing_xie', name: '沙行蝎', implemented: false, startingCount: 0 },
-  { id: 'ma_cao', name: '马草', implemented: false, startingCount: 0 },
-  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒', implemented: false, startingCount: 0 },
-  { id: 'er_jie_wu_qi_he', name: '二阶武器盒', implemented: false, startingCount: 0 },
-  { id: 'san_jie_wu_qi_he', name: '三阶武器盒', implemented: false, startingCount: 0 },
-  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒', implemented: false, startingCount: 0 },
+  { id: 'beng_dai', name: '绷带', implemented: true, startingCount: 12, cooldownMs: 0 },
+  { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 2, cooldownMs: 120_000 },
+  { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 1, cooldownMs: 30_000 },
+  { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4, cooldownMs: 0 },
+  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'sha_xing_xie', name: '沙行蝎', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'ma_cao', name: '马草', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'yi_jie_wu_qi_he', name: '一阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'er_jie_wu_qi_he', name: '二阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'san_jie_wu_qi_he', name: '三阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'tian_jie_wu_qi_he', name: '天阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
 ] as const;
 const STATUS_BAR_VERTICAL_OFFSET = 58;
 const PLAYER_CHANNEL_BAR_FLOAT_WIDTH = 290;
@@ -1035,10 +1184,61 @@ const COOLDOWN_IDLE_CLOCK_INTERVAL_MS = 250;
 const BASE_HASTE_RATE_PCT = 23.54;
 const BASE_GCD_SECONDS = 1.19;
 const BASE_GCD_MS = BASE_GCD_SECONDS * 1000;
-const BASE_GCD_WINDOW_TICKS = Math.round(BASE_GCD_SECONDS * SERVER_TICK_RATE);
+const TEST_COOLDOWN_CAP_TICKS = 3 * SERVER_TICK_RATE;
+const YUMEN_SANDSTORM_OVERLAY_STORAGE_KEY = 'zhenchuan-yumen-sandstorm-overlay';
 const BASE_MOVE_SPEED_PER_TICK = 0.1666667;
 const AIR_SHIFT_DURATION_TICKS = SERVER_TICK_RATE;
 const LEGACY_CHANNEL_JUMP_LOCK_BUFF_IDS = new Set([1014, 1017, 2001, 2003, 2712]);
+
+type YumenSandstormOverlaySettings = {
+  orangeAmount: number;
+  brightness: number;
+};
+
+const DEFAULT_YUMEN_SANDSTORM_OVERLAY: YumenSandstormOverlaySettings = {
+  orangeAmount: 55,
+  brightness: 0,
+};
+
+function clampSandstormSetting(value: unknown, min: number, max: number, fallback: number): number {
+  const next = Number(value);
+  if (!Number.isFinite(next)) return fallback;
+  return Math.max(min, Math.min(max, next));
+}
+
+function normalizeSandstormOverlaySettings(value: unknown): YumenSandstormOverlaySettings {
+  const source = value && typeof value === 'object' ? value as Partial<YumenSandstormOverlaySettings> : {};
+  return {
+    orangeAmount: clampSandstormSetting(source.orangeAmount, 0, 100, DEFAULT_YUMEN_SANDSTORM_OVERLAY.orangeAmount),
+    brightness: clampSandstormSetting(source.brightness, -40, 40, DEFAULT_YUMEN_SANDSTORM_OVERLAY.brightness),
+  };
+}
+
+function buildYumenSandstormOverlayValues(settings: YumenSandstormOverlaySettings) {
+  const amountRatio = clampRatio(settings.orangeAmount / 100);
+  const neutral = { r: 92, g: 78, b: 62 };
+  const orange = { r: 218, g: 132, b: 52 };
+  const shift = Math.round(settings.brightness);
+  const clampChannel = (value: number) => Math.max(0, Math.min(255, Math.round(value + shift)));
+  const r = clampChannel(neutral.r + (orange.r - neutral.r) * amountRatio);
+  const g = clampChannel(neutral.g + (orange.g - neutral.g) * amountRatio);
+  const b = clampChannel(neutral.b + (orange.b - neutral.b) * amountRatio);
+  const alpha = Number((0.12 + amountRatio * 0.34).toFixed(3));
+  const rgba = `rgba(${r}, ${g}, ${b}, ${alpha.toFixed(3)})`;
+  return {
+    r,
+    g,
+    b,
+    alpha,
+    rgba,
+    cssVars: {
+      '--yumen-sandstorm-r': String(r),
+      '--yumen-sandstorm-g': String(g),
+      '--yumen-sandstorm-b': String(b),
+      '--yumen-sandstorm-alpha': alpha.toFixed(3),
+    } as React.CSSProperties,
+  };
+}
 
 type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
 
@@ -1067,7 +1267,51 @@ type ChannelingPlayer = {
 };
 
 function getStoredUnitScale(mode?: string): number {
-  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+  return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
+}
+
+function clampPositionToPlayAreaClient(
+  worldX: number,
+  worldY: number,
+  playArea: PlayAreaBounds | undefined,
+  arenaWidth: number,
+  arenaHeight: number,
+  playerRadius: number,
+  velocity?: { x: number; y: number },
+) {
+  const rawMinX = Math.max(0, Math.min(arenaWidth, Number(playArea?.minX ?? 0)));
+  const rawMaxX = Math.max(0, Math.min(arenaWidth, Number(playArea?.maxX ?? arenaWidth)));
+  const rawMinY = Math.max(0, Math.min(arenaHeight, Number(playArea?.minY ?? 0)));
+  const rawMaxY = Math.max(0, Math.min(arenaHeight, Number(playArea?.maxY ?? arenaHeight)));
+  const left = Math.min(rawMinX, rawMaxX);
+  const right = Math.max(rawMinX, rawMaxX);
+  const top = Math.min(rawMinY, rawMaxY);
+  const bottom = Math.max(rawMinY, rawMaxY);
+  const centerX = (left + right) / 2;
+  const centerY = (top + bottom) / 2;
+  const minX = right - left <= playerRadius * 2 ? centerX : left + playerRadius;
+  const maxX = right - left <= playerRadius * 2 ? centerX : right - playerRadius;
+  const minY = bottom - top <= playerRadius * 2 ? centerY : top + playerRadius;
+  const maxY = bottom - top <= playerRadius * 2 ? centerY : bottom - playerRadius;
+  let nextX = worldX;
+  let nextY = worldY;
+  if (nextX < minX) {
+    nextX = minX;
+    if (velocity && velocity.x < 0) velocity.x = 0;
+  }
+  if (nextX > maxX) {
+    nextX = maxX;
+    if (velocity && velocity.x > 0) velocity.x = 0;
+  }
+  if (nextY < minY) {
+    nextY = minY;
+    if (velocity && velocity.y < 0) velocity.y = 0;
+  }
+  if (nextY > maxY) {
+    nextY = maxY;
+    if (velocity && velocity.y > 0) velocity.y = 0;
+  }
+  return { x: nextX, y: nextY };
 }
 
 function getDefaultMoveSpeedPerTick(mode?: string): number {
@@ -1097,6 +1341,61 @@ function normalizeNumberInRange(value: unknown, fallback: number, min: number, m
   const numeric = typeof value === 'number' ? value : Number(value);
   if (!Number.isFinite(numeric)) return fallback;
   return Math.round(Math.max(min, Math.min(max, numeric)));
+}
+
+function normalizeYumenHudSettingScale(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 1;
+  return Math.round(Math.max(YUMEN_HUD_SETTING_MIN_SCALE, Math.min(YUMEN_HUD_SETTING_MAX_SCALE, numeric)) * 10) / 10;
+}
+
+function getYumenHudSettingScale(value: number, base: number): number {
+  return normalizeYumenHudSettingScale(value / base);
+}
+
+function scaleYumenHudSettingValue(scale: unknown, base: number, normalize: (value: unknown) => number): number {
+  return normalize(base * normalizeYumenHudSettingScale(scale));
+}
+
+function normalizeYumenKillNoticeWidth(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_NOTICE_BASE_WIDTH, YUMEN_KILL_NOTICE_MIN_WIDTH, YUMEN_KILL_NOTICE_MAX_WIDTH);
+}
+
+function normalizeYumenKillNoticeHeight(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_NOTICE_BASE_HEIGHT, YUMEN_KILL_NOTICE_MIN_HEIGHT, YUMEN_KILL_NOTICE_MAX_HEIGHT);
+}
+
+function normalizeYumenKillConfirmWidth(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_CONFIRM_BASE_WIDTH, YUMEN_KILL_CONFIRM_MIN_WIDTH, YUMEN_KILL_CONFIRM_MAX_WIDTH);
+}
+
+function normalizeYumenKillConfirmHeight(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_KILL_CONFIRM_BASE_HEIGHT, YUMEN_KILL_CONFIRM_MIN_HEIGHT, YUMEN_KILL_CONFIRM_MAX_HEIGHT);
+}
+
+function normalizeYumenAliveCountWidth(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_ALIVE_COUNT_BASE_WIDTH, YUMEN_ALIVE_COUNT_MIN_WIDTH, YUMEN_ALIVE_COUNT_MAX_WIDTH);
+}
+
+function normalizeYumenAliveCountHeight(value: unknown): number {
+  return normalizeNumberInRange(value, YUMEN_ALIVE_COUNT_BASE_HEIGHT, YUMEN_ALIVE_COUNT_MIN_HEIGHT, YUMEN_ALIVE_COUNT_MAX_HEIGHT);
+}
+
+function normalizeYumenHudSize(value: unknown, defaults: YumenHudSize, normalizeWidth: (value: unknown) => number, normalizeHeight: (value: unknown) => number): YumenHudSize {
+  const candidate = value && typeof value === 'object' ? value as Partial<YumenHudSize> : {};
+  return {
+    width: normalizeWidth(candidate.width ?? defaults.width),
+    height: normalizeHeight(candidate.height ?? defaults.height),
+  };
+}
+
+function loadYumenHudSize(storageKey: string, defaults: YumenHudSize, normalizeWidth: (value: unknown) => number, normalizeHeight: (value: unknown) => number): YumenHudSize {
+  try {
+    if (typeof window === 'undefined') return defaults;
+    return normalizeYumenHudSize(JSON.parse(localStorage.getItem(storageKey) ?? '{}'), defaults, normalizeWidth, normalizeHeight);
+  } catch {
+    return defaults;
+  }
 }
 
 function normalizeMartialPanelWidth(value: unknown): number {
@@ -1979,6 +2278,238 @@ function getBvhCeilingY(sys: MapCollisionSystem, center: THREE.Vector3): number 
   return sys.getCeilingY(center, center.y);
 }
 
+type CollisionAwareDashPredictionContext = {
+  arenaWidth: number;
+  arenaHeight: number;
+  playerRadius: number;
+  isExportedMap: boolean;
+  collisionSystem: MapCollisionSystem | null;
+  objects: MapObject[];
+  entities: TargetEntity[];
+  actorUserId: string;
+  playArea?: PlayAreaBounds;
+};
+
+type CollisionAwareDashPrediction = {
+  position: V3;
+  debug: {
+    collisionAware: boolean;
+    collisionReady: boolean;
+    leadTicks: number;
+    requestedLeadTicks: number;
+    simulatedTicks: number;
+    collisionDelta: number;
+    stoppedByCollision: boolean;
+    linearPosition: V3;
+  };
+};
+
+const _dashPredictBvhCenter = new THREE.Vector3();
+const _dashPredictBvhVelocity = new THREE.Vector3();
+const _dashPredictGroundCenter = new THREE.Vector3();
+
+function computeDashRenderLeadTicks(sample: DashRenderSample, options: DashRenderPredictionOptions) {
+  const tickMs = options.tickMs ?? (1000 / SERVER_TICK_RATE);
+  const maxLeadTicks = options.maxLeadTicks ?? DASH_RENDER_MAX_LEAD_TICKS;
+  const elapsedMs = Math.max(0, options.nowMs - sample.sampledAtMs);
+  const elapsedTicks = tickMs > 0 ? elapsedMs / tickMs : 0;
+  return {
+    requestedLeadTicks: elapsedTicks,
+    leadTicks: Math.max(0, Math.min(elapsedTicks, maxLeadTicks, sample.ticksRemaining)),
+  };
+}
+
+function getDashPredictionGroundHeight(x: number, y: number, z: number, ctx: CollisionAwareDashPredictionContext): number {
+  if (ctx.isExportedMap && ctx.collisionSystem) {
+    const halfW = ctx.arenaWidth / 2;
+    const halfH = ctx.arenaHeight / 2;
+    _dashPredictGroundCenter.set(
+      (x - halfW - GROUP_POS_X) / RENDER_SF_XZ,
+      (z - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT,
+      (halfH - y - GROUP_POS_Z) / RENDER_SF_XZ,
+    );
+    const supportY = getBvhGroundSupportY(ctx.collisionSystem, _dashPredictGroundCenter);
+    return supportY === null ? z : supportY * RENDER_SF_Y + GROUP_POS_Y;
+  }
+  return getGroundHeightClient(x, y, z, ctx.objects, ctx.playerRadius);
+}
+
+function applyDashPredictionCollisionStep(
+  pos: V3,
+  stepX: number,
+  stepY: number,
+  ctx: CollisionAwareDashPredictionContext,
+) {
+  let x = pos.x;
+  let y = pos.y;
+  const velocity = { x: stepX, y: stepY };
+  const intendedStep = Math.hypot(stepX, stepY);
+  const maxSubStep = Math.max(0.001, ctx.playerRadius * 0.85);
+  const numSubSteps = Math.max(1, Math.ceil(intendedStep / maxSubStep));
+  let stoppedByCollision = false;
+
+  for (let subIndex = 0; subIndex < numSubSteps; subIndex += 1) {
+    const subX = stepX / numSubSteps;
+    const subY = stepY / numSubSteps;
+    const beforeX = x;
+    const beforeY = y;
+    let nextX = Math.max(ctx.playerRadius, Math.min(ctx.arenaWidth - ctx.playerRadius, x + subX));
+    let nextY = Math.max(ctx.playerRadius, Math.min(ctx.arenaHeight - ctx.playerRadius, y + subY));
+    const playAreaClamped = clampPositionToPlayAreaClient(
+      nextX,
+      nextY,
+      ctx.playArea,
+      ctx.arenaWidth,
+      ctx.arenaHeight,
+      ctx.playerRadius,
+      velocity,
+    );
+    nextX = playAreaClamped.x;
+    nextY = playAreaClamped.y;
+
+    if (ctx.isExportedMap && ctx.collisionSystem) {
+      const halfW = ctx.arenaWidth / 2;
+      const halfH = ctx.arenaHeight / 2;
+      _dashPredictBvhCenter.set(
+        (nextX - halfW - GROUP_POS_X) / RENDER_SF_XZ,
+        (pos.z - GROUP_POS_Y) / RENDER_SF_Y + EXPORT_CYL_HALF_HEIGHT,
+        (halfH - nextY - GROUP_POS_Z) / RENDER_SF_XZ,
+      );
+      _dashPredictBvhVelocity.set(subX / RENDER_SF_XZ, 0, -subY / RENDER_SF_XZ);
+      ctx.collisionSystem.resolveSphereCollision(_dashPredictBvhCenter, EXPORT_CYL_RADIUS, _dashPredictBvhVelocity);
+      nextX = Math.max(ctx.playerRadius, Math.min(ctx.arenaWidth - ctx.playerRadius,
+        _dashPredictBvhCenter.x * RENDER_SF_XZ + GROUP_POS_X + halfW));
+      nextY = Math.max(ctx.playerRadius, Math.min(ctx.arenaHeight - ctx.playerRadius,
+        halfH - (_dashPredictBvhCenter.z * RENDER_SF_XZ + GROUP_POS_Z)));
+      const bvhPlayAreaClamped = clampPositionToPlayAreaClient(
+        nextX,
+        nextY,
+        ctx.playArea,
+        ctx.arenaWidth,
+        ctx.arenaHeight,
+        ctx.playerRadius,
+        velocity,
+      );
+      nextX = bvhPlayAreaClamped.x;
+      nextY = bvhPlayAreaClamped.y;
+    } else {
+      for (const obj of ctx.objects) {
+        const resolved = resolveObjCollisionClient(nextX, nextY, pos.z, velocity, obj, ctx.playerRadius);
+        nextX = resolved.x;
+        nextY = resolved.y;
+      }
+    }
+
+    const wallResolved = resolveEnemyChuHeHanJieWallCollisionClient(
+      nextX,
+      nextY,
+      pos.z,
+      velocity,
+      ctx.entities,
+      ctx.actorUserId,
+      ctx.playerRadius,
+    );
+    nextX = wallResolved.x;
+    nextY = wallResolved.y;
+    const finalPlayAreaClamped = clampPositionToPlayAreaClient(
+      nextX,
+      nextY,
+      ctx.playArea,
+      ctx.arenaWidth,
+      ctx.arenaHeight,
+      ctx.playerRadius,
+      velocity,
+    );
+    nextX = finalPlayAreaClamped.x;
+    nextY = finalPlayAreaClamped.y;
+
+    const actualStepX = nextX - beforeX;
+    const actualStepY = nextY - beforeY;
+    const intendedSubStep = Math.hypot(subX, subY);
+    if (intendedSubStep > 1e-4) {
+      const along = (actualStepX * subX + actualStepY * subY) / intendedSubStep;
+      if (along < intendedSubStep * 0.35) stoppedByCollision = true;
+    }
+    x = nextX;
+    y = nextY;
+    if (stoppedByCollision) break;
+  }
+
+  pos.x = x;
+  pos.y = y;
+  return stoppedByCollision;
+}
+
+function predictDashRenderPositionWithCollision(
+  sample: DashRenderSample | null,
+  options: DashRenderPredictionOptions,
+  ctx: CollisionAwareDashPredictionContext,
+): CollisionAwareDashPrediction | null {
+  if (!sample) return null;
+
+  const { requestedLeadTicks, leadTicks } = computeDashRenderLeadTicks(sample, options);
+  const linearPosition = predictDashRenderPosition(sample, options) ?? sample.position;
+  const collisionReady = !ctx.isExportedMap || !!ctx.collisionSystem;
+
+  if (!collisionReady || leadTicks <= 0) {
+    return {
+      position: { ...linearPosition },
+      debug: {
+        collisionAware: false,
+        collisionReady,
+        leadTicks,
+        requestedLeadTicks,
+        simulatedTicks: 0,
+        collisionDelta: 0,
+        stoppedByCollision: false,
+        linearPosition: { ...linearPosition },
+      },
+    };
+  }
+
+  const pos: V3 = { ...sample.position };
+  let simulatedTicks = 0;
+  let stoppedByCollision = false;
+  const fullTicks = Math.floor(leadTicks);
+  const fractionalTick = leadTicks - fullTicks;
+  const stepScales: number[] = [];
+  for (let tickIndex = 0; tickIndex < fullTicks; tickIndex += 1) stepScales.push(1);
+  if (fractionalTick > 1e-4) stepScales.push(fractionalTick);
+
+  for (const stepScale of stepScales) {
+    const stepX = sample.vxPerTick * stepScale;
+    const stepY = sample.vyPerTick * stepScale;
+    if (Math.hypot(stepX, stepY) > 1e-5) {
+      stoppedByCollision = applyDashPredictionCollisionStep(pos, stepX, stepY, ctx) || stoppedByCollision;
+    }
+    const nextZ = sample.position.z + sample.vzPerTick * (simulatedTicks + stepScale);
+    const groundZ = getDashPredictionGroundHeight(pos.x, pos.y, nextZ, ctx);
+    pos.z = Math.max(groundZ, nextZ);
+    simulatedTicks += stepScale;
+    if (stoppedByCollision) break;
+  }
+
+  const collisionDelta = Math.hypot(
+    linearPosition.x - pos.x,
+    linearPosition.y - pos.y,
+    linearPosition.z - pos.z,
+  );
+
+  return {
+    position: pos,
+    debug: {
+      collisionAware: true,
+      collisionReady: true,
+      leadTicks,
+      requestedLeadTicks,
+      simulatedTicks,
+      collisionDelta,
+      stoppedByCollision,
+      linearPosition: { ...linearPosition },
+    },
+  };
+}
+
 /* --- LOS BVH scratch (avoid GC in render loop) --- */
 const _losFrom = new THREE.Vector3();
 const _losTo   = new THREE.Vector3();
@@ -2346,10 +2877,14 @@ function facingArrow(facing: { x: number; y: number } | undefined): string {
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
 const STEALTH_ABILITY_IDS = new Set(['anchen_misan', 'fuguang_lueying', 'tiandi_wuji', 'hua_die']);
 const UNTARGETABLE_BUFF_IDS = new Set([1008]);
+const YUMEN_KUANG_SHA_BUFF_ID = 990200;
+const YUMEN_SPECTATOR_BUFF_ID = 990202;
+const YUMEN_PREP_BUFF_ID = 990204;
 const DISGUISE_BUFF_IDS = new Set([980001]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
 const SHU_SE_BUFF_IDS = new Set([2646]);
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 
 function buffHasEffect(buff: ActiveBuff | any, type: string): boolean {
   return Array.isArray(buff?.effects) && buff.effects.some((e: any) => e?.type === type);
@@ -2476,6 +3011,12 @@ function hasMianLaClient(buffs?: ActiveBuff[]): boolean {
   return activeBuffsClient(buffs).some((b: any) => buffHasEffect(b, 'KNOCKBACK_IMMUNE'));
 }
 
+function hasShiFangXuanJiClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === SHI_FANG_XUAN_JI_BUFF_ID || buffNameIncludes(b, '十方玄机')
+  );
+}
+
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
   return (hasStealthClient(buffs) && !hasSanliuXiaClient(buffs)) || hasHongMengTianJinClient(buffs);
 }
@@ -2491,6 +3032,24 @@ function blocksTargetingClient(buffs?: ActiveBuff[]): boolean {
     buffNameIncludes(b, '隐身') ||
     buffNameIncludes(b, '遁影') ||
     buffNameIncludes(b, '不可选中')
+  );
+}
+
+function hasYumenSpectatorClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === YUMEN_SPECTATOR_BUFF_ID || buffNameIncludes(b, '观战中')
+  );
+}
+
+function hasYumenKuangShaClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === YUMEN_KUANG_SHA_BUFF_ID || buffNameIncludes(b, '狂沙')
+  );
+}
+
+function hasYumenPrepClient(buffs?: ActiveBuff[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    Number(b?.buffId) === YUMEN_PREP_BUFF_ID || buffNameIncludes(b, '准备时间')
   );
 }
 
@@ -2620,11 +3179,11 @@ function formatIconBarDistance(from: Position | undefined, to: Position | undefi
 const CAM_DIR = { x: 0, y: 1 };
 const DEFAULT_PITCH = Math.atan2(10, 20);
 const DEFAULT_MIN_CAMERA_PITCH = 0.08;
-const COLLISION_TEST_MIN_CAMERA_PITCH = -1.05;
+const COLLISION_TEST_MIN_CAMERA_PITCH = -Math.PI * 0.49;
 const MAX_CAMERA_PITCH = Math.PI * 0.47;
 
 function clampCameraPitch(pitch: number, mode?: string): number {
-  const minPitch = mode === 'collision-test' ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
+  const minPitch = isExportedMapMode(mode) ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
   return Math.max(minPitch, Math.min(MAX_CAMERA_PITCH, pitch));
 }
 
@@ -2760,6 +3319,8 @@ function isChannelStartCue(params: { ability: any; event: any; phase: AbilitySou
 }
 interface Facing { x: number; y: number; }
 
+type CooldownDisplayKind = 'cooldown' | 'gcd' | 'charge';
+
 interface AbilityInfo {
   id: string;        // instanceId (or abilityId fallback for common)
   abilityId: string;    // always the plain ability id (e.g. 'fuyao_zhishang')
@@ -2773,11 +3334,13 @@ interface AbilityInfo {
   baseCooldownTicks?: number;
   cooldown: number;
   maxCooldown: number;
+  cooldownDisplayKind?: CooldownDisplayKind;
   chargeCount?: number;
   maxCharges?: number;
   chargeRegenTicksRemaining?: number;
   chargeRegenProgress?: number;
   chargeRecoveryTicks?: number;
+  tooltipChargeRecoveryTicks?: number;
   chargeLockTicks?: number;
   chargeCastLockTicks?: number;
   isReady: boolean;
@@ -3213,7 +3776,11 @@ function getConsumableCooldownRemainingMs(player: any, consumableId: ConsumableI
 
 function getConsumableRemainingCount(player: any, consumable: ConsumableItem): number {
   const fallback = Number(consumable.startingCount ?? 0);
-  const remaining = Number(player?.consumableCounts?.[consumable.id] ?? fallback);
+  const counts = player?.consumableCounts;
+  const hasExplicitCounts = counts && typeof counts === 'object';
+  const remaining = Number(hasExplicitCounts
+    ? Object.prototype.hasOwnProperty.call(counts, consumable.id) ? counts[consumable.id] : 0
+    : fallback);
   if (!Number.isFinite(remaining)) return Math.max(0, fallback);
   return Math.max(0, Math.floor(remaining));
 }
@@ -3228,6 +3795,25 @@ function formatHudCooldownText(seconds: number, options?: { roundUpSeconds?: boo
 
 function formatConsumableCooldown(ms: number): string {
   return formatHudCooldownText(ms / 1000, { roundUpSeconds: true });
+}
+
+function getCooldownOverlayStyle(cooldownPct: number, kind: CooldownDisplayKind = 'cooldown'): React.CSSProperties {
+  const pct = Math.max(0, Math.min(100, Number(cooldownPct) || 0));
+  const startPct = (100 - pct).toFixed(1);
+  const color = 'rgba(0, 0, 0, 0.50)';
+  return { background: `conic-gradient(from 0deg, transparent ${startPct}%, ${color} ${startPct}%)` };
+}
+
+function isCooldownFlashDanger(remainingMs: number): boolean {
+  if (!Number.isFinite(remainingMs) || remainingMs <= 0 || remainingMs >= 3000) return false;
+  const phaseMs = ((remainingMs % 1000) + 1000) % 1000;
+  return phaseMs > 500;
+}
+
+function getConsumableCooldownPct(consumable: ConsumableItem | undefined, remainingMs: number): number {
+  const maxMs = Math.max(0, Number(consumable?.cooldownMs ?? 0));
+  if (maxMs <= 0) return 100;
+  return Math.max(0, Math.min(100, (remainingMs / maxMs) * 100));
 }
 
 function normalizeDraftSlotIndex(value: unknown, fallback: number): number {
@@ -3382,7 +3968,7 @@ function buildVisibleVisualGcd(
   }
 
   const remainingBaseGcdTicks = Math.max(0, Number(globalGcdTicks ?? 0));
-  if (!settings.enabled || !settings.base || remainingBaseGcdTicks <= 0) {
+  if (!settings.enabled || !settings.base || remainingBaseGcdTicks <= 1) {
     return null;
   }
 
@@ -3492,8 +4078,12 @@ function GcdVisualBar({ gcd }: { gcd?: VisualGcdState | null }) {
 }
 
 function formatAbilityRangeLabel(ability: AbilityInfo): string {
+  if (ability.target === 'SELF') {
+    return '无';
+  }
+
   if (typeof ability.range !== 'number') {
-    return ability.target === 'SELF' ? '自身' : '-';
+    return '-';
   }
 
   const range = ability.range;
@@ -3513,15 +4103,15 @@ function formatAbilityCastLabel(ability: AbilityInfo): string {
   const channel = ability.channel;
   if (!channel || channel.durationMs <= 0) return '瞬间释放';
   const seconds = formatCompactSeconds(channel.durationMs / 1000);
-  return `${seconds}秒`;
+  return `释放: ${seconds}秒`;
 }
 
 function formatAbilityCooldownLabel(ability: AbilityInfo): string {
   const cooldownTicks = Number(ability.baseCooldownTicks ?? 0);
   if (cooldownTicks > 0) return formatTicksAsSeconds(cooldownTicks);
-  const recoveryTicks = Number(ability.chargeRecoveryTicks ?? 0);
+  const recoveryTicks = Number(ability.tooltipChargeRecoveryTicks ?? ability.chargeRecoveryTicks ?? 0);
   if ((ability.maxCharges ?? 0) > 1 && recoveryTicks > 0) return formatTicksAsSeconds(recoveryTicks);
-  return '0秒';
+  return '无调息时间';
 }
 
 function AbilityHoverHint({ hint }: { hint: AbilityHintState }) {
@@ -3649,7 +4239,10 @@ type CameraDebugEntry = {
   wallClamp: boolean;
   probeClamp: boolean;
   groundClamp: boolean;
+  skyLook: boolean;
   recenter: boolean;
+  forwardMove: boolean;
+  lookUpRatio: number;
   wallDebug?: {
     hitCount: number;
     sampleCount: number;
@@ -3687,11 +4280,348 @@ const COMMON_ABILITY_ORDER = [
   'yuqi',
 ] as const;
 
+function YumenMiniMap({
+  mapWidth,
+  mapHeight,
+  playerPosition,
+  playerFacing,
+  safeZone,
+  panelPosition,
+  onPanelPositionChange,
+}: {
+  mapWidth: number;
+  mapHeight: number;
+  playerPosition: { x: number; y: number };
+  playerFacing: { x: number; y: number };
+  safeZone?: SafeZone;
+  panelPosition?: UiPosition;
+  onPanelPositionChange?: (position: UiPosition, persist: boolean) => void;
+}) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  const [expanded, setExpanded] = useState(true);
+  const size = 244;
+  const headerHeight = 27;
+  const infoHeight = 40;
+  const padding = 10;
+  const chromePadding = 2;
+  const panelWidth = size + chromePadding * 2;
+  const mapBodyHeight = expanded ? size + chromePadding * 2 : 0;
+  const frameHeight = headerHeight + mapBodyHeight;
+  const panelHeight = infoHeight + frameHeight;
+  const mapScale = Math.min((size - padding * 2) / Math.max(1, mapWidth), (size - padding * 2) / Math.max(1, mapHeight));
+  const renderedWidth = mapWidth * mapScale;
+  const renderedHeight = mapHeight * mapScale;
+  const offsetX = (size - renderedWidth) / 2;
+  const offsetY = (size - renderedHeight) / 2;
+  const toMapX = (x: number) => offsetX + Math.max(0, Math.min(mapWidth, x)) * mapScale;
+  const toMapY = (y: number) => offsetY + (mapHeight - Math.max(0, Math.min(mapHeight, y))) * mapScale;
+  const rawCircleX = (x: number) => offsetX + x * mapScale;
+  const rawCircleY = (y: number) => offsetY + (mapHeight - y) * mapScale;
+  const safeZonePhase = safeZone?.phase;
+  const isWaiting = safeZonePhase === 'waiting';
+  const isCountdownOrShrinking = safeZonePhase === 'countdown' || safeZonePhase === 'shrinking';
+  const isShrinking = safeZone?.shrinking === true || safeZonePhase === 'shrinking';
+  const currentRadius = Math.max(0, Number(safeZone?.currentHalf ?? 0)) * mapScale;
+  const hasCurrentCircle = !!safeZone && currentRadius > 0;
+  const targetRadius = Math.max(0, Number(safeZone?.targetHalf ?? 0)) * mapScale;
+  const hasFutureCircle = !!safeZone && isCountdownOrShrinking && safeZone.targetVisible === true && targetRadius > 0;
+  const mergedCircleEpsilon = 0.6;
+  const circlesMerged = hasCurrentCircle && hasFutureCircle && (() => {
+    const currentCx = Number(safeZone?.centerX ?? 0);
+    const currentCy = Number(safeZone?.centerY ?? 0);
+    const futureCx = Number(safeZone?.targetCenterX ?? safeZone?.centerX ?? 0);
+    const futureCy = Number(safeZone?.targetCenterY ?? safeZone?.centerY ?? 0);
+    const centerDelta = Math.hypot(rawCircleX(currentCx) - rawCircleX(futureCx), rawCircleY(currentCy) - rawCircleY(futureCy));
+    const radiusDelta = Math.abs(currentRadius - targetRadius);
+    return centerDelta <= mergedCircleEpsilon && radiusDelta <= mergedCircleEpsilon;
+  })();
+  const markerX = toMapX(playerPosition.x);
+  const markerY = toMapY(playerPosition.y);
+  const facingLength = Math.hypot(playerFacing.x, playerFacing.y) || 1;
+  const facingX = playerFacing.x / facingLength;
+  const facingY = playerFacing.y / facingLength;
+  const markerRotation = Math.atan2(facingX, facingY) * 180 / Math.PI;
+  const totalCircles = Math.max(1, Math.floor(Number(safeZone?.totalCircles ?? 8)));
+  const inferredCircleNumber = (() => {
+    if (typeof safeZone?.circleNumber === 'number') return safeZone.circleNumber;
+    const phase = safeZone?.phase;
+    const stageIndex = phase === 'countdown' || phase === 'shrinking'
+      ? Number(safeZone?.targetStageIndex ?? (Number(safeZone?.stageIndex ?? 0) + 1))
+      : Number(safeZone?.stageIndex ?? 0);
+    return 3 + Math.max(0, Math.floor(Number.isFinite(stageIndex) ? stageIndex : 0));
+  })();
+  const displayCircleNumber = Math.max(1, Math.min(totalCircles, Math.floor(inferredCircleNumber)));
+  const fullPoisonActive = !safeZone || safeZone.fullPoison || safeZone.phase === 'complete' || Number(safeZone.currentHalf ?? 0) <= 0;
+  const distanceSafeZone = safeZone
+    ? {
+        centerX: hasFutureCircle ? Number(safeZone.targetCenterX ?? safeZone.centerX) : Number(safeZone.centerX),
+        centerY: hasFutureCircle ? Number(safeZone.targetCenterY ?? safeZone.centerY) : Number(safeZone.centerY),
+        radius: Math.max(0, hasFutureCircle ? Number(safeZone.targetHalf ?? 0) : Number(safeZone.currentHalf ?? 0)),
+      }
+    : null;
+  const distanceText = fullPoisonActive
+    ? '已全毒'
+    : distanceSafeZone
+      ? (() => {
+          const distanceToEdge = Math.max(0, Math.hypot(playerPosition.x - distanceSafeZone.centerX, playerPosition.y - distanceSafeZone.centerY) - distanceSafeZone.radius);
+          return distanceToEdge <= 0.05 ? '安全区内' : `距离安全区: ${distanceToEdge.toFixed(1)}尺`;
+        })()
+      : '安全区内';
+
+  const beginDrag = (event: React.MouseEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const rect = panelRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const baseLeft = rect.left;
+    const baseTop = rect.top;
+    const clampPosition = (left: number, top: number) => {
+      const maxLeft = Math.max(8, window.innerWidth - rect.width - 8);
+      const maxTop = Math.max(8, window.innerHeight - rect.height - 8);
+      return {
+        left: Math.max(8, Math.min(maxLeft, left)),
+        top: Math.max(8, Math.min(maxTop, top)),
+      };
+    };
+
+    const move = (moveEvent: MouseEvent) => {
+      moveEvent.preventDefault();
+      onPanelPositionChange?.(clampPosition(baseLeft + moveEvent.clientX - startX, baseTop + moveEvent.clientY - startY), false);
+    };
+    const end = (upEvent: MouseEvent) => {
+      onPanelPositionChange?.(clampPosition(baseLeft + upEvent.clientX - startX, baseTop + upEvent.clientY - startY), true);
+      document.removeEventListener('mousemove', move);
+      document.removeEventListener('mouseup', end);
+    };
+    onPanelPositionChange?.(clampPosition(baseLeft, baseTop), false);
+    document.addEventListener('mousemove', move);
+    document.addEventListener('mouseup', end);
+  };
+
+  return (
+    <div
+      ref={panelRef}
+      data-ui-interactive
+      aria-label="玉门关小地图"
+      style={{
+        position: 'absolute',
+        ...(panelPosition ? { left: panelPosition.left, top: panelPosition.top } : { top: 50, right: 14 }),
+        width: panelWidth,
+        height: panelHeight,
+        zIndex: 545,
+        pointerEvents: 'auto',
+        overflow: 'visible',
+      }}
+    >
+      <div style={{
+        height: infoHeight,
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        gap: 3,
+        paddingLeft: 4,
+        color: '#fff7d4',
+        fontSize: 13,
+        fontWeight: 800,
+        fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+        lineHeight: 1.05,
+        textShadow: '0 1px 3px rgba(0,0,0,0.9)',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+      }}>
+        <div style={{ color: fullPoisonActive ? '#ff4a3d' : '#fff7d4' }}>{distanceText}</div>
+        <div>{`已刷圈/总圈数: ${displayCircleNumber}/${totalCircles}`}</div>
+      </div>
+      <div style={{
+        height: frameHeight,
+        borderRadius: 2,
+        background: 'rgba(45, 47, 36, 0.94)',
+        border: '1px solid rgba(23, 26, 20, 0.88)',
+        boxShadow: '0 10px 24px rgba(0,0,0,0.42)',
+        overflow: 'hidden',
+      }}>
+        <div
+          data-ui-drag
+          onMouseDown={beginDrag}
+          style={{
+            height: headerHeight,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 7,
+            padding: '0 7px',
+            background: 'rgba(36, 39, 29, 0.98)',
+            borderBottom: expanded ? '1px solid rgba(13, 16, 12, 0.86)' : 'none',
+            color: '#e6e6dd',
+            fontSize: 12,
+            fontWeight: 700,
+            fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            lineHeight: 1,
+            cursor: 'move',
+            userSelect: 'none',
+          }}
+        >
+          <span style={{ width: 14, color: '#bed6e2', fontSize: 14, textAlign: 'center' }}>≡</span>
+          <button
+            type="button"
+            aria-label={expanded ? '收起小地图' : '展开小地图'}
+            aria-expanded={expanded}
+            onMouseDown={(event) => event.stopPropagation()}
+            onClick={() => setExpanded((value) => !value)}
+            style={{
+              marginLeft: 'auto',
+              width: 22,
+              height: 22,
+              border: 'none',
+              borderRadius: 2,
+              background: 'transparent',
+              color: '#c7d8e6',
+              fontSize: 15,
+              lineHeight: '20px',
+              padding: 0,
+              cursor: 'pointer',
+              fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
+            }}
+          >{expanded ? '⌃' : '⌄'}</button>
+        </div>
+        {expanded && (
+          <svg viewBox={`0 0 ${size} ${size}`} width={size} height={size} style={{ display: 'block', margin: chromePadding, pointerEvents: 'none' }}>
+            <defs>
+              <clipPath id="yumen-minimap-map-clip">
+                <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} />
+              </clipPath>
+            </defs>
+            <rect x={offsetX} y={offsetY} width={renderedWidth} height={renderedHeight} fill="#c99a58" stroke="rgba(37, 35, 26, 0.78)" strokeWidth="1.5" />
+            {hasFutureCircle && (
+              <circle
+                cx={rawCircleX(Number(safeZone.targetCenterX ?? safeZone.centerX))}
+                cy={rawCircleY(Number(safeZone.targetCenterY ?? safeZone.centerY))}
+                r={targetRadius}
+                fill="none"
+                stroke="#22b8ff"
+                strokeWidth="3"
+                clipPath="url(#yumen-minimap-map-clip)"
+              />
+            )}
+            {hasCurrentCircle && !circlesMerged && (
+              <circle
+                cx={rawCircleX(Number(safeZone.centerX))}
+                cy={rawCircleY(Number(safeZone.centerY))}
+                r={currentRadius}
+                fill="none"
+                stroke={isWaiting ? '#22b8ff' : '#ffd04a'}
+                strokeWidth={isWaiting ? '3' : '2.5'}
+                strokeDasharray={isWaiting ? undefined : '8 5'}
+                clipPath="url(#yumen-minimap-map-clip)"
+              />
+            )}
+            <g transform={`translate(${markerX} ${markerY}) rotate(${markerRotation})`}>
+              <path d="M 0 -8.5 C 3.2 -3.4 5.1 1.4 5 5.1 C 2.1 3.8 -2.1 3.8 -5 5.1 C -5.1 1.4 -3.2 -3.4 0 -8.5 Z" fill="#e7df60" stroke="rgba(54, 65, 38, 0.95)" strokeWidth="1.2" strokeLinejoin="round" />
+              <path d="M 0 -5.5 C 1.3 -2.6 2.1 0.1 2.1 2.1 C 0.9 1.6 -0.9 1.6 -2.1 2.1 C -2.1 0.1 -1.3 -2.6 0 -5.5 Z" fill="rgba(255,255,255,0.42)" />
+            </g>
+          </svg>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function formatCoordinateText(position: Partial<V3> | null | undefined, fallback: Partial<V3>) {
+  const x = Number.isFinite(position?.x) ? Number(position?.x) : Number(fallback.x ?? 0);
+  const y = Number.isFinite(position?.y) ? Number(position?.y) : Number(fallback.y ?? 0);
+  const z = Number.isFinite(position?.z) ? Number(position?.z) : Number(fallback.z ?? 0);
+  return `X ${x.toFixed(2)}  Y ${y.toFixed(2)}  Z ${z.toFixed(2)}`;
+}
+
+function formatCameraDashNumber(value: number, digits = 2) {
+  return Number.isFinite(value) ? value.toFixed(digits) : '-';
+}
+
+function formatCameraDashPosition(position: V3 | null) {
+  return position ? formatCoordinateText(position, position) : '-';
+}
+
+function FloatingCoordinateDisplay({
+  visible,
+  positionRef,
+  fallbackPosition,
+  onCopy,
+}: {
+  visible: boolean;
+  positionRef: React.MutableRefObject<V3>;
+  fallbackPosition: Partial<V3>;
+  onCopy: () => void;
+}) {
+  const [text, setText] = useState(() => formatCoordinateText(positionRef.current, fallbackPosition));
+
+  useEffect(() => {
+    if (!visible) return;
+    const update = () => setText(formatCoordinateText(positionRef.current, fallbackPosition));
+    update();
+    const id = window.setInterval(update, 100);
+    return () => window.clearInterval(id);
+  }, [fallbackPosition.x, fallbackPosition.y, fallbackPosition.z, positionRef, visible]);
+
+  if (!visible) return null;
+
+  return (
+    <div
+      data-ui-interactive
+      style={{
+        position: 'fixed',
+        left: '50%',
+        top: 52,
+        transform: 'translateX(-50%)',
+        zIndex: 991,
+        minHeight: 32,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        padding: '5px 7px 5px 10px',
+        borderRadius: 4,
+        border: '1px solid rgba(138, 189, 255, 0.50)',
+        background: 'rgba(18, 31, 48, 0.92)',
+        color: '#d8ecff',
+        fontSize: 12,
+        fontWeight: 800,
+        pointerEvents: 'auto',
+        userSelect: 'text',
+      }}
+    >
+      <span>{text}</span>
+      <button
+        type="button"
+        onClick={onCopy}
+        title="复制坐标"
+        aria-label="复制坐标"
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: 4,
+          border: '1px solid rgba(138, 189, 255, 0.58)',
+          background: 'rgba(39, 69, 105, 0.82)',
+          color: '#d8ecff',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          flexShrink: 0,
+        }}
+      >
+        <Clipboard size={14} strokeWidth={2.2} aria-hidden="true" />
+      </button>
+    </div>
+  );
+}
+
 interface BattleArenaProps {
-  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; consumableCounts?: Record<string, number>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null };
-  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> };
+  me: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; activeDash?: any; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; consumableCooldowns?: Record<string, { expiresAt: number }>; consumableCounts?: Record<string, number>; globalGcdTicks?: number; visualGcd?: VisualGcdState | null; moveSpeed?: number; tiYunZongPenaltyConsumed?: boolean; yumenDefeated?: boolean; yumenDefeatedAt?: number; specialAbilityStates?: Record<string, any> };
+  opponent: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; yumenDefeated?: boolean; yumenDefeatedAt?: number };
   /** All other players (opponents) — supports 1v1 and N-player modes */
-  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }> }[];
+  opponents?: { userId: string; username?: string; position: Position; hp: number; maxHp?: number; attackDamage?: number; shield?: number; huajinPct?: number; hand?: any[]; buffs?: ActiveBuff[]; facing?: Facing; activeChannel?: ActiveChannel; targetSelection?: TargetSelection; inCombat?: boolean; combatLinks?: Record<string, { lastActionAt: number }>; yumenDefeated?: boolean; yumenDefeatedAt?: number }[];
+  isAdmin?: boolean;
   gameId: string;
   onCastAbility: (
     abilityInstanceId: string,
@@ -3717,11 +4647,16 @@ interface BattleArenaProps {
   /** Pickup items (ability books) currently on the ground */
   pickups?: PickupItem[];
   /** Safe zone state for poison zone rendering */
-  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  safeZone?: SafeZone;
+  /** Testing toggle: cap runtime cooldown and charge recovery to 3 seconds. */
+  testShortCooldownEnabled?: boolean;
+  /** Hard movement boundary for yumen. */
+  playArea?: PlayAreaBounds;
   /** Persistent ground damage zones */
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
   entities?: TargetEntity[];
+  yumenResults?: YumenResults;
   chatMessages?: ChatMessage[];
   onSendChatMessage?: (text: string, channel: ChatChannel) => Promise<{ ok: boolean; error?: string } | void> | { ok: boolean; error?: string } | void;
   onFetchChatMessages?: () => Promise<{ ok: boolean; messages?: ChatMessage[]; error?: string }>;
@@ -3736,6 +4671,7 @@ export default function BattleArena({
   me,
   opponent,
   opponents,
+  isAdmin = false,
   gameId,
   onCastAbility,
   onCancelChannel,
@@ -3753,23 +4689,43 @@ export default function BattleArena({
   events = [],
   pickups = [],
   safeZone,
+  testShortCooldownEnabled = false,
+  playArea,
   groundZones,
   entities,
+  yumenResults,
   chatMessages = [],
   onSendChatMessage,
   onFetchChatMessages,
   mode,
 }: BattleArenaProps) {
+  const isExportedMap = isExportedMapMode(mode);
+  const isYumenMode = isYumen1v1BasicMode(mode);
+  const canAccessTestingPanels = !isYumenMode || isAdmin;
+  const yumenDefeatedUserIdsFromEvents = useMemo(() => {
+    if (!isYumenMode) return new Set<string>();
+    const defeatedIds = new Set<string>();
+    for (const event of events) {
+      if (event?.type === 'YUMEN_DEFEAT') {
+        const defeatedUserId = typeof event.defeatedUserId === 'string' ? event.defeatedUserId : event.targetUserId;
+        if (typeof defeatedUserId === 'string' && defeatedUserId) defeatedIds.add(defeatedUserId);
+      } else if (event?.type === 'YUMEN_REVIVE') {
+        const revivedUserId = typeof event.revivedUserId === 'string' ? event.revivedUserId : event.targetUserId;
+        if (typeof revivedUserId === 'string' && revivedUserId) defeatedIds.delete(revivedUserId);
+      }
+    }
+    return defeatedIds;
+  }, [events, isYumenMode]);
   const mapData = useMemo(() => getMapForMode(mode), [mode]);
-  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : mode === 'collision-test' ? mapData.width : PUBG_WIDTH;
-  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : mode === 'collision-test' ? mapData.height : PUBG_HEIGHT;
-  const playerRadius = mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
+  const ARENA_WIDTH  = mode === 'arena' ? ARENA_WIDTH_SMALL  : isExportedMap ? mapData.width : PUBG_WIDTH;
+  const ARENA_HEIGHT = mode === 'arena' ? ARENA_HEIGHT_SMALL : isExportedMap ? mapData.height : PUBG_HEIGHT;
+  const playerRadius = isExportedMap ? COLLISION_TEST_PLAYER_RADIUS : DEFAULT_PLAYER_RADIUS;
   ensureResizeObserverSupport();
 
   const crashRecorder = useMemo(() => getClientCrashRecorder(), []);
   const latencyRecorder = useMemo(() => getClientLatencyRecorder(), []);
   const storedUnitScale = getStoredUnitScale(mode);
-  const modePickups = useMemo(() => (mode === 'collision-test' ? [] : pickups), [mode, pickups]);
+  const modePickups = useMemo(() => (isExportedMap ? [] : pickups), [isExportedMap, pickups]);
   const channelAbilityByBuffId = useMemo(() => {
     const next = new Map<number, any>();
     for (const ability of Object.values(abilities)) {
@@ -3781,6 +4737,9 @@ export default function BattleArena({
     return next;
   }, [abilities]);
   const mapObjectsRef = useRef(mapData.objects);
+  const [localPlayAreaOverride, setLocalPlayAreaOverride] = useState<PlayAreaBounds | null>(null);
+  const effectivePlayArea = localPlayAreaOverride ?? playArea;
+  const playAreaRef = useRef<PlayAreaBounds | undefined>(playArea);
   const entitiesRef = useRef<TargetEntity[]>(entities ?? []);
   useEffect(() => {
     mapObjectsRef.current = mapData.objects;
@@ -3788,6 +4747,15 @@ export default function BattleArena({
   useEffect(() => {
     entitiesRef.current = entities ?? [];
   }, [entities]);
+  useEffect(() => {
+    playAreaRef.current = effectivePlayArea;
+  }, [effectivePlayArea]);
+  useEffect(() => {
+    if (!isYumenMode) setLocalPlayAreaOverride(null);
+  }, [isYumenMode]);
+  useEffect(() => {
+    setLocalPlayAreaOverride(null);
+  }, [gameId]);
   // CODE FRESHNESS MARKER — if you see this in console, the new code IS running
   useEffect(() => { console.log('[BA-FRESH] BattleArena v2 loaded — activeDash support active'); }, []);
   // Prevent page scroll while the game is mounted (critical for touch devices)
@@ -3844,22 +4812,62 @@ export default function BattleArena({
     () => ((opponents && opponents.length > 0 ? opponents : [opponent]).filter(Boolean)),
     [opponents, opponent],
   );
+  const yumenSpectatorUserIds = useMemo(() => {
+    if (!isYumenMode) return new Set<string>();
+    const ids = new Set<string>();
+    for (const playerEntry of [me, ...opponentsList]) {
+      if (!playerEntry?.userId) continue;
+      if (hasYumenSpectatorClient(playerEntry.buffs) || playerEntry.yumenDefeated === true) {
+        ids.add(playerEntry.userId);
+        continue;
+      }
+      if (yumenDefeatedUserIdsFromEvents.has(playerEntry.userId)) {
+        ids.add(playerEntry.userId);
+      }
+    }
+    return ids;
+  }, [isYumenMode, me, opponentsList, yumenDefeatedUserIdsFromEvents]);
   const selfHasHongMengTianJin = useMemo(
     () => hasHongMengTianJinClient(me?.buffs),
     [me?.buffs],
   );
+  const selfYumenSpectating = useMemo(
+    () => isYumenMode && typeof me?.userId === 'string' && yumenSpectatorUserIds.has(me.userId),
+    [isYumenMode, me?.userId, yumenSpectatorUserIds],
+  );
+  const selfHasYumenPrep = isYumenMode && hasYumenPrepClient(me?.buffs);
+  const canOpenMartialPanel = !isYumenMode || selfHasYumenPrep;
+  const selfHasYumenKuangSha = isYumenMode && hasYumenKuangShaClient(me?.buffs);
+  useEffect(() => {
+    if (!canOpenMartialPanel) {
+      setShowMartialPanel(false);
+    }
+  }, [canOpenMartialPanel]);
   const worldVisibleOpponentsList = useMemo(
     () => (selfHasHongMengTianJin ? [] : opponentsList),
     [opponentsList, selfHasHongMengTianJin],
   );
   const visibleOpponentsList = useMemo(
-    () => worldVisibleOpponentsList.filter((o) => !shouldHideOpponentByStealth(o?.buffs)),
-    [worldVisibleOpponentsList],
+    () => worldVisibleOpponentsList.filter((o) => {
+      const opponentIsYumenSpectator = typeof o?.userId === 'string' && yumenSpectatorUserIds.has(o.userId);
+      if (selfYumenSpectating && opponentIsYumenSpectator) return true;
+      return !shouldHideOpponentByStealth(o?.buffs);
+    }),
+    [selfYumenSpectating, worldVisibleOpponentsList, yumenSpectatorUserIds],
   );
   const targetableOpponentsList = useMemo(
     () => worldVisibleOpponentsList.filter((o) => !blocksTargetingClient(o?.buffs)),
     [worldVisibleOpponentsList],
   );
+  const yumenAlivePlayerCount = useMemo(() => {
+    if (!isYumenMode) return 0;
+    return [me, ...opponentsList].filter((playerEntry) => {
+      if (!playerEntry) return false;
+      if (typeof playerEntry.userId === 'string' && yumenSpectatorUserIds.has(playerEntry.userId)) return false;
+      if (hasYumenSpectatorClient(playerEntry.buffs)) return false;
+      return Number(playerEntry.hp ?? 0) > 0;
+    }).length;
+  }, [isYumenMode, me, opponentsList, yumenSpectatorUserIds]);
 
   useEffect(() => installAbilityAudioUnlock(), []);
 
@@ -3888,7 +4896,7 @@ export default function BattleArena({
   // Mobile detection: touch device without fine pointer (mouse) = phone/tablet
   const [isMobileDevice, setIsMobileDevice]    = useState(false);
   const [showCheatWindow,  setShowCheatWindow]  = useState(false);
-  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(true);
+  const [showCheatAbilityPanelEntry, setShowCheatAbilityPanelEntry] = useState(() => !isYumenMode);
   const [showMartialPanel, setShowMartialPanel] = useState(false);
   const [chatWindows, setChatWindows] = useState<ChatWindowConfig[]>(() => loadChatWindows());
   const [chatMainWindowIds, setChatMainWindowIds] = useState<string[]>(() => loadChatWindows().map((entry) => entry.id));
@@ -3929,6 +4937,7 @@ export default function BattleArena({
   const detachedChatAtBottomRef = useRef<Record<string, boolean>>({});
   const detachedChatDisplayStateRef = useRef<Record<string, { key: string; length: number }>>({});
   const chatInputCursorEndPendingRef = useRef(false);
+  const chatInputCursorPendingRef = useRef<number | null>(null);
   const lastChatSearchFetchKeyRef = useRef('');
   const chatTabClickSuppressedRef = useRef<string | null>(null);
   const detachedChatLogRefs = useRef<Record<string, HTMLDivElement | null>>({});
@@ -4149,14 +5158,24 @@ export default function BattleArena({
     return () => window.clearTimeout(timer);
   }, [activeChatWindow, chatSearchOpen, chatSearchQuery, onFetchChatMessages]);
   useEffect(() => {
-    if (!chatInputCursorEndPendingRef.current) return;
+    const moveToEnd = chatInputCursorEndPendingRef.current;
+    const moveToCursor = chatInputCursorPendingRef.current;
+    if (!moveToEnd && moveToCursor === null) return;
     chatInputCursorEndPendingRef.current = false;
+    chatInputCursorPendingRef.current = null;
     window.requestAnimationFrame(() => {
       const input = chatInputRef.current;
       if (!input) return;
       input.focus();
-      const end = input.value.length;
-      input.setSelectionRange(end, end);
+      if (moveToEnd) {
+        const end = input.value.length;
+        input.setSelectionRange(end, end);
+        return;
+      }
+      if (moveToCursor !== null) {
+        const clamped = Math.max(0, Math.min(moveToCursor, input.value.length));
+        input.setSelectionRange(clamped, clamped);
+      }
     });
   }, [chatInputValue]);
   useEffect(() => {
@@ -4222,6 +5241,11 @@ export default function BattleArena({
   const copyMessageToChatInput = useCallback((text: string) => {
     chatInputCursorEndPendingRef.current = true;
     setChatInputValue(text.slice(0, CHAT_MAX_INPUT_LENGTH));
+  }, []);
+  const appendAbilityNameToChatInput = useCallback((abilityName: string) => {
+    chatInputCursorEndPendingRef.current = true;
+    const tag = `[${abilityName}]`;
+    setChatInputValue((current) => (current + tag).slice(0, CHAT_MAX_INPUT_LENGTH));
   }, []);
   const scrollChatLog = useCallback((target: 'up' | 'top' | 'down' | 'bottom') => {
     const log = chatLogRef.current;
@@ -4423,13 +5447,6 @@ export default function BattleArena({
     }
     return true;
   }, [focusChatInput, onSendChatMessage]);
-  const submitChatMessage = useCallback(async () => {
-    const text = chatInputValue.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
-    setChatInputValue('');
-    if (!text) return;
-    setActiveChatWindowId('map');
-    await sendChatText(text, 'map', true);
-  }, [chatInputValue, sendChatText]);
   const beginChatResize = useCallback((groupId: 'main' | string, event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     event.stopPropagation();
@@ -4594,6 +5611,18 @@ export default function BattleArena({
   const [pendingGroundCastAbilityId, setPendingGroundCastAbilityId] = useState<string | null>(null);
   const [groundCastPreview, setGroundCastPreview] = useState<{ x: number; y: number; z?: number; isValid?: boolean } | null>(null);
   const [showControlPanel, setShowControlPanel] = useState(false);
+  const [yumenBoundaryEditMode, setYumenBoundaryEditMode] = useState(false);
+  const [yumenDamageMode, setYumenDamageMode] = useState<'test' | 'full'>(() => {
+    try {
+      if (typeof window === 'undefined') return 'test';
+      return localStorage.getItem(YUMEN_DAMAGE_MODE_STORAGE_KEY) === 'full' ? 'full' : 'test';
+    } catch {
+      return 'test';
+    }
+  });
+  const [yumenAutoFullShrink, setYumenAutoFullShrink] = useState(false);
+  const yumenBoundaryEditModeRef = useRef(false);
+  const yumenAutoFullShrinkStartedRef = useRef<string | null>(null);
   const [showHeartDetailsPanel, setShowHeartDetailsPanel] = useState(false);
   const [showHeartStatSettings, setShowHeartStatSettings] = useState(false);
   const [showCombatPresetBar, setShowCombatPresetBar] = useState(false);
@@ -4608,6 +5637,28 @@ export default function BattleArena({
       return DEFAULT_HEART_STAT_VISIBILITY;
     }
   });
+  useEffect(() => {
+    yumenBoundaryEditModeRef.current = yumenBoundaryEditMode;
+  }, [yumenBoundaryEditMode]);
+  useEffect(() => {
+    if (!isYumenMode && yumenBoundaryEditMode) setYumenBoundaryEditMode(false);
+  }, [isYumenMode, yumenBoundaryEditMode]);
+  useEffect(() => {
+    try {
+      if (typeof window === 'undefined') return;
+      setYumenAutoFullShrink(localStorage.getItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY) === '1');
+    } catch {}
+  }, []);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_DAMAGE_MODE_STORAGE_KEY, yumenDamageMode);
+    } catch {}
+  }, [yumenDamageMode]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_AUTO_FULL_SHRINK_STORAGE_KEY, yumenAutoFullShrink ? '1' : '0');
+    } catch {}
+  }, [yumenAutoFullShrink]);
   useEffect(() => {
     try {
       localStorage.setItem(HEART_STAT_STORAGE_KEY, JSON.stringify(heartStatVisibility));
@@ -4757,13 +5808,63 @@ export default function BattleArena({
     } catch {}
   }, [inGameWarningScale]);
   const [activeInGameWarning, setActiveInGameWarning] = useState<InGameWarningEvent | null>(null);
-  const inGameWarningTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inGameWarningTimerRef = useRef<number | null>(null);
   const inGameWarningSeqRef = useRef(0);
+  const [activeYumenDefeatNotice, setActiveYumenDefeatNotice] = useState<YumenDefeatNotice | null>(null);
+  const yumenDefeatNoticeTimerRef = useRef<number | null>(null);
+  const [activeYumenKillConfirm, setActiveYumenKillConfirm] = useState<YumenKillConfirmNotice | null>(null);
+  const yumenKillConfirmTimerRef = useRef<number | null>(null);
+  const yumenResultAutoLeaveKeyRef = useRef<number | null>(null);
+  const [yumenKillNoticeSize, setYumenKillNoticeSize] = useState<YumenHudSize>(() => loadYumenHudSize(
+    YUMEN_KILL_NOTICE_SIZE_STORAGE_KEY,
+    { width: YUMEN_KILL_NOTICE_BASE_WIDTH, height: YUMEN_KILL_NOTICE_BASE_HEIGHT },
+    normalizeYumenKillNoticeWidth,
+    normalizeYumenKillNoticeHeight,
+  ));
+  const [yumenKillConfirmSize, setYumenKillConfirmSize] = useState<YumenHudSize>(() => loadYumenHudSize(
+    YUMEN_KILL_CONFIRM_SIZE_STORAGE_KEY,
+    { width: YUMEN_KILL_CONFIRM_BASE_WIDTH, height: YUMEN_KILL_CONFIRM_BASE_HEIGHT },
+    normalizeYumenKillConfirmWidth,
+    normalizeYumenKillConfirmHeight,
+  ));
+  const [yumenAliveCountSize, setYumenAliveCountSize] = useState<YumenHudSize>(() => loadYumenHudSize(
+    YUMEN_ALIVE_COUNT_SIZE_STORAGE_KEY,
+    { width: YUMEN_ALIVE_COUNT_BASE_WIDTH, height: YUMEN_ALIVE_COUNT_BASE_HEIGHT },
+    normalizeYumenAliveCountWidth,
+    normalizeYumenAliveCountHeight,
+  ));
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_KILL_NOTICE_SIZE_STORAGE_KEY, JSON.stringify(yumenKillNoticeSize));
+    } catch {}
+  }, [yumenKillNoticeSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_KILL_CONFIRM_SIZE_STORAGE_KEY, JSON.stringify(yumenKillConfirmSize));
+    } catch {}
+  }, [yumenKillConfirmSize]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(YUMEN_ALIVE_COUNT_SIZE_STORAGE_KEY, JSON.stringify(yumenAliveCountSize));
+    } catch {}
+  }, [yumenAliveCountSize]);
 
   useEffect(() => {
     const id = window.setInterval(() => setSystemTime(new Date()), 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  useEffect(() => {
+    if (!isYumenMode || !yumenResults?.autoLeaveAt) return;
+    const endedAt = Number(yumenResults.endedAt ?? 0);
+    if (yumenResultAutoLeaveKeyRef.current === endedAt) return;
+    if (systemTime.getTime() < yumenResults.autoLeaveAt) return;
+    yumenResultAutoLeaveKeyRef.current = endedAt;
+    void onLeaveGame?.();
+  }, [isYumenMode, onLeaveGame, systemTime, yumenResults?.autoLeaveAt, yumenResults?.endedAt]);
 
   useEffect(() => {
     let disposed = false;
@@ -5023,9 +6124,7 @@ export default function BattleArena({
   const sceneRecoveryTimerRef = useRef<number | null>(null);
   const mainCanvasCleanupRef = useRef<(() => void) | null>(null);
   const [showLoadPerformancePanel, setShowLoadPerformancePanel] = useState(false);
-  const [showCrashDiagnosticsPanel, setShowCrashDiagnosticsPanel] = useState(false);
   const [loadPerformanceSnapshot, setLoadPerformanceSnapshot] = useState<LoadPerformanceSnapshot | null>(null);
-  const [crashDiagnosticsSummary, setCrashDiagnosticsSummary] = useState<CrashRecorderSummary>(() => crashRecorder.getSummary());
   const sceneRuntimeMetricsRef = useRef<SceneRuntimeMetrics | null>(null);
   const loadPerformanceStartedAtRef = useRef(performance.now());
   const loadPerformanceWallStartedAtRef = useRef(Date.now());
@@ -5035,12 +6134,50 @@ export default function BattleArena({
   const [showSceneTestingPanel, setShowSceneTestingPanel] = useState(false);
   const [showCameraEventTestingPanel, setShowCameraEventTestingPanel] = useState(false);
   const [showHiddenBuffStatusBar, setShowHiddenBuffStatusBar] = useState(false);
+  const [showCoordinateDisplay, setShowCoordinateDisplay] = useState(false);
   const [escPanelPage, setEscPanelPage] = useState<'main' | 'game-settings' | 'sound-settings' | 'hotkey-settings'>('main');
   const [escMainTab, setEscMainTab] = useState<'normal' | 'test'>('normal');
-  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'martial' | 'chat'>('switches');
+  const [escTestPage, setEscTestPage] = useState<'switches' | 'lighting' | 'camera' | 'martial' | 'chat' | 'kill' | 'sandstorm'>('switches');
+  const [yumenSandstormOverlaySettings, setYumenSandstormOverlaySettings] = useState<YumenSandstormOverlaySettings>(() => {
+    if (typeof window === 'undefined') return DEFAULT_YUMEN_SANDSTORM_OVERLAY;
+    try {
+      return normalizeSandstormOverlaySettings(JSON.parse(localStorage.getItem(YUMEN_SANDSTORM_OVERLAY_STORAGE_KEY) ?? '{}'));
+    } catch {
+      return DEFAULT_YUMEN_SANDSTORM_OVERLAY;
+    }
+  });
+  const yumenSandstormOverlayValues = useMemo(
+    () => buildYumenSandstormOverlayValues(yumenSandstormOverlaySettings),
+    [yumenSandstormOverlaySettings],
+  );
   const [gameSettingsTab, setGameSettingsTab] = useState<GameSettingsTabId>('general');
   const [customUiPromptPos, setCustomUiPromptPos] = useState<UiPosition | null>(null);
-  const lightingControlsOpen = showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
+  const lightingControlsOpen = canAccessTestingPanels && showTestingPanel && escMainTab === 'test' && escTestPage === 'lighting';
+
+  useEffect(() => {
+    if (canAccessTestingPanels) return;
+    if (escMainTab === 'test') setEscMainTab('normal');
+    if (escTestPage !== 'switches') setEscTestPage('switches');
+    if (showControlPanel) setShowControlPanel(false);
+    if (showSceneTestingPanel) setShowSceneTestingPanel(false);
+    if (showCameraEventTestingPanel) setShowCameraEventTestingPanel(false);
+    if (showCheatAbilityPanelEntry) setShowCheatAbilityPanelEntry(false);
+    if (showCheatWindow) setShowCheatWindow(false);
+  }, [
+    canAccessTestingPanels,
+    escMainTab,
+    escTestPage,
+    showCameraEventTestingPanel,
+    showCheatAbilityPanelEntry,
+    showCheatWindow,
+    showControlPanel,
+    showSceneTestingPanel,
+  ]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(YUMEN_SANDSTORM_OVERLAY_STORAGE_KEY, JSON.stringify(yumenSandstormOverlaySettings));
+  }, [yumenSandstormOverlaySettings]);
 
   useEffect(() => () => {
     if (sceneRecoveryTimerRef.current !== null) {
@@ -5048,6 +6185,12 @@ export default function BattleArena({
     }
     if (inGameWarningTimerRef.current !== null) {
       window.clearTimeout(inGameWarningTimerRef.current);
+    }
+    if (yumenDefeatNoticeTimerRef.current !== null) {
+      window.clearTimeout(yumenDefeatNoticeTimerRef.current);
+    }
+    if (yumenKillConfirmTimerRef.current !== null) {
+      window.clearTimeout(yumenKillConfirmTimerRef.current);
     }
     mainCanvasCleanupRef.current?.();
     mainCanvasCleanupRef.current = null;
@@ -5145,60 +6288,6 @@ export default function BattleArena({
   }, [loadPerformanceSnapshot?.reportText]);
 
   useEffect(() => {
-    const updateSummary = () => setCrashDiagnosticsSummary(crashRecorder.getSummary());
-    updateSummary();
-    const id = window.setInterval(updateSummary, 1000);
-    return () => window.clearInterval(id);
-  }, [crashRecorder]);
-
-  const copyCrashDiagnosticsReport = useCallback(async () => {
-    const reportText = crashRecorder.getReportText('manual');
-    try {
-      await navigator.clipboard.writeText(reportText);
-      toastSuccess('已复制崩溃诊断');
-    } catch {
-      const textarea = document.createElement('textarea');
-      textarea.value = reportText;
-      textarea.setAttribute('readonly', 'true');
-      textarea.style.position = 'fixed';
-      textarea.style.left = '-9999px';
-      document.body.appendChild(textarea);
-      textarea.select();
-      const ok = document.execCommand('copy');
-      document.body.removeChild(textarea);
-      if (ok) toastSuccess('已复制崩溃诊断');
-      else toastError('复制崩溃诊断失败');
-    }
-    setCrashDiagnosticsSummary(crashRecorder.getSummary());
-  }, [crashRecorder]);
-
-  const uploadCrashDiagnosticsReport = useCallback(async () => {
-    try {
-      const data = await crashRecorder.uploadReport('manual', { compact: false });
-      setCrashDiagnosticsSummary(crashRecorder.getSummary());
-      toastSuccess(data?.reportId ? `已上传诊断 ${data.reportId}` : '已上传诊断');
-    } catch {
-      setCrashDiagnosticsSummary(crashRecorder.getSummary());
-      toastError('上传诊断失败，已保存在本机队列');
-    }
-  }, [crashRecorder]);
-
-  const downloadCrashDiagnosticsReport = useCallback(() => {
-    const report = crashRecorder.buildReport('manual', { compact: false });
-    const reportText = formatCrashDiagnosticsReport(report);
-    const blob = new Blob([reportText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `zhenchuan-crash-${Date.now()}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    setCrashDiagnosticsSummary(crashRecorder.getSummary());
-  }, [crashRecorder]);
-
-  useEffect(() => {
     if (!loadPerformanceSnapshot?.reportText) return;
     (window as any).__zhenchuanLoadReport = loadPerformanceSnapshot.reportText;
     (window as any).__zhenchuanLoadSnapshot = loadPerformanceSnapshot;
@@ -5260,6 +6349,10 @@ export default function BattleArena({
   }, [crashRecorder, gameId]);
 
   const [showMeasurePanel, setShowMeasurePanel] = useState(false);
+  useEffect(() => {
+    if (canAccessTestingPanels || !showMeasurePanel) return;
+    setShowMeasurePanel(false);
+  }, [canAccessTestingPanels, showMeasurePanel]);
   const [showJumpDetailsPanel, setShowJumpDetailsPanel] = useState(false);
   const [showGroundDistanceDetail, setShowGroundDistanceDetail] = useState(false);
   const [envDebugInfo, setEnvDebugInfo] = useState<EnvDebugInfo | null>(null);
@@ -5289,13 +6382,18 @@ export default function BattleArena({
   }), [isMobileDevice]);
   const [cameraZoomLevel, setCameraZoomLevel] = useState(() => cameraDistanceToZoom(cameraSettings.maxDistance));
   const [cameraDebugEntries, setCameraDebugEntries] = useState<CameraDebugEntry[]>([]);
+  const cameraDashPredictionDebugRef = useRef<CameraDashPredictionDebugSnapshot>(createEmptyCameraDashPredictionSnapshot());
+  const [cameraDashPredictionDebug, setCameraDashPredictionDebug] = useState<CameraDashPredictionDebugSnapshot>(() => createEmptyCameraDashPredictionSnapshot());
   const cameraDebugIdRef = useRef(0);
   const cameraEventTestingEnabledRef = useRef(false);
-  const visibleVisualGcd = buildVisibleVisualGcd(
-    me?.visualGcd ?? null,
-    me?.globalGcdTicks,
-    gcdVisibilitySettings,
-  );
+  const runtimeGlobalGcdTicks = getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs);
+  const visibleVisualGcd = selfYumenSpectating
+    ? null
+    : buildVisibleVisualGcd(
+        me?.visualGcd ?? null,
+        runtimeGlobalGcdTicks,
+        gcdVisibilitySettings,
+      );
   const showInGameWarning = useCallback((text: string) => {
     const nextText = text.trim();
     if (!nextText) return;
@@ -5310,6 +6408,45 @@ export default function BattleArena({
       inGameWarningTimerRef.current = null;
     }, IN_GAME_WARNING_DURATION_MS);
   }, []);
+  const showYumenSpectatorAbilityLockWarning = useCallback(() => {
+    showInGameWarning('观战中无法调整技能栏');
+  }, [showInGameWarning]);
+  const showYumenDefeatNotice = useCallback((notice: YumenDefeatNotice) => {
+    if (yumenDefeatNoticeTimerRef.current !== null) {
+      window.clearTimeout(yumenDefeatNoticeTimerRef.current);
+      yumenDefeatNoticeTimerRef.current = null;
+    }
+    setActiveYumenDefeatNotice(notice);
+    yumenDefeatNoticeTimerRef.current = window.setTimeout(() => {
+      setActiveYumenDefeatNotice((current) => current?.id === notice.id ? null : current);
+      yumenDefeatNoticeTimerRef.current = null;
+    }, YUMEN_KILL_NOTICE_DURATION_MS);
+  }, []);
+  const showYumenKillConfirm = useCallback((notice: YumenKillConfirmNotice) => {
+    if (yumenKillConfirmTimerRef.current !== null) {
+      window.clearTimeout(yumenKillConfirmTimerRef.current);
+      yumenKillConfirmTimerRef.current = null;
+    }
+    setActiveYumenKillConfirm(notice);
+    yumenKillConfirmTimerRef.current = window.setTimeout(() => {
+      setActiveYumenKillConfirm((current) => current?.id === notice.id ? null : current);
+      yumenKillConfirmTimerRef.current = null;
+    }, YUMEN_KILL_CONFIRM_DURATION_MS);
+  }, []);
+  const previewYumenKillNotice = useCallback(() => {
+    showYumenDefeatNotice({
+      id: `preview-kill-notice:${Date.now()}`,
+      attackerName: '剑心猫猫糕',
+      defeatedName: '测试账号二',
+      attributed: true,
+    });
+  }, [showYumenDefeatNotice]);
+  const previewYumenKillConfirm = useCallback(() => {
+    showYumenKillConfirm({
+      id: `preview-kill-confirm:${Date.now()}`,
+      defeatedName: '测试账号二',
+    });
+  }, [showYumenKillConfirm]);
   useEffect(() => {
     if (!externalGameWarning?.text) return;
     showInGameWarning(externalGameWarning.text);
@@ -5348,6 +6485,13 @@ export default function BattleArena({
       clearCameraDebugEntries();
     }
   }, [clearCameraDebugEntries, showCameraEventTestingPanel]);
+  useEffect(() => {
+    if (!showCameraEventTestingPanel && !(showTestingPanel && escMainTab === 'test' && escTestPage === 'camera')) return;
+    const id = window.setInterval(() => {
+      setCameraDashPredictionDebug({ ...cameraDashPredictionDebugRef.current });
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [escMainTab, escTestPage, showCameraEventTestingPanel, showTestingPanel]);
   const formatCameraDebugEntry = useCallback((entry: CameraDebugEntry) => {
     const time = new Date(entry.ts).toLocaleTimeString('en-GB', { hour12: false });
     const millis = String(entry.ts % 1000).padStart(3, '0');
@@ -5355,6 +6499,8 @@ export default function BattleArena({
       entry.wallClamp ? 'wall' : null,
       entry.probeClamp ? 'probe' : null,
       entry.groundClamp ? 'ground' : null,
+      entry.skyLook ? 'sky' : null,
+      entry.forwardMove ? 'forward' : null,
       entry.recenter ? 'recenter' : null,
     ].filter(Boolean).join('/');
     const wallLine = entry.wallDebug
@@ -5379,7 +6525,7 @@ export default function BattleArena({
         `look(${entry.lookTarget.x.toFixed(2)}, ${entry.lookTarget.y.toFixed(2)}, ${entry.lookTarget.z.toFixed(2)}) ` +
         `pivot(${entry.pivot.x.toFixed(2)}, ${entry.pivot.y.toFixed(2)}, ${entry.pivot.z.toFixed(2)})`,
       `yaw=${entry.yaw.toFixed(2)} pitch=${entry.pitch.toFixed(2)} zoom=${entry.zoom.toFixed(2)} ` +
-        `dist=${entry.actualDistance.toFixed(2)}/${entry.desiredDistance.toFixed(2)}${flags ? ` flags=${flags}` : ''}`,
+        `dist=${entry.actualDistance.toFixed(2)}/${entry.desiredDistance.toFixed(2)} lookUp=${entry.lookUpRatio.toFixed(2)}${flags ? ` flags=${flags}` : ''}`,
       wallLine,
       probeLine,
     ].filter(Boolean).join('\n');
@@ -5397,9 +6543,18 @@ export default function BattleArena({
       toastError('复制镜头日志失败');
     }
   }, [cameraDebugEntries, formatCameraDebugEntry]);
+  const copyYumenSandstormOverlayValues = useCallback(async () => {
+    const text = `RGB ${yumenSandstormOverlayValues.r}, ${yumenSandstormOverlayValues.g}, ${yumenSandstormOverlayValues.b}\nAlpha ${yumenSandstormOverlayValues.alpha.toFixed(3)}\n${yumenSandstormOverlayValues.rgba}`;
+    try {
+      await navigator.clipboard.writeText(text);
+      toastSuccess('已复制狂沙数值');
+    } catch {
+      toastError('复制狂沙数值失败');
+    }
+  }, [yumenSandstormOverlayValues]);
   const collisionSysRef = useRef<MapCollisionSystem | null>(null);
-  const collisionReadyRef = useRef(mode !== 'collision-test');
-  const [collisionReady, setCollisionReady] = useState(mode !== 'collision-test');
+  const collisionReadyRef = useRef(!isExportedMap);
+  const [collisionReady, setCollisionReady] = useState(!isExportedMap);
   const collisionDebugRef = useRef<CollisionDebugState>({
     enabled: false,
     center: { x: 0, y: 0, z: 0 },
@@ -5407,14 +6562,14 @@ export default function BattleArena({
   });
   useEffect(() => {
     collisionSysRef.current = null;
-    collisionReadyRef.current = mode !== 'collision-test';
-    setCollisionReady(mode !== 'collision-test');
+    collisionReadyRef.current = !isExportedMap;
+    setCollisionReady(!isExportedMap);
     collisionDebugRef.current = {
       enabled: false,
       center: { x: 0, y: 0, z: 0 },
       supportY: null,
     };
-  }, [mode]);
+  }, [isExportedMap]);
   const onCollisionSystemReady = useCallback((sys: MapCollisionSystem) => {
     collisionSysRef.current = sys;
     const pos = localPositionRef.current ?? { x: mapData.width / 2, y: mapData.height / 2 };
@@ -5456,7 +6611,7 @@ export default function BattleArena({
 
       recordLoadStageStart('main-canvas-created', '主场景Canvas创建', startedAt, '等待 Canvas');
       recordLoadStageStart('three-scene-mounted', 'Three场景首帧', startedAt, '等待 renderer');
-      if (mode === 'collision-test') {
+      if (isExportedMap) {
         recordLoadStageStart('collision-ready', '碰撞系统可用', startedAt, collisionReady ? 'collision ready' : '等待 collision ready');
       }
       if (sceneRecovering) {
@@ -5480,7 +6635,7 @@ export default function BattleArena({
         detail: stage.detail,
         meta: stage.meta,
       }));
-      const requiredStageIds = mode === 'collision-test'
+      const requiredStageIds = isExportedMap
         ? ['main-canvas-created', 'three-scene-mounted', 'exported-map-total', 'collision-ready']
         : ['main-canvas-created', 'three-scene-mounted'];
       const completed = requiredStageIds.every((id) => {
@@ -5530,6 +6685,7 @@ export default function BattleArena({
     events.length,
     groundZones?.length,
     me.buffs?.length,
+    isExportedMap,
     mode,
     modePickups.length,
     recordLoadStageEnd,
@@ -5547,7 +6703,7 @@ export default function BattleArena({
     targetZ: number,
     ignoreEntityId?: string,
   ) => {
-    const blockedByMap = mode === 'collision-test' && collisionSysRef.current
+    const blockedByMap = isExportedMap && collisionSysRef.current
       ? clientCheckLOS(
           collisionSysRef.current,
           from.x,
@@ -5559,7 +6715,7 @@ export default function BattleArena({
           ARENA_WIDTH / 2,
           ARENA_HEIGHT / 2,
         )
-      : mode !== 'collision-test'
+      : !isExportedMap
         ? !!isLOSBlockedClient(from.x, from.y, to.x, to.y, mapObjectsRef.current, 0, casterZ, targetZ)
         : false;
     if (blockedByMap) return true;
@@ -5572,7 +6728,7 @@ export default function BattleArena({
       targetZ,
       ignoreEntityId,
     );
-  }, [ARENA_HEIGHT, ARENA_WIDTH, me.userId, mode]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, isExportedMap, me.userId]);
   const [debugCursor,   setDebugCursor]   = useState<{ x: number; y: number } | null>(null);
   const [debugBounds,   setDebugBounds]   = useState<{
     me:  { cx: number; topY: number; hpBarY: number } | null;
@@ -5766,6 +6922,7 @@ export default function BattleArena({
   const lastMovementOkLogAtRef = useRef(0);
   const lastMovementSendRef = useRef<{ signature: string; sentAt: number } | null>(null);
   const skippedMovementFramesRef = useRef(0);
+  const lastLocalPhysicsStallAtRef = useRef(0);
 
   /* --- Jump / Z refs --- */
   const jumpLocalRef      = useRef(false); // drives local Z prediction
@@ -5788,6 +6945,8 @@ export default function BattleArena({
   const facingInitRef     = useRef(false);
   const meFacingRef       = useRef<Facing>({ x: 0, y: 1 });
   const oppFacingRef      = useRef<Facing>({ x: 0, y: 1 });
+  const lastYumenCameraAlignKeyRef = useRef<string | null>(null);
+  const previousYumenCameraAlignPositionRef = useRef<{ x: number; y: number } | null>(null);
   const prevActiveChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelRef = useRef<ActiveChannel | null>(null);
   const activeChannelSoundKeysRef = useRef<Set<string>>(new Set());
@@ -5817,6 +6976,7 @@ export default function BattleArena({
   const camPitchRef    = useRef(DEFAULT_PITCH); // camera pitch angle (radians)
   const camZoomRef     = useRef(cameraZoomLevel);           // zoom multiplier (scroll wheel)
   const cameraMoveCommandActiveRef = useRef(false);
+  const cameraForwardMoveCommandActiveRef = useRef(false);
   const cameraLookInputVersionRef = useRef(0);
   const manualCameraLookActiveRef = useRef(false);
   const mouseLookFacingSyncRafRef = useRef<number | null>(null);
@@ -5869,6 +7029,7 @@ export default function BattleArena({
   const dashServerSampleKeyRef = useRef('');
   const lastDashStutterLogAtRef = useRef(0);
   const lastJumpCorrectionWarnAtRef = useRef(0);
+  const lastPositionCorrectionProbeAtRef = useRef(0);
   const dashStartExpectedMsRef = useRef(1000);
   const dashStartAbilityIdRef = useRef<string | null>(null);
   const pendingGroundCastAbilityRef = useRef<string | null>(null);
@@ -5924,11 +7085,31 @@ export default function BattleArena({
   // the render loop reads the STALE value and falls back to cosmetic easing.
   // Setting it here ensures RAF always sees the latest activeDash.
   const _prevDashRef = useRef<boolean>(false);
+  const observedDashKeyRef = useRef<string>('');
   {
     const ad = (me as any)?.activeDash;
     const activeDashTicksRemaining = getRuntimeCountdownTicks(ad, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
-    const isDashing = !!ad && activeDashTicksRemaining > 0;
-    const predictedActiveDash = isDashing ? { ...ad, ticksRemaining: activeDashTicksRemaining } : null;
+    const rawDashTicks = Math.max(0, Number(ad?.ticksRemaining ?? 0));
+    const rootedByDebuff = buffsHaveAnyEffect(me?.buffs, ['ROOT']);
+    // 临时飞爪 / ccStopsMe dashes are canceled by ROOT on backend movement tick.
+    // Skip local dash prediction while rooted to avoid one-frame surge + snap-back.
+    const suppressDashPredictionWhileRooted = rootedByDebuff && ad?.ccStopsMe === true;
+    const dashObservationKey = ad
+      ? JSON.stringify({
+          abilityId: ad.abilityId ?? null,
+          startedAt: ad.startedAt ?? null,
+          vxPerTick: ad.vxPerTick ?? null,
+          vyPerTick: ad.vyPerTick ?? null,
+          vzPerTick: ad.vzPerTick ?? null,
+          forceVzPerTick: ad.forceVzPerTick ?? null,
+        })
+      : '';
+    const firstRenderForDash = !!dashObservationKey && dashObservationKey !== observedDashKeyRef.current && rawDashTicks > 0;
+    const isDashing = !!ad && !suppressDashPredictionWhileRooted && (activeDashTicksRemaining > 0 || firstRenderForDash);
+    const renderDashTicksRemaining = isDashing
+      ? Math.max(1, activeDashTicksRemaining > 0 ? activeDashTicksRemaining : Math.ceil(rawDashTicks || 1))
+      : 0;
+    const predictedActiveDash = isDashing ? { ...ad, ticksRemaining: renderDashTicksRemaining } : null;
     meActiveDashRef.current = predictedActiveDash;
     if (isDashing) {
       const nowMs = performance.now();
@@ -5941,6 +7122,7 @@ export default function BattleArena({
       };
       const sampleKey = [
         ad.abilityId ?? '',
+        ad.startedAt ?? '',
         ad._ticksRemainingSyncedAt ?? '',
         serverDashPosition.x.toFixed(3),
         serverDashPosition.y.toFixed(3),
@@ -5965,7 +7147,7 @@ export default function BattleArena({
         dashServerSampleRef.current = {
           position: serverDashPosition,
           sampledAtMs: nowMs,
-          ticksRemaining: activeDashTicksRemaining,
+          ticksRemaining: renderDashTicksRemaining,
           vxPerTick: Number(ad.vxPerTick ?? 0),
           vyPerTick: Number(ad.vyPerTick ?? 0),
           vzPerTick: Number(ad.vzPerTick ?? ad.forceVzPerTick ?? 0),
@@ -5979,18 +7161,29 @@ export default function BattleArena({
     dashTurnOverrideRef.current = hasDashTurnOverrideClient(me?.buffs);
     // Transition logging (synchronous, fine for refs)
     if (isDashing && !_prevDashRef.current) {
+      observedDashKeyRef.current = dashObservationKey;
       const nowMs = performance.now();
-      const remainingTicks = Math.max(1, activeDashTicksRemaining);
+      const remainingTicks = Math.max(1, renderDashTicksRemaining);
       dashStartExpectedMsRef.current = Math.round(remainingTicks * (1000 / 30));
       dashStartAbilityIdRef.current = ad?.abilityId ?? null;
       (window as any).__dashStartMs = nowMs;
+      recordDashProbe('start', {
+        abilityId: dashStartAbilityIdRef.current ?? 'unknown',
+        expectedRemainingMs: dashStartExpectedMsRef.current,
+      });
       console.log(`[DASH] >>> FRONTEND START  time=${new Date().toISOString()} ability=${dashStartAbilityIdRef.current ?? 'unknown'} expectedRemaining=${dashStartExpectedMsRef.current}ms`);
     }
     if (!isDashing && _prevDashRef.current) {
       const elapsed = performance.now() - ((window as any).__dashStartMs ?? 0);
+      recordDashProbe('end', {
+        abilityId: dashStartAbilityIdRef.current ?? 'unknown',
+        elapsedMs: Math.round(elapsed),
+        expectedRemainingMs: dashStartExpectedMsRef.current,
+      });
       console.log(`[DASH] <<< FRONTEND END    elapsed=${elapsed.toFixed(0)}ms  (expected ~${dashStartExpectedMsRef.current}ms remaining, ability=${dashStartAbilityIdRef.current ?? 'unknown'})`);
       dashStartAbilityIdRef.current = null;
     }
+    if (!ad) observedDashKeyRef.current = '';
     _prevDashRef.current = isDashing;
   }
 
@@ -6067,6 +7260,58 @@ export default function BattleArena({
   useConsumableRef.current = (id: ConsumableItemId) => {
     void onUseConsumable?.(id);
   };
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const enableDashProbe = params.has('playwrightCameraDashProbe');
+    const enableSkyProbe = params.has('playwrightCameraSkyProbe');
+    if (!enableDashProbe && !enableSkyProbe) return;
+    const target = window as any;
+    if (enableDashProbe) {
+      target.__zhenchuanCastAbilityForProbe = (
+        abilityInstanceId: string,
+        options?: {
+          targetUserId?: string;
+          groundTarget?: { x: number; y: number; z?: number };
+          entityTargetId?: string;
+          movementIntent?: boolean;
+        },
+      ) => onCastAbility(
+        abilityInstanceId,
+        options?.targetUserId,
+        options?.groundTarget,
+        options?.entityTargetId,
+        options?.movementIntent ?? false,
+      );
+      target.__zhenchuanRefreshGameForProbe = () => Promise.resolve(onMovementRecover?.());
+    }
+    if (enableSkyProbe) {
+      target.__zhenchuanCameraSkyProbe = { samples: [], last: null };
+    }
+    target.__zhenchuanSetCameraForProbe = (next: { yaw?: number; pitch?: number; zoom?: number }) => {
+      if (Number.isFinite(next?.yaw)) camYawRef.current = Number(next.yaw);
+      if (Number.isFinite(next?.pitch)) camPitchRef.current = clampCameraPitch(Number(next.pitch), mode);
+      if (Number.isFinite(next?.zoom)) camZoomRef.current = Math.max(0.25, Math.min(2.5, Number(next.zoom)));
+      cameraLookInputVersionRef.current += 1;
+      return { yaw: camYawRef.current, pitch: camPitchRef.current, zoom: camZoomRef.current };
+    };
+    target.__zhenchuanSetForwardForProbe = (active: boolean) => {
+      const forwardActive = active === true;
+      keysRef.current.w = forwardActive;
+      setWasdKeys(prev => ({ ...prev, w: forwardActive }));
+      if (!forwardActive) cameraForwardMoveCommandActiveRef.current = false;
+      return { keys: { ...keysRef.current }, forward: cameraForwardMoveCommandActiveRef.current };
+    };
+    return () => {
+      if (target.__zhenchuanCastAbilityForProbe) delete target.__zhenchuanCastAbilityForProbe;
+      if (target.__zhenchuanRefreshGameForProbe) delete target.__zhenchuanRefreshGameForProbe;
+      if (target.__zhenchuanSetCameraForProbe) delete target.__zhenchuanSetCameraForProbe;
+      if (target.__zhenchuanSetForwardForProbe) delete target.__zhenchuanSetForwardForProbe;
+      if (target.__zhenchuanCameraSkyProbe) delete target.__zhenchuanCameraSkyProbe;
+    };
+  }, [mode, onCastAbility, onMovementRecover]);
+
   const getHotkeyDraftSlots = useCallback(() => {
     const heldItemIds = new Set(itemBarAbilitiesRef.current.filter(Boolean).map((ability) => ability!.id));
     return buildDraftAbilitySlots(
@@ -6102,12 +7347,19 @@ export default function BattleArena({
     });
   }, []);
   const toggleMartialPanel = useCallback(() => {
+    if (!canOpenMartialPanel) {
+      setShowMartialPanel(false);
+      setMartialPanelTempPos(null);
+      martialPanelTempPosRef.current = null;
+      showInGameWarning('战斗警告：当前无法打开武学界面');
+      return;
+    }
     setShowMartialPanel((visible) => {
       setMartialPanelTempPos(null);
       martialPanelTempPosRef.current = null;
       return !visible;
     });
-  }, []);
+  }, [canOpenMartialPanel, showInGameWarning]);
   const triggerHotkeyBinding = useCallback((bindingId: string) => {
     const actionId = findHotkeyActionByBinding(hotkeySettings, bindingId);
     if (!actionId) return false;
@@ -6142,6 +7394,10 @@ export default function BattleArena({
 
     const consumableId = consumableBarSettings.slots[parsed.index];
     const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
+    if (selfYumenSpectating) {
+      showInGameWarning('观战中无法使用物品');
+      return true;
+    }
     if (!consumableBarSettings.enabled) {
       showInGameWarning('物品栏已关闭');
       return true;
@@ -6154,7 +7410,7 @@ export default function BattleArena({
       showInGameWarning('该物品暂未开放');
       return true;
     }
-    const count = Number(me.consumableCounts?.[consumable.id] ?? consumable.startingCount ?? 0);
+    const count = getConsumableRemainingCount(me, consumable);
     if (count <= 0) {
       showInGameWarning('该物品已用完');
       return true;
@@ -6166,7 +7422,7 @@ export default function BattleArena({
     }
     useConsumableRef.current(consumable.id);
     return true;
-  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me.consumableCooldowns, me.consumableCounts, showAbilityDisabledWarning, showInGameWarning, toggleMartialPanel, triggerAbilityHotkey]);
+  }, [consumableBarSettings, getHotkeyDraftSlots, hotkeySettings, me, me.consumableCooldowns, me.consumableCounts, selfYumenSpectating, showAbilityDisabledWarning, showInGameWarning, toggleMartialPanel, triggerAbilityHotkey]);
 
   const captureHotkeyBinding = useCallback((target: HotkeyCaptureTarget, binding: HotkeyBinding | null) => {
     if (!target || !binding || !isHotkeyActionId(target.actionId)) return;
@@ -6350,8 +7606,8 @@ export default function BattleArena({
       ?? (selectedEntity ? { x: selectedEntity.position.x, y: selectedEntity.position.y, z: selectedEntity.position.z } : undefined);
 
     // Abilities targeting the opponent require a target (player or entity) to be selected first
-    if (ability?.target === 'OPPONENT' && selectedSelfNow && !isFriendlyTargetAbility && !ability?.canTargetSelf) {
-      showInGameWarning('该技能不能以自己为目标');
+      if (ability?.target === 'OPPONENT' && selectedSelfNow && !isFriendlyTargetAbility && !ability?.canTargetSelf) {
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow && !selectedSelfNow) {
@@ -6359,11 +7615,20 @@ export default function BattleArena({
         beginPendingGroundCast(id);
         return;
       }
-      showInGameWarning('请先选择目标');
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (ability?.target === 'OPPONENT' && isFriendlyTargetAbility && selectedTargetIdNow) {
-      showInGameWarning('请先选择友方目标');
+      showInGameWarning('目标类型不正确');
+      return;
+    }
+    if (
+      ability?.target === 'OPPONENT' &&
+      !isFriendlyTargetAbility &&
+      selectedTarget &&
+      hasShiFangXuanJiClient(selectedTarget.buffs)
+    ) {
+      showInGameWarning('请选择敌方目标');
       return;
     }
     if (
@@ -6372,7 +7637,7 @@ export default function BattleArena({
       ((isFriendlyTargetAbility && selectedEntity.ownerUserId !== me.userId) ||
         (!isFriendlyTargetAbility && selectedEntity.ownerUserId === me.userId))
     ) {
-      showInGameWarning(isFriendlyTargetAbility ? '请先选择友方目标' : '请先选择敌方目标');
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
@@ -6380,23 +7645,19 @@ export default function BattleArena({
       return;
     }
     if (abilityKey === 'hong_meng_tian_jin' && hasShuSeClient((selectedSelfTarget ?? selectedTarget)?.buffs)) {
-      showInGameWarning('目标已受曙色影响');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedEntityIdNow) {
-      showInGameWarning('该技能只能对敌方玩家施放');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'qin_yin_gong_ming' && selectedEntityIdNow) {
-      showInGameWarning('该技能只能对敌方玩家施放');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedTarget && hasMianLaClient(selectedTarget.buffs)) {
       showInGameWarning('目标处于免拉状态');
-      return;
-    }
-    if (abilityKey === 'you_feng_piao_zong' && !selectedTargetIdNow) {
-      showInGameWarning('请先选择敌方目标');
       return;
     }
     if (abilityKey === 'you_feng_piao_zong' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
@@ -6430,21 +7691,21 @@ export default function BattleArena({
       localVelocityRef.current = { x: 0, y: 0 };
     }
     if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
-      showInGameWarning('你被锁足，无法施展该招式');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-      showInGameWarning('凌然天风特殊跳跃中无法施展任驰骋');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
-      showInGameWarning(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
+      showInGameWarning('气血要求不足');
       return;
     }
     if (typeof ability?.minSelfHpPercentExclusive === 'number') {
       const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ability.minSelfHpPercentExclusive / 100);
       if ((me?.hp ?? 0) <= requiredHp) {
-        showInGameWarning(`当前气血必须大于${ability.minSelfHpPercentExclusive}%才能施放`);
+        showInGameWarning('气血要求不足');
         return;
       }
     }
@@ -6544,6 +7805,31 @@ export default function BattleArena({
   const oppTrailRef       = useRef<Array<{ pos: V3; alpha: number }>>([]);
   const lastFrameTimeRef  = useRef<number>(0);
 
+  const getCurrentCoordinateText = useCallback(() => {
+    const pos = localRenderPosRef.current ?? me.position;
+    return formatCoordinateText(pos, me.position);
+  }, [me.position]);
+
+  const copyCurrentCoordinateText = useCallback(async () => {
+    const text = getCurrentCoordinateText();
+    try {
+      await navigator.clipboard.writeText(text);
+      toastSuccess('坐标已复制');
+    } catch {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.setAttribute('readonly', 'true');
+      textarea.style.position = 'fixed';
+      textarea.style.left = '-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      if (ok) toastSuccess('坐标已复制');
+      else toastError('复制坐标失败');
+    }
+  }, [getCurrentCoordinateText]);
+
   // Restore the old rAF render-position loop exactly.
   // Handles: smooth position lerp, dash snap animation, jump phase tracking, Z display.
   useEffect(() => {
@@ -6556,25 +7842,36 @@ export default function BattleArena({
       const frameDt = lastFrameTimeRef.current === 0 ? 16 : Math.min(frameNow - lastFrameTimeRef.current, 50);
       lastFrameTimeRef.current = frameNow;
       const dtF = frameDt / 16.67;
+      let dashPrediction: CollisionAwareDashPrediction | null = null;
 
       // --- local player render pos ---
       const myPos = localPositionRef.current ?? me?.position;
       if (myPos) {
         let tx = myPos.x, ty = myPos.y, tz = localZRef.current;
-        const predictedDashRenderPos = meActiveDashRef.current
-          ? predictDashRenderPosition(dashServerSampleRef.current, { nowMs: frameNow })
+        dashPrediction = meActiveDashRef.current
+          ? predictDashRenderPositionWithCollision(dashServerSampleRef.current, { nowMs: frameNow }, {
+              arenaWidth: ARENA_WIDTH,
+              arenaHeight: ARENA_HEIGHT,
+              playerRadius,
+              isExportedMap,
+              collisionSystem: collisionSysRef.current,
+              objects: mapObjectsRef.current,
+              entities: entitiesRef.current,
+              actorUserId: me.userId,
+              playArea: playAreaRef.current,
+            })
           : null;
-        if (predictedDashRenderPos) {
-          tx = predictedDashRenderPos.x;
-          ty = predictedDashRenderPos.y;
-          tz = predictedDashRenderPos.z;
+        if (dashPrediction) {
+          tx = dashPrediction.position.x;
+          ty = dashPrediction.position.y;
+          tz = dashPrediction.position.z;
         }
         const r  = localRenderPosRef.current;
         const ddx = tx - r.x, ddy = ty - r.y, ddz = tz - r.z;
         const dist2d = Math.sqrt(ddx * ddx + ddy * ddy);
         const forcedRenderDisplacement = forcedDisplacementRef.current;
         const justJumpedRender = frameNow - lastJumpInputAtRef.current < 320;
-        const recentDashSnap =
+        const recentDashSettle =
           !justJumpedRender &&
           (
             frameNow - lastObservedServerDashAtRef.current < 400 ||
@@ -6588,17 +7885,22 @@ export default function BattleArena({
         // During server-authoritative dash: HARD SNAP to server position.
         // Do NOT lerp — any lerp causes the visual to lag behind the server,
         // extending the perceived dash duration beyond the actual 1-second window.
-        if (meActiveDashRef.current || forcedRenderDisplacement || recentDashSnap) {
+        if (recentDashSettle) {
+          localDashAnimRef.current = null;
+        }
+        const snapThreshold = recentDashSettle ? 80 : SNAP_THRESH;
+
+        if (meActiveDashRef.current || forcedRenderDisplacement) {
           localDashAnimRef.current = null;
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
-        } else if (dist2d > SNAP_THRESH) {
+        } else if (dist2d > snapThreshold) {
           localRenderPosRef.current = { x: tx, y: ty, z: tz };
           localDashAnimRef.current  = null;
-        } else if (!localDashAnimRef.current && dist2d > DASH_THRESH) {
+        } else if (!recentDashSettle && !localDashAnimRef.current && dist2d > DASH_THRESH) {
           localDashAnimRef.current = { start: { ...r }, startTime: frameNow };
         }
-        if (!meActiveDashRef.current && !forcedRenderDisplacement && !recentDashSnap) {
-          if (localDashAnimRef.current) {
+        if (!meActiveDashRef.current && !forcedRenderDisplacement) {
+          if (!recentDashSettle && localDashAnimRef.current) {
             const elapsed = frameNow - localDashAnimRef.current.startTime;
             const t = Math.min(1, elapsed / DASH_ANIM_MS);
             const eased = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
@@ -6609,8 +7911,8 @@ export default function BattleArena({
             };
             if (t >= 1) localDashAnimRef.current = null;
           } else {
-            const horizontalK = Math.min(1, (airborneRender ? (justJumpedRender ? 0.52 : 0.4) : 0.3) * dtF);
-            const verticalK = Math.min(1, (airborneRender ? (justJumpedRender ? 0.62 : 0.46) : 0.3) * dtF);
+            const horizontalK = Math.min(1, (recentDashSettle ? 0.34 : airborneRender ? (justJumpedRender ? 0.52 : 0.4) : 0.3) * dtF);
+            const verticalK = Math.min(1, (recentDashSettle ? 0.34 : airborneRender ? (justJumpedRender ? 0.62 : 0.46) : 0.3) * dtF);
             localRenderPosRef.current = {
               x: r.x + ddx * horizontalK,
               y: r.y + ddy * horizontalK,
@@ -6620,6 +7922,40 @@ export default function BattleArena({
         }
       }
 
+      const renderPosition = localRenderPosRef.current ? { ...localRenderPosRef.current } : null;
+      const serverPosition = me?.position ? { x: me.position.x, y: me.position.y, z: Number((me.position as any).z ?? localZRef.current ?? 0) } : null;
+      const predictedPosition = dashPrediction?.position ? { ...dashPrediction.position } : null;
+      const linearPosition = dashPrediction?.debug.linearPosition ? { ...dashPrediction.debug.linearPosition } : null;
+      const serverRenderGap = renderPosition && serverPosition
+        ? Math.hypot(renderPosition.x - serverPosition.x, renderPosition.y - serverPosition.y, renderPosition.z - serverPosition.z)
+        : 0;
+      const renderPredictionGap = renderPosition && predictedPosition
+        ? Math.hypot(renderPosition.x - predictedPosition.x, renderPosition.y - predictedPosition.y, renderPosition.z - predictedPosition.z)
+        : 0;
+      const minPitch = isExportedMapMode(mode) ? COLLISION_TEST_MIN_CAMERA_PITCH : DEFAULT_MIN_CAMERA_PITCH;
+      const snapshot: CameraDashPredictionDebugSnapshot = {
+        active: !!meActiveDashRef.current,
+        collisionAware: !!dashPrediction?.debug.collisionAware,
+        collisionReady: dashPrediction?.debug.collisionReady ?? (!isExportedMap || !!collisionSysRef.current),
+        leadTicks: dashPrediction?.debug.leadTicks ?? 0,
+        requestedLeadTicks: dashPrediction?.debug.requestedLeadTicks ?? 0,
+        simulatedTicks: dashPrediction?.debug.simulatedTicks ?? 0,
+        collisionDelta: dashPrediction?.debug.collisionDelta ?? 0,
+        stoppedByCollision: dashPrediction?.debug.stoppedByCollision ?? false,
+        serverRenderGap,
+        renderPredictionGap,
+        cameraPitch: camPitchRef.current,
+        minPitch,
+        maxPitch: MAX_CAMERA_PITCH,
+        cameraZoom: camZoomRef.current,
+        serverPosition,
+        renderPosition,
+        predictedPosition,
+        linearPosition,
+      };
+      cameraDashPredictionDebugRef.current = snapshot;
+      recordCameraDashPredictionProbe(snapshot);
+
       myZRef.current = localRenderPosRef.current.z ?? 0;
 
       rafId = requestAnimationFrame(tick);
@@ -6627,7 +7963,7 @@ export default function BattleArena({
 
     rafId = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(rafId);
-  }, [me?.position?.x, me?.position?.y]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, isExportedMap, me?.position?.x, me?.position?.y, (me?.position as any)?.z, me.userId, mode, playerRadius]);
 
   useEffect(() => { meHpRef.current  = me?.hp ?? 0;      }, [me?.hp]);
   // Keep max-jumps ref in sync with MULTI_JUMP buff from server state
@@ -6859,6 +8195,44 @@ export default function BattleArena({
       }
     }
   }, [me?.facing?.x, me?.facing?.y]);
+  useEffect(() => {
+    if (!isYumenMode) {
+      lastYumenCameraAlignKeyRef.current = null;
+      previousYumenCameraAlignPositionRef.current = null;
+      return;
+    }
+    const pos = me?.position;
+    const facing = me?.facing;
+    if (!pos || !facing || !Number.isFinite(facing.x) || !Number.isFinite(facing.y)) return;
+
+    const prevPos = previousYumenCameraAlignPositionRef.current;
+    previousYumenCameraAlignPositionRef.current = { x: pos.x, y: pos.y };
+    const teleported = !prevPos || Math.hypot(pos.x - prevPos.x, pos.y - prevPos.y) >= 25;
+    if (!selfHasYumenPrep && !teleported) return;
+
+    const centerX = ARENA_WIDTH / 2;
+    const centerY = ARENA_HEIGHT / 2;
+    const toCenterX = centerX - pos.x;
+    const toCenterY = centerY - pos.y;
+    const toCenterLen = Math.hypot(toCenterX, toCenterY);
+    if (toCenterLen <= 0.001) return;
+    const facingLen = Math.hypot(facing.x, facing.y) || 1;
+    const dot = ((facing.x / facingLen) * (toCenterX / toCenterLen)) + ((facing.y / facingLen) * (toCenterY / toCenterLen));
+    if (dot < 0.98) return;
+
+    const alignKey = `${gameId}:${Math.round(pos.x * 10)}:${Math.round(pos.y * 10)}:${Math.round(facing.x * 1000)}:${Math.round(facing.y * 1000)}`;
+    if (lastYumenCameraAlignKeyRef.current === alignKey) return;
+    lastYumenCameraAlignKeyRef.current = alignKey;
+
+    const nextFacing = { x: facing.x / facingLen, y: facing.y / facingLen };
+    meFacingRef.current = nextFacing;
+    localFacingRef.current = nextFacing;
+    const yaw = facingToYaw(nextFacing);
+    charYawRef.current = yaw;
+    camYawRef.current = yaw;
+    manualCameraLookActiveRef.current = false;
+    cameraLookInputVersionRef.current += 1;
+  }, [ARENA_HEIGHT, ARENA_WIDTH, gameId, isYumenMode, me?.facing?.x, me?.facing?.y, me?.position?.x, me?.position?.y, selfHasYumenPrep]);
   useEffect(() => {
     const f = opponent?.facing;
     if (f && Number.isFinite(f.x) && Number.isFinite(f.y)) {
@@ -7175,6 +8549,7 @@ export default function BattleArena({
     if (newEvents.length === 0) return;
 
     const myId = me?.userId;
+    const selfSpectating = hasYumenSpectatorClient(me?.buffs);
     const playSoundForEvent = (evt: any) => {
       if ((evt.type !== 'PLAY_ABILITY' && evt.type !== 'ABILITY_SOUND' && evt.type !== 'DAMAGE' && evt.type !== 'BUFF_APPLIED') || !evt.abilityId) return;
       const ability = abilities?.[evt.abilityId];
@@ -7279,8 +8654,22 @@ export default function BattleArena({
       // WS array patches can momentarily produce sparse event slices.
       // Ignore empty/malformed entries instead of crashing the whole arena.
       if (!evt || typeof evt !== 'object' || !('type' in evt)) continue;
+      if (selfSpectating && evt.type === 'DAMAGE' && (evt.targetUserId === myId || evt.actorUserId === myId)) continue;
       playSoundForEvent(evt);
-      if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
+      if (evt.type === 'YUMEN_DEFEAT') {
+        const defeatedName = typeof evt.defeatedName === 'string' && evt.defeatedName.trim() ? evt.defeatedName.trim() : '玩家';
+        const attackerName = typeof evt.attackerName === 'string' && evt.attackerName.trim() ? evt.attackerName.trim() : '大漠狂沙';
+        const noticeId = `${evt.timestamp ?? Date.now()}:${evt.defeatedUserId ?? defeatedName}`;
+        showYumenDefeatNotice({
+          id: noticeId,
+          attackerName,
+          defeatedName,
+          attributed: true,
+        });
+        if (evt.attackerUserId === myId && evt.defeatedUserId !== myId) {
+          showYumenKillConfirm({ id: noticeId, defeatedName });
+        }
+      } else if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
           showInGameWarning('进入战斗');
         } else {
@@ -7325,9 +8714,12 @@ export default function BattleArena({
           // I dealt damage to opponent — account for shield absorption
           const shieldAbsAtk = evt.shieldAbsorbed ?? 0;
           const totalDmgAtk = evt.value ?? 0;
+          const playerTargetBounds = evt.targetUserId
+            ? opponentScreenBoundsRef.current[evt.targetUserId] ?? null
+            : null;
           const bounds = evt.entityId
             ? entityScreenBoundsRef.current[evt.entityId] ?? oppScreenBoundsRef.current
-            : oppScreenBoundsRef.current;
+            : playerTargetBounds ?? oppScreenBoundsRef.current;
           const { w, h } = canvasSizeRef.current;
           const screenPct = bounds
             ? { x: bounds.cx / w, y: Math.max(0, (bounds.topY - 55) / h) }
@@ -7354,7 +8746,7 @@ export default function BattleArena({
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [events, me?.userId, showInGameWarning, visibleOpponentsList]);
+  }, [events, me?.userId, showInGameWarning, showYumenDefeatNotice, showYumenKillConfirm, visibleOpponentsList]);
 
   useEffect(() => {
     const activeKeys = new Set<string>();
@@ -7698,7 +9090,7 @@ export default function BattleArena({
       localRenderPosRef.current = { x: me.position.x, y: me.position.y, z: localZRef.current };
       initializedRef.current   = true;
     }
-  }, [me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
+  }, [isExportedMap, me?.position?.x, me?.position?.y, (me?.position as any)?.z]);
 
   useEffect(() => {
     if (!me?.position || !initializedRef.current) return;
@@ -7709,8 +9101,10 @@ export default function BattleArena({
     const dy = me.position.y - local.y;
     const activeDash = (me as any)?.activeDash;
     const activeDashTicksRemaining = getRuntimeCountdownTicks(activeDash, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
+    const rootedByDebuff = buffsHaveAnyEffect(me?.buffs, ['ROOT']);
+    const suppressDashPredictionWhileRooted = rootedByDebuff && activeDash?.ccStopsMe === true;
     const predictedActiveDash = activeDash && activeDashTicksRemaining > 0
-      ? { ...activeDash, ticksRemaining: activeDashTicksRemaining }
+      ? (suppressDashPredictionWhileRooted ? null : { ...activeDash, ticksRemaining: activeDashTicksRemaining })
       : null;
     const forcedDisplacement = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
     const serverZ = (me.position as any).z ?? 0;
@@ -7781,10 +9175,47 @@ export default function BattleArena({
         },
       });
     };
+    const recordPositionCorrectionProbe = (reason: string, force = false) => {
+      if (!force && xyError < POSITION_CORRECTION_PROBE_MIN_XY && absZError < POSITION_CORRECTION_PROBE_MIN_Z) return;
+      const now = performance.now();
+      if (now - lastPositionCorrectionProbeAtRef.current < POSITION_CORRECTION_PROBE_COOLDOWN_MS) return;
+      lastPositionCorrectionProbeAtRef.current = now;
+      const data = {
+        reason,
+        gameId,
+        xyError: Number(xyError.toFixed(3)),
+        zError: Number(zError.toFixed(3)),
+        moving: keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d,
+        activeDash: Boolean(predictedActiveDash),
+        forcedDisplacement,
+        airborne: airborneLocalForCorrection,
+        localJumpCount,
+        serverJumpCount,
+        server: {
+          x: Number(me.position.x.toFixed(3)),
+          y: Number(me.position.y.toFixed(3)),
+          z: Number(serverZ.toFixed(3)),
+        },
+        local: {
+          x: Number(local.x.toFixed(3)),
+          y: Number(local.y.toFixed(3)),
+          z: Number(localZ.toFixed(3)),
+        },
+      };
+      recordDashProbe('correction', data);
+      console.warn(`[LAG-PROBE][frontend] ${JSON.stringify({
+        schemaVersion: 1,
+        kind: 'frontend-position-correction',
+        ts: Date.now(),
+        iso: new Date().toISOString(),
+        ...data,
+      })}`);
+      latencyRecorder.recordWebSocketLifecycle('frontend-position-correction', data);
+    };
 
-    // Collision-test mode: both client and backend now use BVH collision, so we can
+    // Exported-map modes: both client and backend use BVH collision, so we can
     // reconcile position normally. Only skip reconciliation on dash (server owns dash).
-    if (mode === 'collision-test') {
+    if (isExportedMap) {
       if (predictedActiveDash) {
         meActiveDashRef.current = predictedActiveDash;
         localPositionRef.current = { ...me.position };
@@ -7842,11 +9273,24 @@ export default function BattleArena({
       return;
     }
 
+    const recentLocalPhysicsStall = performance.now() - lastLocalPhysicsStallAtRef.current < 1_500;
+    const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
+    const recentDashSettle =
+      !justJumpedLocally &&
+      (
+        performance.now() - lastObservedServerDashAtRef.current < 400 ||
+        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
+      );
+    const hardSnapDistanceSq = recentDashSettle
+      ? 6400
+      : recentLocalPhysicsStall && moving && !forcedDisplacement && !airborneLocalForCorrection ? 100 : 25;
+
     // Hard-snap if server position is far away (e.g. new battle start).
     // This must also snap the render ref; otherwise the local character can
     // still fall into the old cosmetic dash easing for 5-20u corrections.
-    if (dx * dx + dy * dy > 25) {
+    if (dx * dx + dy * dy > hardSnapDistanceSq) {
       warnJumpCorrection('hard-snap-xy', true);
+      recordPositionCorrectionProbe('hard-snap-xy', true);
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
@@ -7858,13 +9302,6 @@ export default function BattleArena({
       };
       return;
     }
-
-    const recentDashSnap =
-      !justJumpedLocally &&
-      (
-        performance.now() - lastObservedServerDashAtRef.current < 400 ||
-        performance.now() - lastFengLiuYunSanCastAtRef.current < 700
-      );
 
     // During active dash: server owns position — hard-snap XY + Z
     // Check me.activeDash directly (not ref) so this works even before React
@@ -7878,22 +9315,19 @@ export default function BattleArena({
       return;
     }
 
-    if (recentDashSnap && dx * dx + dy * dy > 0.01) {
+    if (recentDashSettle && dx * dx + dy * dy > 0.01) {
       const serverZ = (me.position as any).z ?? 0;
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
+      airborneSpeedCarryRef.current = 0;
       localDashAnimRef.current = null;
-      localRenderPosRef.current = {
-        x: me.position.x,
-        y: me.position.y,
-        z: serverZ,
-      };
       return;
     }
 
     if (forcedDisplacement && dx * dx + dy * dy > 0.01) {
       const serverZ = (me.position as any).z ?? 0;
+      recordPositionCorrectionProbe('forced-displacement-snap');
       localPositionRef.current = { ...me.position };
       localZRef.current = serverZ;
       localVzRef.current = 0;
@@ -7915,6 +9349,7 @@ export default function BattleArena({
     const shouldSoftReconcile = !airborneLocal || !justJumpedLocally || Math.abs(zError) > 0.66;
     if (Math.abs(zError) > hardSnapThreshold) {
       warnJumpCorrection('hard-snap-z', true);
+      recordPositionCorrectionProbe('hard-snap-z', true);
       localZRef.current = serverZ;
       if (!airborneLocal || serverZ <= groundHRef.current + 0.05) {
         localVzRef.current = 0;
@@ -7929,10 +9364,10 @@ export default function BattleArena({
         localZRef.current = serverZ;
       }
     }
-    const moving = keysRef.current.w || keysRef.current.a || keysRef.current.s || keysRef.current.d;
-    const blend  = airborneLocal && justJumpedLocally ? 0 : moving ? 0.03 : 0.25;
+    const blend  = airborneLocal && justJumpedLocally ? 0 : recentLocalPhysicsStall ? (moving ? 0.18 : 0.35) : moving ? 0.03 : 0.25;
     if (blend > 0) {
       warnJumpCorrection('soft-xy');
+      recordPositionCorrectionProbe('soft-xy');
     }
     localPositionRef.current = {
       x: local.x + dx * blend,
@@ -7953,20 +9388,57 @@ export default function BattleArena({
 
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
-    const getDisplayMaxCooldown = (ab: any): number => {
-      const base = ab?.cooldownTicks ?? 0;
-      const gcdWindow = ab?.gcd === true ? BASE_GCD_WINDOW_TICKS : 0;
-      return Math.max(base, gcdWindow);
+    const testShortCooldownActive = safeZone?.testShortCooldown === true || testShortCooldownEnabled;
+    const getAbilityRealCooldownTicks = (ab: any): number => {
+      const base = Math.max(0, Math.round(Number(ab?.cooldownTicks ?? 0)));
+      if (base > 0) return base;
+      if (Number(ab?.maxCharges ?? 0) > 1) {
+        return Math.max(0, Math.round(Number(ab?.chargeRecoveryTicks ?? 0)));
+      }
+      return 0;
     };
-    const getSharedGcdTicks = (ab: any): number => (
-      ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0
-    );
+    const getAbilityRuntimeCooldownTicks = (ab: any): number => {
+      const base = getAbilityRealCooldownTicks(ab);
+      return testShortCooldownActive && base > 0 ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+    };
+    const getChargeRecoveryDisplayTicks = (ab: any): number => {
+      const base = Math.max(1, Math.round(Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1)));
+      return testShortCooldownActive ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+    };
+    const getDisplayMaxCooldown = (ab: any): number => {
+      return getAbilityRuntimeCooldownTicks(ab);
+    };
+    const getSharedGcdTicks = (ab: any): number => {
+      const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
+      if (selfYumenSpectating && isQinggongLike) return 0;
+      return ab?.gcd === true ? getRuntimeCountdownTicks(me, 'globalGcdTicks', '_globalGcdSyncedAt', cooldownClockMs) : 0;
+    };
     const getChargeDisplay = (ab: any, instance: any) => {
-      const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
       const sharedGcdTicks = getSharedGcdTicks(ab);
+      const baseGcdTicks = Math.max(1, Math.round((BASE_GCD_MS / 1000) * SERVER_TICK_RATE));
+      const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
+      const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
+      const ignoreSpectatorCooldown = selfYumenSpectating && isQinggongLike;
       if (maxCharges <= 1) {
-        const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
-        const currentCooldown = Math.max(0, instanceCooldown, sharedGcdTicks);
+        const instanceCooldown = ignoreSpectatorCooldown
+          ? 0
+          : getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
+        const rawInstanceCooldown = Math.max(0, Math.round(Number(instance?.cooldown ?? 0)));
+        const currentCooldown = Math.max(0, instanceCooldown);
+        if (currentCooldown <= 0 && sharedGcdTicks > 0) {
+          return {
+            maxCharges: undefined,
+            chargeCount: undefined,
+            chargeRecoveryTicks: undefined,
+            chargeRegenTicksRemaining: undefined,
+            chargeRegenProgress: undefined,
+            chargeCastLockTicks: undefined,
+            chargeLockTicks: undefined,
+            cooldown: sharedGcdTicks,
+            maxCooldown: Math.max(baseGcdTicks, sharedGcdTicks),
+            cooldownDisplayKind: 'gcd' as CooldownDisplayKind,
+          };
+        }
         return {
           maxCharges: undefined,
           chargeCount: undefined,
@@ -7976,24 +9448,30 @@ export default function BattleArena({
           chargeCastLockTicks: undefined,
           chargeLockTicks: undefined,
           cooldown: currentCooldown,
-          maxCooldown: Math.max(getDisplayMaxCooldown(ab), currentCooldown),
+          maxCooldown: Math.max(getDisplayMaxCooldown(ab), rawInstanceCooldown, currentCooldown),
+          cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
         };
       }
 
       const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
-      const chargeRecoveryTicks = Math.max(1, Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1));
-      const chargeRegenTicksRemaining = getRuntimeCountdownTicks(
-        instance,
-        'chargeRegenTicksRemaining',
-        '_chargeRegenTicksRemainingSyncedAt',
-        cooldownClockMs,
-      );
+      const chargeRecoveryTicks = getChargeRecoveryDisplayTicks(ab);
+      const chargeRegenTicksRemaining = ignoreSpectatorCooldown
+        ? 0
+        : getRuntimeCountdownTicks(
+            instance,
+            'chargeRegenTicksRemaining',
+            '_chargeRegenTicksRemainingSyncedAt',
+            cooldownClockMs,
+          );
       const chargeRegenProgress = chargeCount < maxCharges
         ? Math.max(0, Math.min(1, 1 - (chargeRegenTicksRemaining / chargeRecoveryTicks)))
         : undefined;
       const chargeCastLockTicks = Math.max(0, Number(ab?.chargeCastLockTicks ?? 0));
-      const instanceChargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
-      const chargeLockTicks = Math.max(0, instanceChargeLockTicks, sharedGcdTicks);
+      const instanceChargeLockTicks = ignoreSpectatorCooldown
+        ? 0
+        : getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
+      const rawInstanceChargeLockTicks = Math.max(0, Math.round(Number(instance?.chargeLockTicks ?? 0)));
+      const chargeLockTicks = Math.max(0, instanceChargeLockTicks);
 
       if (chargeCount <= 0) {
         return {
@@ -8006,6 +9484,7 @@ export default function BattleArena({
           chargeLockTicks,
           cooldown: chargeRegenTicksRemaining,
           maxCooldown: chargeRecoveryTicks,
+          cooldownDisplayKind: 'charge' as CooldownDisplayKind,
         };
       }
 
@@ -8019,7 +9498,23 @@ export default function BattleArena({
           chargeCastLockTicks,
           chargeLockTicks,
           cooldown: chargeLockTicks,
-          maxCooldown: Math.max(1, chargeCastLockTicks),
+          maxCooldown: Math.max(1, chargeCastLockTicks, rawInstanceChargeLockTicks, chargeLockTicks),
+          cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
+        };
+      }
+
+      if (sharedGcdTicks > 0) {
+        return {
+          maxCharges,
+          chargeCount,
+          chargeRecoveryTicks,
+          chargeRegenTicksRemaining,
+          chargeRegenProgress,
+          chargeCastLockTicks,
+          chargeLockTicks,
+          cooldown: sharedGcdTicks,
+          maxCooldown: Math.max(baseGcdTicks, sharedGcdTicks),
+          cooldownDisplayKind: 'gcd' as CooldownDisplayKind,
         };
       }
 
@@ -8033,6 +9528,7 @@ export default function BattleArena({
         chargeLockTicks,
         cooldown: 0,
         maxCooldown: chargeRecoveryTicks,
+        cooldownDisplayKind: 'cooldown' as CooldownDisplayKind,
       };
     };
     const selectedTarget = selectedTargetId
@@ -8081,25 +9577,26 @@ export default function BattleArena({
     );
 
     const getAbilityDisabledWarning = (ab: any, instance: any): string | undefined => {
-      if (!ab) return '技能配置不存在';
+      if (!ab) return '该招式不存在';
       const targetContext = getAbilityTargetContext(ab);
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
       const abilityIdForChecks = ab?.id ?? instance?.abilityId;
-      const sharedGcdTicks = getSharedGcdTicks(ab);
       const isQinggongLike = ab?.qinggong === true || ab?.qinggongGcdImmune === true;
+      const ignoreSpectatorCooldown = selfYumenSpectating && isQinggongLike;
+      const sharedGcdTicks = ignoreSpectatorCooldown ? 0 : getSharedGcdTicks(ab);
       const mountedYuqiToggle = yuqiMounted && (ab?.id === 'yuqi' || instance?.abilityId === 'yuqi');
       const maxCharges = Math.max(0, Number(ab?.maxCharges ?? 0));
-      if (maxCharges > 1) {
+      if (!ignoreSpectatorCooldown && maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
         const chargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
-        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
-        if (chargeLockTicks > 0) return '这个能力正在冷却';
-        if (chargeCount <= 0) return '招式层数正在恢复';
-      } else {
+        if (sharedGcdTicks > 0) return '招式施展失败';
+        if (chargeLockTicks > 0) return '招式施展失败';
+        if (chargeCount <= 0) return '招式施展失败';
+      } else if (!ignoreSpectatorCooldown) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
-        if (instanceCooldown > 0) return '这个能力正在冷却';
-        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
+        if (instanceCooldown > 0) return '招式施展失败';
+        if (sharedGcdTicks > 0) return '招式施展失败';
       }
 
       const airborneLockedLocal =
@@ -8107,30 +9604,31 @@ export default function BattleArena({
         jumpSendRef.current ||
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
-      if (isQinggongLike && qinggongSealed) return '你被封轻功，无法施放轻功技能';
+      if (isQinggongLike && qinggongSealed) return '招式施展失败';
+      if (selfYumenSpectating && !isQinggongLike) return '招式施展失败';
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-        return '凌然天风特殊跳跃中无法施展任驰骋';
+        return '招式施展失败';
       }
       if (getActiveChannelClient(me?.activeChannel ?? null)) return '正在进行其他动作';
-      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '御骑状态下无法施展该招式';
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '该招式无法在骑行状态下施展';
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
       if (powerLockWarning) return powerLockWarning;
-      if (nonQinggongLocked && !isQinggongLike) return '你当前只能施展轻功招式';
+      if (nonQinggongLocked && !isQinggongLike) return '招式施展失败';
       if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDisplaced')) return '该招式无法在位移时施展';
-      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '你被击退，无法行动';
-      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '你被拉拽，无法行动';
-      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '你被控制，无法行动';
-      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '你被锁足，无法施展该招式';
+      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '该招式无法在位移时施展';
+      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '该招式无法在位移时施展';
+      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '招式施展失败';
+      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '招式施展失败';
       if (ab?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) return '该技能需要落地后施放';
       if (requiresStandingAtCastClient(ab) && !mountedYuqiToggle) {
         if (isStandingCastBlocked(wasdKeys)) return '该技能需要站立后施放';
       }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
-        return `当前气血必须大于${ab.minSelfHpExclusive}才能施放`;
+        return '气血要求不足';
       }
       if (typeof ab?.minSelfHpPercentExclusive === 'number') {
         const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
-        if ((me?.hp ?? 0) <= requiredHp) return `当前气血必须大于${ab.minSelfHpPercentExclusive}%才能施放`;
+        if ((me?.hp ?? 0) <= requiredHp) return '气血要求不足';
       }
 
       // Ground-target abilities stay available after caster-state checks.
@@ -8138,16 +9636,16 @@ export default function BattleArena({
 
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
       if (needsSelectedTarget && selectedSelf && !targetContext.friendlyTarget && !ab?.canTargetSelf) {
-        return '该技能不能以自己为目标';
+        return '目标类型不正确';
       }
-      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return '请先选择友方目标';
-      if (needsSelectedTarget && !targetPos) return targetContext.friendlyTarget ? '请先选择友方目标' : '请先选择目标';
+      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return '目标类型不正确';
+      if (needsSelectedTarget && !targetPos) return '目标类型不正确';
 
       // 拿云式: target HP must be < 30%
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
         const tgtHp = (targetForChecks as any)?.hp ?? Infinity;
         const tgtMaxHp = Math.max(1, Number((targetForChecks as any)?.maxHp ?? 100));
-        if (tgtHp >= tgtMaxHp * 0.3) return '目标气血过高，无法施放';
+        if (tgtHp >= tgtMaxHp * 0.3) return '招式施展失败';
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
@@ -8157,19 +9655,23 @@ export default function BattleArena({
         if (activeSelfBuffsClient(me.buffs, locallyConsumedJumpBoostAt).some((b: any) => b.buffId === 9003)) return '该招式被当前气劲阻止';
       }
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
-        return '目标已受曙色影响';
+        return '招式施展失败';
       }
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
-        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
+        if (targetContext.entityTarget) return '招式施展失败';
         if (hasMianLaClient((targetForChecks as any)?.buffs)) return '目标处于免拉状态';
       }
+      if (
+        ab?.target === 'OPPONENT' &&
+        !targetContext.friendlyTarget &&
+        targetContext.playerTarget &&
+        hasShiFangXuanJiClient((targetContext.playerTarget as any)?.buffs)
+      ) {
+        return '请选择敌方目标';
+      }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
-        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
+        if (targetContext.entityTarget) return '招式施展失败';
       }
-      if (abilityIdForChecks === 'you_feng_piao_zong' && !targetContext.playerTarget) {
-        return '请先选择敌方目标';
-      }
-
       if (ab?.target !== 'OPPONENT') return undefined;
 
       const distanceToTarget = (myPos && targetPos)
@@ -8182,8 +9684,8 @@ export default function BattleArena({
       const effectiveRange = getEffectiveAbilityRangeClient(ab, me?.buffs);
       const inMaxRange = typeof effectiveRange !== 'number' || distanceToTarget <= effectiveRange;
       const inMinRange = typeof ab?.minRange !== 'number' || distanceToTarget >= ab.minRange;
-      if (!inMaxRange) return '距离太远，无法释放该能力';
-      if (!inMinRange) return '距离太近，无法释放该能力';
+      if (!inMaxRange) return '目标在招式范围之外';
+      if (!inMinRange) return '目标在招式范围之外';
 
       if (ab?.target === 'OPPONENT' && myPos && targetPos && !targetContext.selfTarget && !targetContext.friendlyTarget) {
         if (requiresFacingByDefault(ab) && myFacing) {
@@ -8264,12 +9766,16 @@ export default function BattleArena({
           range:       effectiveRange,
           baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
-          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+          baseCooldownTicks: getAbilityRealCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
+          cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          tooltipChargeRecoveryTicks: Number(ability?.maxCharges ?? 0) > 1
+            ? Math.max(1, Math.round(Number(ability?.chargeRecoveryTicks ?? ability?.cooldownTicks ?? 1)))
+            : undefined,
           chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
@@ -8322,12 +9828,16 @@ export default function BattleArena({
           range: effectiveRange,
           baseRange: typeof ability.range === 'number' ? ability.range : undefined,
           minRange: ability.minRange,
-          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+          baseCooldownTicks: getAbilityRealCooldownTicks(ability),
           cooldown: chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
+          cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          tooltipChargeRecoveryTicks: Number(ability?.maxCharges ?? 0) > 1
+            ? Math.max(1, Math.round(Number(ability?.chargeRecoveryTicks ?? ability?.cooldownTicks ?? 1)))
+            : undefined,
           chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
@@ -8365,7 +9875,7 @@ export default function BattleArena({
         if (!ability) return null;
         const instance = me.hand.find(
           (h: any) => (h.abilityId ?? h.id) === ability.id
-        );
+        ) ?? (selfYumenSpectating ? me.specialAbilityStates?.[ability.id] : undefined);
         const chargeDisplay = getChargeDisplay(ability, instance ?? {});
         const antiStealthBlocked = antiStealthActive && abilityUsesStealthClient(ability);
         const disabledWarning = antiStealthBlocked
@@ -8383,12 +9893,16 @@ export default function BattleArena({
           range:       effectiveRange,
           baseRange:   typeof ability.range === 'number' ? ability.range : undefined,
           minRange:    ability.minRange,
-          baseCooldownTicks: typeof ability.cooldownTicks === 'number' ? ability.cooldownTicks : undefined,
+          baseCooldownTicks: getAbilityRealCooldownTicks(ability),
           cooldown:    chargeDisplay.cooldown,
           maxCooldown: chargeDisplay.maxCooldown,
+          cooldownDisplayKind: chargeDisplay.cooldownDisplayKind,
           maxCharges: chargeDisplay.maxCharges,
           chargeCount: chargeDisplay.chargeCount,
           chargeRecoveryTicks: chargeDisplay.chargeRecoveryTicks,
+          tooltipChargeRecoveryTicks: Number(ability?.maxCharges ?? 0) > 1
+            ? Math.max(1, Math.round(Number(ability?.chargeRecoveryTicks ?? ability?.cooldownTicks ?? 1)))
+            : undefined,
           chargeRegenTicksRemaining: chargeDisplay.chargeRegenTicksRemaining,
           chargeRegenProgress: chargeDisplay.chargeRegenProgress,
           chargeCastLockTicks: chargeDisplay.chargeCastLockTicks,
@@ -8447,6 +9961,7 @@ export default function BattleArena({
     selectedTargetId,
     selectedEntityId,
     selectedSelf,
+    selfYumenSpectating,
     targetableOpponentsList,
     targetableEntityList,
     visibleEntities,
@@ -8457,6 +9972,8 @@ export default function BattleArena({
     hasMovementIntent,
     isStandingCastBlocked,
     cooldownClockMs,
+    testShortCooldownEnabled,
+    safeZone?.testShortCooldown,
   ]);
 
   /* ========================= PICKUP INTERACTION ========================= */
@@ -8507,6 +10024,15 @@ export default function BattleArena({
   const persistUiPositions = useCallback((positions: Record<string, UiPosition>) => {
     persistUiLayout(positions);
   }, [persistUiLayout]);
+
+  const updateYumenMiniMapPosition = useCallback((position: UiPosition, shouldPersist: boolean) => {
+    setUiPositions((current) => {
+      const next = { ...current, [YUMEN_MINIMAP_UI_KEY]: position };
+      uiPositionsRef.current = next;
+      if (shouldPersist) persistUiPositions(next);
+      return next;
+    });
+  }, [persistUiPositions]);
 
   useEffect(() => {
     if (!uiLayoutLoadedRef.current) return;
@@ -8836,6 +10362,30 @@ export default function BattleArena({
     };
   }, []);
 
+  const getDefaultYumenKillNoticePos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round((w - yumenKillNoticeSize.width) / 2)),
+      top: Math.max(12, Math.round(h * 0.10)),
+    };
+  }, [yumenKillNoticeSize.width]);
+
+  const getDefaultYumenKillConfirmPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round((w - yumenKillConfirmSize.width) / 2)),
+      top: Math.max(12, Math.round(h * 0.42 - yumenKillConfirmSize.height / 2)),
+    };
+  }, [yumenKillConfirmSize.height, yumenKillConfirmSize.width]);
+
+  const getDefaultYumenAliveCountPos = useCallback(() => {
+    const { w, h } = canvasSizeRef.current;
+    return {
+      left: Math.max(12, Math.round(w - yumenAliveCountSize.width - 52)),
+      top: Math.max(12, Math.round(h * 0.29)),
+    };
+  }, [yumenAliveCountSize.width]);
+
   const getDefaultItemBarPos = useCallback(() => {
     const { w } = canvasSizeRef.current;
     return getUiPositionFromRef(itemBarRef, {
@@ -8874,7 +10424,7 @@ export default function BattleArena({
           top: Math.max(12, Math.round(canvasSizeRef.current.h - 222)),
         };
     const channelElement = ownedAbilityBarRef.current?.querySelector('[data-channel-bar-root="true"]');
-    return getUiPositionFromElement(channelElement, fallback);
+    return getUiPositionFromElement(channelElement ?? null, fallback);
   }, [getUiPositionFromElement]);
 
   const getDefaultPlayerGcdBarPos = useCallback(() => {
@@ -8891,7 +10441,7 @@ export default function BattleArena({
           top: Math.max(12, Math.round(canvasSizeRef.current.h - 194)),
         };
     const gcdElement = ownedAbilityBarRef.current?.querySelector('[data-gcd-bar-root="true"]');
-    return getUiPositionFromElement(gcdElement, fallback);
+    return getUiPositionFromElement(gcdElement ?? null, fallback);
   }, [getUiPositionFromElement]);
 
   /** Start a drag session for any draggable UI panel. Key is stored in localStorage. */
@@ -9042,6 +10592,9 @@ export default function BattleArena({
       const heightCounterBase = prev[HEIGHT_COUNTER_UI_KEY] ?? getDefaultHeightCounterPos();
       const distanceIndicatorBase = prev[DISTANCE_INDICATOR_UI_KEY] ?? getDefaultDistanceIndicatorPos();
       const inGameWarningBase = prev[IN_GAME_WARNING_UI_KEY] ?? getDefaultInGameWarningPos();
+      const yumenKillNoticeBase = prev[YUMEN_KILL_NOTICE_UI_KEY] ?? getDefaultYumenKillNoticePos();
+      const yumenKillConfirmBase = prev[YUMEN_KILL_CONFIRM_UI_KEY] ?? getDefaultYumenKillConfirmPos();
+      const yumenAliveCountBase = prev[YUMEN_ALIVE_COUNT_UI_KEY] ?? getDefaultYumenAliveCountPos();
       const itemBarBase = prev[ITEM_BAR_UI_KEY] ?? getDefaultItemBarPos();
       const martialPanelBase = prev[MARTIAL_PANEL_UI_KEY] ?? getDefaultMartialPanelPos();
       const chatPanelBase = prev[CHAT_PANEL_UI_KEY] ?? getDefaultChatPanelPos();
@@ -9064,6 +10617,9 @@ export default function BattleArena({
         [HEIGHT_COUNTER_UI_KEY]: heightCounterBase,
         [DISTANCE_INDICATOR_UI_KEY]: distanceIndicatorBase,
         [IN_GAME_WARNING_UI_KEY]: inGameWarningBase,
+        [YUMEN_KILL_NOTICE_UI_KEY]: yumenKillNoticeBase,
+        [YUMEN_KILL_CONFIRM_UI_KEY]: yumenKillConfirmBase,
+        [YUMEN_ALIVE_COUNT_UI_KEY]: yumenAliveCountBase,
         [ITEM_BAR_UI_KEY]: itemBarBase,
         [MARTIAL_PANEL_UI_KEY]: martialPanelBase,
         [CHAT_PANEL_UI_KEY]: chatPanelBase,
@@ -9095,6 +10651,9 @@ export default function BattleArena({
     getDefaultTargetTargetIconBarPos,
     getDefaultTargetOwnedAbilityBarPos,
     getDefaultTargetStatusPos,
+    getDefaultYumenAliveCountPos,
+    getDefaultYumenKillConfirmPos,
+    getDefaultYumenKillNoticePos,
   ]);
 
   const cancelCustomUiMode = useCallback(() => {
@@ -9276,19 +10835,6 @@ export default function BattleArena({
           martialPanelTempPosRef.current = null;
           return;
         }
-        if (activeChannelRef.current && onCancelChannel) {
-          void onCancelChannel();
-          return;
-        }
-        if (selectedTargetRef.current || selectedEntityRef.current || selectedSelfRef.current) {
-          selectedTargetRef.current = null;
-          selectedEntityRef.current = null;
-          selectedSelfRef.current = false;
-          setSelectedTargetId(null);
-          setSelectedEntityId(null);
-          setSelectedSelf(false);
-          return;
-        }
         toggleEscPanel();
         return;
       }
@@ -9371,10 +10917,12 @@ export default function BattleArena({
       // Tab / F1 — select the nearest currently targetable enemy player or entity.
       // Rules:
       //   - Only consider targets within ±90° of facing (180° front cone).
+      //   - Only consider targets within 60 units.
       //   - Exclude the currently selected target so Tab always cycles when an
       //     alternative is available.
       if (e.key === 'Tab' || e.key === 'F1') {
         e.preventDefault();
+        const TARGET_SELECT_MAX_UNITS = 60;
         const myPos = localPositionRef.current ?? me.position;
         const facing = localFacingRef.current ?? meFacingRef.current ?? { x: 0, y: 1 };
         const facingLen = Math.hypot(facing.x, facing.y);
@@ -9387,6 +10935,9 @@ export default function BattleArena({
           if (c.id === currentSelectedId) return false; // exclude current target
           const dx = c.position.x - myPos.x;
           const dy = c.position.y - myPos.y;
+          const dz = (c.position.z ?? 0) - ((myPos as any).z ?? 0);
+          const distUnits = worldUnitsToNewUnits(Math.sqrt(dx * dx + dy * dy + dz * dz), mode);
+          if (distUnits > TARGET_SELECT_MAX_UNITS) return false;
           const planar = Math.hypot(dx, dy);
           if (planar < 0.0001) return true; // standing on top of target
           // dot product against facing — must be > 0 to be in front (180° cone)
@@ -9406,11 +10957,7 @@ export default function BattleArena({
         }, null);
 
         if (!nearest) {
-          // No alternative front-cone target. If a target is currently selected,
-          // keep it; otherwise notify the user.
-          if (!currentSelectedId) {
-            showInGameWarning('当前没有可选目标');
-          }
+          // No alternative target inside facing cone + range. Keep current target unchanged.
           return;
         }
         if (nearest.kind === 'player') {
@@ -9465,7 +11012,7 @@ export default function BattleArena({
       window.removeEventListener('blur',    resetMovementKeys);
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
-  }, [crashRecorder, tryQueueLocalJump, onCancelChannel, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding]);
+  }, [crashRecorder, tryQueueLocalJump, sendMovement, customUiMode, cancelCustomUiMode, cancelChatSettings, chatClearDialog, martialPresetModal, showMartialPanel, showTestingPanel, showChatSettings, focusChatInput, toggleEscPanel, triggerHotkeyBinding, mode]);
 
   // Mouse hotkeys + camera drag + zoom:
   //   Left-drag              → rotate camera (traditional mode)
@@ -9575,6 +11122,11 @@ export default function BattleArena({
       if (e.button === 0) {
         // Only start drag if not clicking a UI button or a draggable panel
         if (isMouseUiTarget(e.target)) return;
+        if (yumenBoundaryEditModeRef.current) {
+          mouseStateRef.current.isLeft = false;
+          manualCameraLookActiveRef.current = false;
+          return;
+        }
         mouseStateRef.current.isLeft = true;
         manualCameraLookActiveRef.current = true;
         mouseStateRef.current.lastX  = e.clientX;
@@ -9662,6 +11214,11 @@ export default function BattleArena({
       }
       const ms = mouseStateRef.current;
       if (!ms.isLeft && !ms.isRight) return;
+      if (yumenBoundaryEditModeRef.current && ms.isLeft) {
+        ms.isLeft = false;
+        manualCameraLookActiveRef.current = false;
+        if (!ms.isRight) return;
+      }
       e.preventDefault();
       const dx = e.clientX - ms.lastX;
       const dy = e.clientY - ms.lastY;
@@ -9881,25 +11438,30 @@ export default function BattleArena({
     const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
     const MULTI_JUMP_HEIGHT_MULT = Math.sqrt(3); // 鸟翔碧空: 3× height → √3× velocity
     const TURN_RATE = 0.055; // radians / tick at 30 Hz ≈ 95°/sec
-    const MAX_CLIENT_PHYSICS_CATCHUP_TICKS = 30;
+    // Keep the client catch-up cap aligned with the backend GameLoop cap.
+    const MAX_CLIENT_PHYSICS_CATCHUP_TICKS = 6;
     const tick = (tickNowMs = performance.now()) => {
       const pos = localPositionRef.current;
       if (!pos) {
         cameraMoveCommandActiveRef.current = false;
+        cameraForwardMoveCommandActiveRef.current = false;
         return;
       }
-      if (mode === 'collision-test' && !collisionReadyRef.current) {
+      if (isExportedMap && !collisionReadyRef.current) {
         cameraMoveCommandActiveRef.current = false;
+        cameraForwardMoveCommandActiveRef.current = false;
         localVelocityRef.current = { x: 0, y: 0 };
         localVzRef.current = 0;
         return;
       }
+      cameraForwardMoveCommandActiveRef.current = false;
       const effectiveMaxSpeed = MAX_SPEED * moveSpeedScaleRef.current;
       const effectiveMaxJumps = getEffectiveMaxJumps();
 
       // During server-authoritative dash: skip movement + gravity, but KEEP camera/turning
       if (meActiveDashRef.current) {
         cameraMoveCommandActiveRef.current = false;
+        cameraForwardMoveCommandActiveRef.current = false;
         localVelocityRef.current.x = 0;
         localVelocityRef.current.y = 0;
         jumpLocalRef.current = false;
@@ -9926,7 +11488,7 @@ export default function BattleArena({
       const k   = keysRef.current;
       const ms  = mouseStateRef.current;
       const objs = mapObjectsRef.current;
-      const useBVH = mode === 'collision-test' && !!collisionSysRef.current;
+      const useBVH = isExportedMap && !!collisionSysRef.current;
       const rawTickGroundH = (() => {
         if (!useBVH) {
           return getGroundHeightClient(pos.x, pos.y, localZRef.current, objs, playerRadius);
@@ -10065,6 +11627,11 @@ export default function BattleArena({
         );
         const moveDirection = movementLocked ? null : moveIntent.direction;
         cameraMoveCommandActiveRef.current = !!moveDirection;
+        cameraForwardMoveCommandActiveRef.current = !!moveDirection && !moveIntent.backpedalOnly && (
+          mouseLook
+            ? ((k.w && !k.s) || bothMouse || (k.a && k.d && !k.s))
+            : (k.w && !k.s)
+        );
         moveIntentDx = moveDirection?.dx ?? 0;
         moveIntentDy = moveDirection?.dy ?? 0;
         moveIntentBackpedalOnly = !!moveDirection && moveIntent.backpedalOnly;
@@ -10115,6 +11682,10 @@ export default function BattleArena({
         if (k.d) ix += 1;
         const moveDir = movementLocked ? null : normalizePlanar(ix, iy);
         cameraMoveCommandActiveRef.current = !!moveDir || (!movementLocked && !!joystickDirRef.current);
+        cameraForwardMoveCommandActiveRef.current = !movementLocked && (
+          (!!moveDir && k.w && !k.s) ||
+          (Math.hypot(joystickDirRef.current?.dx ?? 0, joystickDirRef.current?.dy ?? 0) > 0.01 && (joystickDirRef.current?.dy ?? 0) > 0.01)
+        );
         moveIntentDx = moveDir?.x ?? 0;
         moveIntentDy = moveDir?.y ?? 0;
         if (jumpAirborne) {
@@ -10184,6 +11755,9 @@ export default function BattleArena({
 
       let newPx = Math.max(playerRadius, Math.min(ARENA_WIDTH - playerRadius, pos.x + vel.x + nudgeX));
       let newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius, pos.y + vel.y + nudgeY));
+      const playAreaClamped = clampPositionToPlayAreaClient(newPx, newPy, playAreaRef.current, ARENA_WIDTH, ARENA_HEIGHT, playerRadius, vel);
+      newPx = playAreaClamped.x;
+      newPy = playAreaClamped.y;
 
       // Map object collision
 
@@ -10215,6 +11789,9 @@ export default function BattleArena({
           _bvhCenter.x * RENDER_SF_XZ + GROUP_POS_X + halfW));
         newPy = Math.max(playerRadius, Math.min(ARENA_HEIGHT - playerRadius,
           halfH - (_bvhCenter.z * RENDER_SF_XZ + GROUP_POS_Z)));
+        const bvhPlayAreaClamped = clampPositionToPlayAreaClient(newPx, newPy, playAreaRef.current, ARENA_WIDTH, ARENA_HEIGHT, playerRadius, vel);
+        newPx = bvhPlayAreaClamped.x;
+        newPy = bvhPlayAreaClamped.y;
         // Do NOT read _bvhVelocity.y here — vertical velocity is managed by the vertical pass.
       } else {
         for (const obj of objs) {
@@ -10234,6 +11811,13 @@ export default function BattleArena({
       );
       newPx = wallResolved.x;
       newPy = wallResolved.y;
+      const wallPlayAreaClamped = clampPositionToPlayAreaClient(newPx, newPy, playAreaRef.current, ARENA_WIDTH, ARENA_HEIGHT, playerRadius, vel);
+      newPx = wallPlayAreaClamped.x;
+      newPy = wallPlayAreaClamped.y;
+      if (useBVH) {
+        _bvhCenter.x = (newPx - ARENA_WIDTH / 2 - GROUP_POS_X) / RENDER_SF_XZ;
+        _bvhCenter.z = (ARENA_HEIGHT / 2 - newPy - GROUP_POS_Z) / RENDER_SF_XZ;
+      }
 
       localPositionRef.current = { x: newPx, y: newPy };
 
@@ -10501,7 +12085,11 @@ export default function BattleArena({
     let physicsAccumulatorMs = 0;
     const runPhysics = () => {
       const nowMs = performance.now();
-      const elapsedMs = Math.max(0, Math.min(nowMs - lastPhysicsAtMs, CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS));
+      const rawElapsedMs = nowMs - lastPhysicsAtMs;
+      if (rawElapsedMs >= 250) {
+        lastLocalPhysicsStallAtRef.current = nowMs;
+      }
+      const elapsedMs = Math.max(0, Math.min(rawElapsedMs, CLIENT_TICK_MS * MAX_CLIENT_PHYSICS_CATCHUP_TICKS));
       lastPhysicsAtMs = nowMs;
       physicsAccumulatorMs += elapsedMs;
 
@@ -10523,7 +12111,7 @@ export default function BattleArena({
       advanceLocalPhysicsRef.current = () => {};
       clearInterval(id);
     };
-  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, me.userId, mode, playerRadius]);
+  }, [ARENA_HEIGHT, ARENA_WIDTH, getEffectiveMaxJumps, isExportedMap, me.userId, mode, playerRadius]);
 
   useEffect(() => {
     const id = setInterval(sendMovement, 1000 / 30);
@@ -10564,9 +12152,15 @@ export default function BattleArena({
   const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
-  const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => meEffects
-    .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
-    .reduce((sum: number, e: any) => sum + Number(e?.value ?? 0), 0);
+  const getTypedEffectTotal = (effectType: string, damageType: '外功' | '内功') => activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt)
+    .reduce((sum: number, buff: any) => {
+      const stackCount = Math.max(1, Number(buff?.stacks ?? 1));
+      const effects = Array.isArray(buff?.effects) ? buff.effects : [];
+      const buffContribution = effects
+        .filter((e: any) => e?.type === effectType && (!e?.damageType || e?.damageType === damageType))
+        .reduce((effectSum: number, e: any) => effectSum + Number(e?.value ?? 0), 0);
+      return sum + (buffContribution * stackCount);
+    }, 0);
   const defenseMultiplier = meEffects
     .filter((e: any) => e?.type === 'DEFENSE_MULTIPLIER')
     .reduce((multiplier: number, e: any) => {
@@ -10631,7 +12225,7 @@ export default function BattleArena({
   const formatTooltipLine = (label: string, value: string) => `${label}: ${value}`;
   const formatSpeedUnits = (value: number) => `${formatCompactNumber(value)}尺/秒`;
   const runSpeedDisplayValue = String(Math.max(0, Math.round(effectiveMoveSpeedUnitsPerSec * 4)));
-  const heartStatRows: HeartStatRow[] = [
+  const heartStatRows: HeartStatRow[] = ([
     {
       key: 'attack',
       label: '攻击力',
@@ -10713,7 +12307,7 @@ export default function BattleArena({
       tooltipTitle: '伤害减免',
       tooltipLines: [formatTooltipLine('伤害减免', formatWholePct(damageReductionPct))],
     },
-  ].sort((a, b) => HEART_STAT_ORDER.indexOf(a.key) - HEART_STAT_ORDER.indexOf(b.key));
+  ] satisfies HeartStatRow[]).sort((a, b) => HEART_STAT_ORDER.indexOf(a.key) - HEART_STAT_ORDER.indexOf(b.key));
   const openHeartStatHint = useCallback((event: React.MouseEvent<HTMLElement>, row: HeartStatRow) => {
     if (!row.tooltipLines || row.tooltipLines.length === 0) return;
     setHeartStatHint({
@@ -10983,6 +12577,10 @@ export default function BattleArena({
 
   const addAbilityToDraftBar = useCallback(async (abilityId: string, slotIndex?: number) => {
     if (addingAbility) return false;
+    if (selfYumenSpectating) {
+      showYumenSpectatorAbilityLockWarning();
+      return false;
+    }
     setAddingAbility(abilityId);
     try {
       await postAddAbility(abilityId, slotIndex);
@@ -10994,7 +12592,7 @@ export default function BattleArena({
     } finally {
       setAddingAbility(null);
     }
-  }, [addingAbility, postAddAbility]);
+  }, [addingAbility, postAddAbility, selfYumenSpectating, showYumenSpectatorAbilityLockWarning]);
 
   const getCurrentMartialPresetSlots = useCallback(() => (
     Array.from({ length: DRAFT_ABILITY_SLOT_COUNT }, (_, index) => learnedDraftAbilities[index]?.abilityId ?? null)
@@ -11030,6 +12628,10 @@ export default function BattleArena({
 
   const applyMartialPreset = useCallback(async (plan: MartialPresetPlan) => {
     if (martialPresetApplying || runningCheatAction) return;
+    if (selfYumenSpectating) {
+      showYumenSpectatorAbilityLockWarning();
+      return;
+    }
     const slots = normalizeMartialPresetSlots(plan.slots);
     setMartialPresetApplying(true);
     try {
@@ -11054,7 +12656,7 @@ export default function BattleArena({
     } finally {
       setMartialPresetApplying(false);
     }
-  }, [gameId, martialPresetApplying, postAddAbility, runningCheatAction]);
+  }, [gameId, martialPresetApplying, postAddAbility, runningCheatAction, selfYumenSpectating, showYumenSpectatorAbilityLockWarning]);
 
   const createEmptyMartialPresetPlan = useCallback(async () => {
     if (martialPresetPlans.length >= MARTIAL_PRESET_LIMIT) {
@@ -11146,7 +12748,7 @@ export default function BattleArena({
     name: ability.name,
     iconPath: ability.iconPath,
     description: ability.description ?? '',
-    channel: getRuntimeAbilityChannel(ability),
+    channel: getRuntimeAbilityChannel(ability) ?? undefined,
     range: getEffectiveAbilityRangeClient(ability, me?.buffs),
     baseRange: typeof ability.range === 'number' ? ability.range : undefined,
     minRange: ability.minRange,
@@ -11155,6 +12757,9 @@ export default function BattleArena({
     maxCooldown: Math.max(0, Number(ability.cooldownTicks ?? 0)),
     maxCharges: typeof ability.maxCharges === 'number' ? ability.maxCharges : undefined,
     chargeRecoveryTicks: typeof ability.chargeRecoveryTicks === 'number' ? ability.chargeRecoveryTicks : undefined,
+    tooltipChargeRecoveryTicks: typeof ability.chargeRecoveryTicks === 'number'
+      ? ability.chargeRecoveryTicks
+      : undefined,
     isReady: true,
     isCommon: !!ability.isCommon,
     target: (ability.target as 'SELF' | 'OPPONENT') ?? 'OPPONENT',
@@ -11200,7 +12805,7 @@ export default function BattleArena({
   };
 
   const runCheatAction = useCallback(
-    async (actionId: string, url: string, successText: string, body?: Record<string, any>) => {
+    async (actionId: string, url: string, successText: string, body?: Record<string, any>, options?: { suppressError?: (status: number, payload: any) => boolean }) => {
       if (runningCheatAction) return false;
       setRunningCheatAction(actionId);
       try {
@@ -11212,7 +12817,9 @@ export default function BattleArena({
         });
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          toastError(err.error ?? '操作失败');
+          if (!options?.suppressError?.(res.status, err)) {
+            toastError(err.error ?? '操作失败');
+          }
           return false;
         }
         toastSuccess(successText);
@@ -11227,8 +12834,76 @@ export default function BattleArena({
     [gameId, runningCheatAction],
   );
 
+  const runChatCommand = useCallback(async (rawText: string) => {
+    const text = rawText.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
+    if (!text.startsWith('/')) return false;
+    const command = text.slice(1).trim().split(/\s+/)[0]?.toLowerCase() ?? '';
+    if (command === 'upz') {
+      return runCheatAction('chat-command-upz', '/api/game/cheat/yumen/drop-to-top-hit', '已执行 Z救援');
+    }
+    toastError(`未知命令：${text}`);
+    return false;
+  }, [runCheatAction]);
+
+  const submitChatMessage = useCallback(async () => {
+    const text = chatInputValue.replace(/\s+/g, ' ').trim().slice(0, CHAT_MAX_INPUT_LENGTH);
+    setChatInputValue('');
+    if (!text) return;
+    if (text.startsWith('/')) {
+      await runChatCommand(text);
+      return;
+    }
+    setActiveChatWindowId('map');
+    await sendChatText(text, 'map', true);
+  }, [chatInputValue, runChatCommand, sendChatText]);
+
+  useEffect(() => {
+    if (!isYumenMode || !yumenAutoFullShrink || selfHasYumenPrep || safeZone?.phase !== 'idle' || runningCheatAction === 'yumen-auto-full-shrink') return;
+    const autoStartKey = `${gameId}:${safeZone?.phaseStartedAt ?? 0}`;
+    if (yumenAutoFullShrinkStartedRef.current === autoStartKey) return;
+    void (async () => {
+      const ok = await runCheatAction(
+        'yumen-auto-full-shrink',
+        '/api/game/cheat/yumen/start-full-shrink',
+        '完整缩圈已自动开始',
+        undefined,
+        { suppressError: (status, payload) => status === 409 && (payload?.prepActive === true || payload?.alreadyStarted === true) },
+      );
+      if (ok) yumenAutoFullShrinkStartedRef.current = autoStartKey;
+    })();
+  }, [gameId, isYumenMode, runCheatAction, runningCheatAction, safeZone?.phase, safeZone?.phaseStartedAt, selfHasYumenPrep, yumenAutoFullShrink]);
+
+  const updateYumenPlayArea = useCallback(async (
+    nextPlayArea: PlayAreaBounds,
+    options?: { actionId?: string; successText?: string },
+  ) => {
+    setLocalPlayAreaOverride(nextPlayArea);
+    playAreaRef.current = nextPlayArea;
+    const ok = await runCheatAction(
+      options?.actionId ?? 'yumen-play-area',
+      '/api/game/cheat/yumen/play-area',
+      options?.successText ?? '边界已更新',
+      { playArea: nextPlayArea },
+    );
+    if (!ok) {
+      setLocalPlayAreaOverride(null);
+      playAreaRef.current = playArea;
+    }
+  }, [playArea, runCheatAction]);
+
+  const restoreYumenPlayAreaDefault = useCallback(() => {
+    void updateYumenPlayArea(
+      { minX: 0, minY: 0, maxX: mapData.width, maxY: mapData.height },
+      { actionId: 'yumen-play-area-default', successText: '边界已恢复默认' },
+    );
+  }, [mapData.height, mapData.width, updateYumenPlayArea]);
+
   const reorderDraftAbility = useCallback(
     async (instanceId: string, toIndex: number) => {
+      if (selfYumenSpectating) {
+        showYumenSpectatorAbilityLockWarning();
+        return false;
+      }
       const previousAbilities = abilitiesRef.current;
       const clampedToIndex = normalizeDraftSlotIndex(toIndex, toIndex);
       const predictedAbilities = predictDraftAbilityReorder(previousAbilities, instanceId, clampedToIndex);
@@ -11266,11 +12941,15 @@ export default function BattleArena({
         return false;
       }
     },
-    [gameId],
+    [gameId, selfYumenSpectating, showYumenSpectatorAbilityLockWarning],
   );
 
   const discardDraftAbility = useCallback(
     async (instanceId: string) => {
+      if (selfYumenSpectating) {
+        showYumenSpectatorAbilityLockWarning();
+        return false;
+      }
       const res = await fetch('/api/game/cheat/discard-ability', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -11284,7 +12963,7 @@ export default function BattleArena({
       }
       return true;
     },
-    [gameId],
+    [gameId, selfYumenSpectating, showYumenSpectatorAbilityLockWarning],
   );
 
   const getVisibleDraftSlotsForLocalMove = useCallback(() => {
@@ -11581,7 +13260,7 @@ export default function BattleArena({
           if (discarded && dragState.sourceKind === 'item') {
             removeAbilityFromItemBar(dragState.instanceId);
           }
-        } else if (dropTarget && dropTarget.kind !== 'preset' && !(dropTarget.kind === dragState.sourceKind && dropTarget.index === dragState.sourceIndex)) {
+        } else if ((dropTarget?.kind === 'draft' || dropTarget?.kind === 'martial-draft' || dropTarget?.kind === 'item') && !(dropTarget.kind === dragState.sourceKind && dropTarget.index === dragState.sourceIndex)) {
           if ((dragState.sourceKind === 'draft' || dragState.sourceKind === 'martial-draft') && (dropTarget.kind === 'draft' || dropTarget.kind === 'martial-draft')) {
             await reorderDraftAbility(dragState.instanceId, dropTarget.index);
           } else {
@@ -11758,6 +13437,36 @@ export default function BattleArena({
   const inGameWarningPos = uiPositions[IN_GAME_WARNING_UI_KEY] ?? inGameWarningDefaultPos;
   const inGameWarningText = activeInGameWarning?.text ?? (customUiMode ? IN_GAME_WARNING_PREVIEW_TEXT : null);
   const showFloatingInGameWarning = !!inGameWarningText;
+  const yumenKillNoticeDefaultPos = getDefaultYumenKillNoticePos();
+  const yumenKillNoticePos = uiPositions[YUMEN_KILL_NOTICE_UI_KEY] ?? yumenKillNoticeDefaultPos;
+  const yumenKillNoticeText = activeYumenDefeatNotice
+    ? `${activeYumenDefeatNotice.attackerName ?? '大漠狂沙'} 重伤 ${activeYumenDefeatNotice.defeatedName}`
+    : customUiMode
+    ? '剑心猫猫糕 重伤 测试账号二'
+    : null;
+  const yumenKillNoticeParts = activeYumenDefeatNotice
+    ? {
+        attackerName: activeYumenDefeatNotice.attackerName ?? '大漠狂沙',
+        defeatedName: activeYumenDefeatNotice.defeatedName,
+      }
+    : customUiMode
+    ? { attackerName: '剑心猫猫糕', defeatedName: '测试账号二' }
+    : null;
+  const showFloatingYumenKillNotice = !!yumenKillNoticeText;
+  const yumenKillConfirmDefaultPos = getDefaultYumenKillConfirmPos();
+  const yumenKillConfirmPos = uiPositions[YUMEN_KILL_CONFIRM_UI_KEY] ?? yumenKillConfirmDefaultPos;
+  const yumenKillConfirmText = activeYumenKillConfirm
+    ? `击杀 ${activeYumenKillConfirm.defeatedName}`
+    : customUiMode
+    ? '击杀 测试账号二'
+    : null;
+  const showFloatingYumenKillConfirm = !!yumenKillConfirmText;
+  const yumenAliveCountDefaultPos = getDefaultYumenAliveCountPos();
+  const yumenAliveCountPos = uiPositions[YUMEN_ALIVE_COUNT_UI_KEY] ?? yumenAliveCountDefaultPos;
+  const showFloatingYumenAliveCount = customUiMode || isYumenMode;
+  const yumenAliveCountScale = normalizeYumenHudSettingScale(
+    ((yumenAliveCountSize.width / YUMEN_ALIVE_COUNT_BASE_WIDTH) + (yumenAliveCountSize.height / YUMEN_ALIVE_COUNT_BASE_HEIGHT)) / 2,
+  );
   const itemBarDefaultPos = getDefaultItemBarPos();
   const itemBarPos = uiPositions[ITEM_BAR_UI_KEY] ?? itemBarDefaultPos;
   const chatPanelSavedPos = uiPositions[CHAT_PANEL_UI_KEY];
@@ -11815,6 +13524,7 @@ export default function BattleArena({
           showDebug={showDebug}
           debugLabel={debugLabel}
           onCancelBuff={onCancel}
+          onCopyBuffName={appendAbilityNameToChatInput}
           allowAnyCancel={allowAnyCancel}
           playerScale={debugLabel === 'me'}
           categoryFilter={categoryFilter}
@@ -11908,6 +13618,7 @@ export default function BattleArena({
             compact
             borderlessIcons
             maxPerRow={3}
+            onCopyBuffName={appendAbilityNameToChatInput}
             visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
           />
         </div>
@@ -12140,6 +13851,11 @@ export default function BattleArena({
           aria-label={ability.name}
           disabled={panelLocked || isBusy || options.disabled}
           onMouseDown={(event) => {
+            if (event.ctrlKey && event.button === 0) {
+              event.preventDefault();
+              event.stopPropagation();
+              return;
+            }
             if (isPresetTile) return;
             if (martialFavoriteMode) {
               event.preventDefault();
@@ -12148,6 +13864,12 @@ export default function BattleArena({
             beginLibraryAbilityPointerDrag(event, ability);
           }}
           onClick={(event) => {
+            if (event.ctrlKey) {
+              event.preventDefault();
+              event.stopPropagation();
+              appendAbilityNameToChatInput(ability.name);
+              return;
+            }
             if (!favoriteModeTile || !isFavoritedAbility) return;
             event.preventDefault();
             favoriteMartialAbility(ability.id);
@@ -12262,9 +13984,7 @@ export default function BattleArena({
       return (
         <div
           key={`${plan.id}-${index}`}
-          data-martial-preset-slot="true"
           data-martial-preset-plan-id={plan.id}
-          data-martial-preset-slot-index={index}
           data-martial-preset-slot={index}
           className={`${styles.martialPresetSlot} ${isHover ? styles.martialPresetSlotHover : ''}`}
           onContextMenu={(event) => {
@@ -12682,17 +14402,175 @@ export default function BattleArena({
     );
   };
 
+  const renderYumenKillNotice = () => {
+    if (!showFloatingYumenKillNotice || !yumenKillNoticeText) return null;
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.yumenKillNoticePlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: yumenKillNoticePos.left,
+          top: yumenKillNoticePos.top,
+          width: yumenKillNoticeSize.width,
+          height: yumenKillNoticeSize.height,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--yumen-kill-notice-width': `${yumenKillNoticeSize.width}px`,
+          '--yumen-kill-notice-height': `${yumenKillNoticeSize.height}px`,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(YUMEN_KILL_NOTICE_UI_KEY, yumenKillNoticeDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={styles.customUiPlacementLabel}>击杀提示</div>
+        ) : null}
+        <div key={activeYumenDefeatNotice?.id ?? 'preview'} className={`${styles.yumenKillNoticeBrush} ${activeYumenDefeatNotice ? styles.yumenKillNoticeActive : styles.yumenKillNoticePreview}`}>
+          <span className={`${styles.yumenKillNoticeName} ${styles.yumenKillNoticeNameLeft}`}>{yumenKillNoticeParts?.attackerName}</span>
+          <span className={styles.yumenKillNoticeAction}>重伤</span>
+          <span className={`${styles.yumenKillNoticeName} ${styles.yumenKillNoticeNameRight}`}>{yumenKillNoticeParts?.defeatedName}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenKillConfirm = () => {
+    if (!showFloatingYumenKillConfirm || !yumenKillConfirmText) return null;
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.yumenKillConfirmPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: yumenKillConfirmPos.left,
+          top: yumenKillConfirmPos.top,
+          width: yumenKillConfirmSize.width,
+          height: yumenKillConfirmSize.height,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--yumen-kill-confirm-width': `${yumenKillConfirmSize.width}px`,
+          '--yumen-kill-confirm-height': `${yumenKillConfirmSize.height}px`,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(YUMEN_KILL_CONFIRM_UI_KEY, yumenKillConfirmDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={styles.customUiPlacementLabel}>击杀确认</div>
+        ) : null}
+        <div key={activeYumenKillConfirm?.id ?? 'preview'} className={`${styles.yumenKillConfirm} ${activeYumenKillConfirm ? styles.yumenKillConfirmActive : styles.yumenKillConfirmPreview}`} aria-live="polite">
+          {yumenKillConfirmText}
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenAliveCount = () => {
+    if (!showFloatingYumenAliveCount) return null;
+    const displayCount = customUiMode && !isYumenMode ? 2 : yumenAlivePlayerCount;
+    return (
+      <div
+        data-ui-drag={customUiMode ? 'true' : undefined}
+        className={`${styles.yumenAliveCountPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
+        style={{
+          left: yumenAliveCountPos.left,
+          top: yumenAliveCountPos.top,
+          width: yumenAliveCountSize.width,
+          height: yumenAliveCountSize.height,
+          pointerEvents: customUiMode ? 'auto' : 'none',
+          '--yumen-alive-count-width': `${yumenAliveCountSize.width}px`,
+          '--yumen-alive-count-height': `${yumenAliveCountSize.height}px`,
+          '--yumen-alive-count-scale': yumenAliveCountScale,
+        } as React.CSSProperties}
+        onMouseDown={customUiMode ? (event) => startUIDrag(YUMEN_ALIVE_COUNT_UI_KEY, yumenAliveCountDefaultPos, event, { persist: false }) : undefined}
+      >
+        {customUiMode ? (
+          <div className={styles.customUiPlacementLabel}>剩余人数</div>
+        ) : null}
+        <div className={styles.yumenAliveCountPanel}>
+          <span className={styles.yumenAliveCountLabel}>剩余人数</span>
+          <span className={styles.yumenAliveCountValue}>{displayCount}</span>
+        </div>
+      </div>
+    );
+  };
+
+  const renderYumenResultOverlay = () => {
+    if (!isYumenMode || !yumenResults) return null;
+    const rows = Array.isArray(yumenResults.rows) ? yumenResults.rows : [];
+    const selfRow = rows.find((row) => row.userId === me.userId) ?? rows[0];
+    const selfRank = selfRow?.rank ?? 1;
+    const rankTotal = Math.max(1, rows.length || 1);
+    const countdown = Math.max(0, Math.ceil((Number(yumenResults.autoLeaveAt ?? 0) - systemTime.getTime()) / 1000));
+    const rankClass = selfRank === 1
+      ? styles.yumenResultRankGold
+      : selfRank === 2
+      ? styles.yumenResultRankSilver
+      : selfRank === 3
+      ? styles.yumenResultRankBronze
+      : styles.yumenResultRankGray;
+    return (
+      <div className={styles.yumenResultOverlay} role="dialog" aria-modal="true">
+        <div className={styles.yumenResultWindow}>
+          <div className={styles.yumenResultTop}>
+            <div className={`${styles.yumenResultBanner} ${rankClass}`}><span>第{selfRank}名</span></div>
+            <div className={styles.yumenResultTeamRank}>队伍排名：{selfRank}/{rankTotal}</div>
+          </div>
+          <div className={styles.yumenResultSubtitle}>{selfRank === 1 ? '绝处睥睨，傲视群星' : '棋差一招，下次努力'}</div>
+          <div className={styles.yumenResultTable}>
+            <div className={`${styles.yumenResultRow} ${styles.yumenResultHeader}`}>
+              <span>玩家名字</span>
+              <span>击杀</span>
+              <span>伤害量</span>
+              <span>评分结算</span>
+              <span>奖励</span>
+            </div>
+            <div className={styles.yumenResultList}>
+              {rows.map((row) => {
+                const rowRankClass = row.rank === 1
+                  ? styles.yumenResultMedalGold
+                  : row.rank === 2
+                  ? styles.yumenResultMedalSilver
+                  : row.rank === 3
+                  ? styles.yumenResultMedalBronze
+                  : styles.yumenResultMedalGray;
+                return (
+                  <div key={row.userId} className={`${styles.yumenResultRow} ${row.userId === me.userId ? styles.yumenResultSelfRow : ''}`}>
+                    <span className={styles.yumenResultNameCell}>
+                      <span className={`${styles.yumenResultMedal} ${rowRankClass}`}>{row.rank}</span>
+                      <span className={styles.yumenResultName}>{row.username}</span>
+                    </span>
+                    <span>{formatGameAmount(row.kills)}</span>
+                    <span>{formatGameAmount(row.damage)}</span>
+                    <span>{formatGameAmount(row.score)}</span>
+                    <span className={styles.yumenResultReward}><Star size={16} strokeWidth={2.2} aria-hidden="true" />{formatGameAmount(row.reward)}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className={styles.yumenResultFooter}>
+            <span className={styles.yumenResultCountdown}>将在<span className={styles.yumenResultCountdownNumber}>{countdown}</span>秒后离开战场</span>
+            <button type="button" className={styles.yumenResultLeaveButton} onClick={() => void onLeaveGame?.()}>离开战场</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   const renderChatMessageLines = (messages: ChatMessage[]) => messages.map((message) => {
     const speakerColor = message.school ? SCHOOL_COLOR[message.school] : undefined;
-    const targetColor = message.targetSchool ? SCHOOL_COLOR[message.targetSchool] : undefined;
     const isSystemMessage = message.channel === 'system' && (message.variant === 'system' || message.userId === 'system');
     const isBattleMessage = message.channel === 'battle' || message.variant === 'battle';
     const battleAbilityName = message.abilityName || '攻击';
     const battleTargetName = message.targetUsername ?? '目标';
+    const targetColor = message.targetSchool ? SCHOOL_COLOR[message.targetSchool] : battleTargetName === message.username ? speakerColor : undefined;
+    const renderBracketedBattleName = (name: string, color?: string) => (
+      <>
+        <span style={color ? { color } : undefined}>[</span>
+        <span className={styles.chatSpeaker} style={color ? { color } : undefined}>{name}</span>
+        <span style={color ? { color } : undefined}>]</span>
+      </>
+    );
     const renderBattleActor = () => message.username === '你'
       ? <span>你</span>
-      : <><span>[</span><span className={styles.chatSpeaker} style={speakerColor ? { color: speakerColor } : undefined}>{message.username}</span><span>]</span></>;
-    const renderBattleTarget = () => battleTargetName === '你' ? <span>你</span> : <><span>[</span><span className={styles.chatSpeaker} style={targetColor ? { color: targetColor } : undefined}>{battleTargetName}</span><span>]</span></>;
+      : renderBracketedBattleName(message.username, speakerColor);
+    const renderBattleTarget = () => battleTargetName === '你'
+      ? <span>你</span>
+      : renderBracketedBattleName(battleTargetName, targetColor);
     return (
       <div key={message.id} className={`${styles.chatMessageLine} ${isSystemMessage ? styles.chatSystemMessageLine : ''} ${isBattleMessage ? styles.chatBattleMessageLine : ''}`} data-chat-message-line="true">
         <span className={styles.chatPrefix}>
@@ -12846,6 +14724,46 @@ export default function BattleArena({
               onChange={(event) => setChatInputValue(event.target.value.slice(0, CHAT_MAX_INPUT_LENGTH))}
               onKeyDown={(event) => {
                 event.stopPropagation();
+                if ((event.key === 'Backspace' || event.key === 'Delete') && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                  const input = event.currentTarget;
+                  const selectionStart = input.selectionStart;
+                  const selectionEnd = input.selectionEnd;
+                  if (selectionStart !== null && selectionEnd !== null && selectionStart === selectionEnd) {
+                    const caret = selectionStart;
+                    const text = chatInputValue;
+                    let tokenStart = -1;
+                    let tokenEnd = -1;
+
+                    if (event.key === 'Backspace' && caret > 0 && text[caret - 1] === ']') {
+                      const open = text.lastIndexOf('[', caret - 1);
+                      if (open >= 0) {
+                        const token = text.slice(open, caret);
+                        if (/^\[[^\[\]]+\]$/.test(token)) {
+                          tokenStart = open;
+                          tokenEnd = caret;
+                        }
+                      }
+                    }
+
+                    if (event.key === 'Delete' && caret < text.length && text[caret] === '[') {
+                      const close = text.indexOf(']', caret + 1);
+                      if (close >= 0) {
+                        const token = text.slice(caret, close + 1);
+                        if (/^\[[^\[\]]+\]$/.test(token)) {
+                          tokenStart = caret;
+                          tokenEnd = close + 1;
+                        }
+                      }
+                    }
+
+                    if (tokenStart >= 0 && tokenEnd > tokenStart) {
+                      event.preventDefault();
+                      chatInputCursorPendingRef.current = tokenStart;
+                      setChatInputValue((text.slice(0, tokenStart) + text.slice(tokenEnd)).slice(0, CHAT_MAX_INPUT_LENGTH));
+                      return;
+                    }
+                  }
+                }
                 if (event.key === 'Enter') {
                   event.preventDefault();
                   event.currentTarget.blur();
@@ -13398,7 +15316,7 @@ export default function BattleArena({
 
   const renderItemBar = () => {
     const consumableNowMs = systemTime.getTime();
-    const visibleConsumableSlots = consumableBarSettings.enabled
+    const visibleConsumableSlots = consumableBarSettings.enabled && !selfYumenSpectating
       ? consumableBarSettings.slots.slice(0, consumableBarSettings.slotCount)
       : [];
 
@@ -13408,6 +15326,8 @@ export default function BattleArena({
         const consumable = consumableId ? CONSUMABLE_ITEM_BY_ID.get(consumableId) : undefined;
         const cooldownMs = consumable ? getConsumableCooldownRemainingMs(me, consumable.id, consumableNowMs) : 0;
         const cooldownLabel = formatConsumableCooldown(cooldownMs);
+        const cooldownPct = getConsumableCooldownPct(consumable, cooldownMs);
+        const cooldownDanger = isCooldownFlashDanger(cooldownMs);
         const remainingCount = consumable ? getConsumableRemainingCount(me, consumable) : 0;
         const unavailable = !!consumable && consumable.implemented !== true;
         const depleted = !!consumable && consumable.implemented === true && remainingCount <= 0;
@@ -13463,8 +15383,13 @@ export default function BattleArena({
               setDraggingConsumableIndex(null);
               setDragHoverConsumableIndex(null);
             }}
-            onClick={() => {
-              if (!consumable || cooldownMs > 0 || unavailable || depleted || customUiMode) return;
+            onClick={(event) => {
+              if (!consumable) return;
+              if (event.ctrlKey) {
+                appendAbilityNameToChatInput(consumable.name);
+                return;
+              }
+              if (cooldownMs > 0 || unavailable || depleted || customUiMode) return;
               useConsumableRef.current(consumable.id);
             }}
           >
@@ -13474,7 +15399,7 @@ export default function BattleArena({
             )}
             {consumable?.implemented === true && <span className={styles.consumableCount}>{remainingCount}</span>}
             {hotkeyLabel && <span className={styles.consumableHotkey}>{hotkeyLabel}</span>}
-            {cooldownMs > 0 && <span className={styles.consumableCooldown}>{cooldownLabel}</span>}
+            {cooldownMs > 0 && <span className={`${styles.consumableCooldown} ${cooldownDanger ? styles.consumableCooldownDanger : ''}`} style={getCooldownOverlayStyle(cooldownPct, 'cooldown')}>{cooldownLabel}</span>}
           </button>
         );
       })}
@@ -13493,7 +15418,7 @@ export default function BattleArena({
     >
       {showInlinePlayerStatus && (
         <div className={styles.playerBuffRow}>
-          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
+          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} onCopyBuffName={appendAbilityNameToChatInput} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
         </div>
       )}
 
@@ -13553,6 +15478,9 @@ export default function BattleArena({
                 const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
                 const cdLabel = formatHudCooldownText(ability.cooldown / 30);
                 const minuteCooldown = cdLabel.endsWith('m');
+                const cooldownDisplayKind = ability.cooldownDisplayKind ?? 'cooldown';
+                const showCooldownNumber = cooldownDisplayKind !== 'gcd';
+                const cooldownDanger = showCooldownNumber && isCooldownFlashDanger((ability.cooldown / SERVER_TICK_RATE) * 1000);
                 const hasCharges = (ability.maxCharges ?? 0) > 1;
                 const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
                 const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
@@ -13583,8 +15511,12 @@ export default function BattleArena({
                       handleDraftDragStart(e, ability.id, idx);
                     }}
                     onDragEnd={handleDraftDragEnd}
-                    onClick={() => {
+                    onClick={(event) => {
                       if (dragJustEndedRef.current) return;
+                      if (event.ctrlKey) {
+                        appendAbilityNameToChatInput(ability.name);
+                        return;
+                      }
                       if (!ability.isReady || ability.blockedByAntiStealth) {
                         showAbilityDisabledWarning(ability);
                         return;
@@ -13595,8 +15527,8 @@ export default function BattleArena({
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                     {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                      <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
-                        <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''}`}>{cdLabel}</span>
+                      <div className={`${styles.cdArc} ${cooldownDisplayKind === 'gcd' ? styles.cdArcGcd : ''}`} style={getCooldownOverlayStyle(cdPct, cooldownDisplayKind)}>
+                        {showCooldownNumber && <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''} ${cooldownDanger ? styles.cdNumDanger : ''}`}>{cdLabel}</span>}
                       </div>
                     )}
                     {hasCharges && (
@@ -13636,6 +15568,9 @@ export default function BattleArena({
             const cdPct = ability.maxCooldown > 0 ? (ability.cooldown / ability.maxCooldown) * 100 : 0;
             const cdLabel = formatHudCooldownText(ability.cooldown / 30);
             const minuteCooldown = cdLabel.endsWith('m');
+            const cooldownDisplayKind = ability.cooldownDisplayKind ?? 'cooldown';
+            const showCooldownNumber = cooldownDisplayKind !== 'gcd';
+            const cooldownDanger = showCooldownNumber && isCooldownFlashDanger((ability.cooldown / SERVER_TICK_RATE) * 1000);
             const hasCharges = (ability.maxCharges ?? 0) > 1;
             const chargeCount = hasCharges ? (ability.chargeCount ?? ability.maxCharges ?? 0) : 0;
             const maxCharges = hasCharges ? Math.max(0, ability.maxCharges ?? 0) : 0;
@@ -13658,7 +15593,11 @@ export default function BattleArena({
                   onMouseLeave={closeAbilityHint}
                   onFocus={(e) => openAbilityHint(e.currentTarget.getBoundingClientRect(), ability)}
                   onBlur={closeAbilityHint}
-                  onClick={() => {
+                  onClick={(event) => {
+                    if (event.ctrlKey) {
+                      appendAbilityNameToChatInput(ability.name);
+                      return;
+                    }
                     if (!ability.isReady || ability.blockedByAntiStealth) {
                       showAbilityDisabledWarning(ability);
                       return;
@@ -13669,8 +15608,8 @@ export default function BattleArena({
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img src={getArenaAbilityIconPath(ability.name, ability.iconPath)} alt={ability.name} className={styles.abilityIcon} draggable={false} />
                   {ability.cooldown > 0 && ability.maxCooldown > 0 && (
-                    <div className={styles.cdArc} style={{ background: `conic-gradient(from 0deg, transparent ${(100 - cdPct).toFixed(1)}%, rgba(0,0,0,0.72) ${(100 - cdPct).toFixed(1)}%)` }}>
-                      <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''}`}>{cdLabel}</span>
+                    <div className={`${styles.cdArc} ${cooldownDisplayKind === 'gcd' ? styles.cdArcGcd : ''}`} style={getCooldownOverlayStyle(cdPct, cooldownDisplayKind)}>
+                      {showCooldownNumber && <span className={`${styles.cdNum} ${minuteCooldown ? styles.cdNumMinutes : ''} ${cooldownDanger ? styles.cdNumDanger : ''}`}>{cdLabel}</span>}
                     </div>
                   )}
                   {hasCharges && (
@@ -13724,6 +15663,25 @@ export default function BattleArena({
           <span className={styles.topMetricsGoodValue}>{rtt !== null ? rtt : '—'}</span>
         </div>
       </div>
+
+      {isYumenMode && (
+        <YumenMiniMap
+          mapWidth={ARENA_WIDTH}
+          mapHeight={ARENA_HEIGHT}
+          playerPosition={{ x: me.position.x, y: me.position.y }}
+          playerFacing={{ x: me.facing?.x ?? 0, y: me.facing?.y ?? 1 }}
+          safeZone={safeZone}
+          panelPosition={uiPositions[YUMEN_MINIMAP_UI_KEY]}
+          onPanelPositionChange={updateYumenMiniMapPosition}
+        />
+      )}
+
+      <FloatingCoordinateDisplay
+        visible={showCoordinateDisplay}
+        positionRef={localRenderPosRef}
+        fallbackPosition={me.position}
+        onCopy={() => void copyCurrentCoordinateText()}
+      />
 
       {uiLayoutReady ? renderChatPanel() : null}
       {uiLayoutReady ? renderDetachedChatPanels() : null}
@@ -13842,6 +15800,9 @@ export default function BattleArena({
       })}
 
       {showFloatingInGameWarning && renderInGameWarning()}
+      {showFloatingYumenKillNotice && renderYumenKillNotice()}
+      {showFloatingYumenKillConfirm && renderYumenKillConfirm()}
+      {showFloatingYumenAliveCount && renderYumenAliveCount()}
 
       {showFloatingMartialPanel && (
         <div
@@ -13961,7 +15922,7 @@ export default function BattleArena({
           dpr={sceneCanvasDpr}
           gl={sceneCanvasGl}
           onCreated={handleMainCanvasCreated}
-          shadows={mode === 'collision-test' && envToggles.shadows && !blueprintMode ? 'percentage' : false}
+          shadows={isExportedMap && envToggles.shadows && !blueprintMode ? 'percentage' : false}
           onPointerMissed={(event) => {
             if (event.button !== 0) return;
             if (pendingDummySpawnRef.current || pendingGroundCastAbilityRef.current) return;
@@ -13973,6 +15934,7 @@ export default function BattleArena({
             me={me}
             allOpponents={worldVisibleOpponentsList}
             opponents={visibleOpponentsList}
+            yumenSpectatorUserIds={Array.from(yumenSpectatorUserIds)}
             selectedTargetId={selectedTargetId}
             onSelectTarget={(userId) => {
               const clicked = worldVisibleOpponentsList.find((o) => o.userId === userId);
@@ -14018,6 +15980,7 @@ export default function BattleArena({
             camPitchRef={camPitchRef}
             camZoomRef={camZoomRef}
             cameraMoveCommandActiveRef={cameraMoveCommandActiveRef}
+            cameraForwardMoveCommandActiveRef={cameraForwardMoveCommandActiveRef}
             cameraLookInputVersionRef={cameraLookInputVersionRef}
             manualCameraLookActiveRef={manualCameraLookActiveRef}
             meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
@@ -14028,6 +15991,9 @@ export default function BattleArena({
             entityScreenBoundsRef={entityScreenBoundsRef}
             mode={mode}
             safeZone={safeZone}
+            playArea={effectivePlayArea}
+            onPlayAreaChange={updateYumenPlayArea}
+            boundaryEditMode={yumenBoundaryEditMode}
             groundZones={groundZones}
             groundCastPreview={
               (() => {
@@ -14116,14 +16082,14 @@ export default function BattleArena({
             collisionSystemRef={collisionSysRef}
             collisionDebugRef={collisionDebugRef}
             onCollisionSystemReady={onCollisionSystemReady}
-            onCameraDebugEvent={mode === 'collision-test' && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
+            onCameraDebugEvent={isExportedMap && showCameraEventTestingPanel ? appendCameraDebugEntry : undefined}
             blueprintMode={blueprintMode}
             losIsBlocked={draftAbilities.some(a => !!a?.losBlocked) || commonAbilities.some(a => a.losBlocked)}
-            onEnvDebug={mode === 'collision-test' && lightingControlsOpen ? setEnvDebugInfo : undefined}
+            onEnvDebug={isExportedMap && lightingControlsOpen ? setEnvDebugInfo : undefined}
             onSceneMetrics={handleSceneMetrics}
             onSceneLoadTiming={handleSceneLoadTiming}
-            envToggles={mode === 'collision-test' ? envToggles : undefined}
-            dirLightConfig={mode === 'collision-test' ? dirLightConfig : undefined}
+            envToggles={isExportedMap ? envToggles : undefined}
+            dirLightConfig={isExportedMap ? dirLightConfig : undefined}
             blindWorldMode={selfHasHongMengTianJin}
             opponentInstantSnapAtRef={lastInstantSwapCastAtRef}
           />
@@ -14137,6 +16103,9 @@ export default function BattleArena({
         </Canvas>
       </div>
       {sceneRecovering && <div className={styles.canvasRecoveryNotice}>画面恢复中</div>}
+      <div className={`${styles.yumenGhostScreenVeil} ${selfYumenSpectating ? styles.yumenGhostScreenVeilVisible : ''}`} aria-hidden="true" />
+      <div className={`${styles.yumenSandstormScreenVeil} ${selfHasYumenKuangSha ? styles.yumenSandstormScreenVeilVisible : ''}`} style={yumenSandstormOverlayValues.cssVars} aria-hidden="true" />
+      {renderYumenResultOverlay()}
       {/* per-opponent floating channel overlay removed:
          enemy channel bar is now rendered inside .enemyBossGroup
          (below the boss HP bar, above the status bar). */}
@@ -14156,6 +16125,7 @@ export default function BattleArena({
             me={me}
             allOpponents={[]}
             opponents={[]}
+            yumenSpectatorUserIds={Array.from(yumenSpectatorUserIds)}
             selectedTargetId={null}
             onSelectTarget={() => {}}
             entities={[]}
@@ -14173,6 +16143,7 @@ export default function BattleArena({
             camPitchRef={camPitchRef}
             camZoomRef={camZoomRef}
             cameraMoveCommandActiveRef={cameraMoveCommandActiveRef}
+            cameraForwardMoveCommandActiveRef={cameraForwardMoveCommandActiveRef}
             cameraLookInputVersionRef={cameraLookInputVersionRef}
             manualCameraLookActiveRef={manualCameraLookActiveRef}
             meFacingRef={localFacingRef as React.MutableRefObject<{ x: number; y: number }>}
@@ -14185,7 +16156,7 @@ export default function BattleArena({
           />
         </Canvas>
       </div>}
-      {mode === 'collision-test' && showSceneTestingPanel && (
+      {(mode === 'test' || mode === 'collision-test') && showSceneTestingPanel && (
         <div className={styles.uiInfoPanel} style={{ left: '5%', top: '50%', transform: 'translateY(-50%)' }}>
           <div className={styles.uiFloatingTitle}>角色状态</div>
           <div className={styles.uiInfoValue}>位置 {localRenderPosRef.current.x.toFixed(1)}, {localRenderPosRef.current.y.toFixed(1)}</div>
@@ -14195,7 +16166,7 @@ export default function BattleArena({
         </div>
       )}
 
-      {mode === 'collision-test' && showCameraEventTestingPanel && (
+      {(mode === 'test' || mode === 'collision-test') && showCameraEventTestingPanel && (
         <div
           className={styles.uiFloatingPanel}
           style={{
@@ -14261,7 +16232,7 @@ export default function BattleArena({
         </div>
       )}
 
-      {mode === 'collision-test' && showMeasurePanel && (
+      {(mode === 'test' || mode === 'collision-test') && showMeasurePanel && (
         <div className={styles.uiFloatingPanel} style={{ left: '70%', top: '60%', width: 220, transform: 'translate(-50%, -50%)' }}>
           <div className={styles.uiFloatingTitle}>距离测试</div>
           <div className={styles.escMeasureGrid}>
@@ -14316,7 +16287,7 @@ export default function BattleArena({
         </div>
       )}
 
-      {mode === 'collision-test' && showTestingPanel && (
+      {showTestingPanel && (
         <div className={styles.escOverlay}>
           <div className={`${styles.escPanelShell} ${escPanelPage !== 'main' ? styles.escPanelShellSettings : ''}`} data-testing-panel>
             {escPanelPage === 'main' ? (
@@ -14340,15 +16311,17 @@ export default function BattleArena({
                   >
                     常规
                   </button>
-                  <button
-                    type="button"
-                    className={`${styles.escMainTabButton} ${escMainTab === 'test' ? styles.escMainTabButtonActive : ''}`}
-                    onClick={() => setEscMainTab('test')}
-                  >
-                    测试
-                  </button>
+                  {canAccessTestingPanels && (
+                    <button
+                      type="button"
+                      className={`${styles.escMainTabButton} ${escMainTab === 'test' ? styles.escMainTabButtonActive : ''}`}
+                      onClick={() => setEscMainTab('test')}
+                    >
+                      测试
+                    </button>
+                  )}
                 </div>
-                {escMainTab === 'normal' ? (
+                {escMainTab === 'normal' || !canAccessTestingPanels ? (
                   <>
                     <div className={styles.escMainGrid}>
                       <button type="button" className={styles.escMainTile} disabled>
@@ -14436,6 +16409,16 @@ export default function BattleArena({
                         </button>
                         <button
                           type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'camera' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => {
+                            setEscTestPage('camera');
+                            setShowCameraEventTestingPanel(true);
+                          }}
+                        >
+                          镜头测试
+                        </button>
+                        <button
+                          type="button"
                           className={`${styles.escSettingsNavButton} ${escTestPage === 'martial' ? styles.escSettingsNavButtonActive : ''}`}
                           onClick={() => setEscTestPage('martial')}
                         >
@@ -14448,16 +16431,40 @@ export default function BattleArena({
                         >
                           聊天
                         </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'kill' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setEscTestPage('kill')}
+                        >
+                          击杀
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.escSettingsNavButton} ${escTestPage === 'sandstorm' ? styles.escSettingsNavButtonActive : ''}`}
+                          onClick={() => setEscTestPage('sandstorm')}
+                        >
+                          狂沙
+                        </button>
                       </aside>
                       <section className={styles.escTestContent}>
                         {escTestPage === 'switches' ? (
+                          <>
                           <div className={styles.escTestGrid}>
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showSceneTestingPanel} onChange={(e) => setShowSceneTestingPanel(e.target.checked)} className={styles.escToggleInput} />
                               <span>角色测试状态</span>
                             </label>
                             <label className={styles.escToggleRow}>
-                              <input type="checkbox" checked={showCameraEventTestingPanel} onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)} className={styles.escToggleInput} />
+                              <input
+                                type="checkbox"
+                                checked={showCameraEventTestingPanel}
+                                onChange={(e) => {
+                                  const next = e.target.checked;
+                                  setShowCameraEventTestingPanel(next);
+                                  if (next) setEscTestPage('camera');
+                                }}
+                                className={styles.escToggleInput}
+                              />
                               <span>镜头测试</span>
                             </label>
                             <label className={styles.escToggleRow}>
@@ -14465,22 +16472,20 @@ export default function BattleArena({
                               <span>场景加载报告</span>
                             </label>
                             <label className={styles.escToggleRow}>
-                              <input type="checkbox" checked={showCrashDiagnosticsPanel} onChange={(e) => setShowCrashDiagnosticsPanel(e.target.checked)} className={styles.escToggleInput} />
-                              <span>崩溃诊断</span>
-                            </label>
-                            <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showHiddenBuffStatusBar} onChange={(e) => setShowHiddenBuffStatusBar(e.target.checked)} className={styles.escToggleInput} />
                               <span>显示隐藏buff</span>
                             </label>
-                            <label className={styles.escToggleRow}>
-                              <input
-                                type="checkbox"
-                                checked={showCheatAbilityPanelEntry}
-                                onChange={(e) => setShowCheatAbilityPanelEntry(e.target.checked)}
-                                className={styles.escToggleInput}
-                              />
-                              <span>打开测试添加技能面板</span>
-                            </label>
+                            {canAccessTestingPanels && (
+                              <label className={styles.escToggleRow}>
+                                <input
+                                  type="checkbox"
+                                  checked={showCheatAbilityPanelEntry}
+                                  onChange={(e) => setShowCheatAbilityPanelEntry(e.target.checked)}
+                                  className={styles.escToggleInput}
+                                />
+                                <span>打开测试添加技能面板</span>
+                              </label>
+                            )}
                             <label className={styles.escToggleRow}>
                               <input
                                 type="checkbox"
@@ -14500,6 +16505,15 @@ export default function BattleArena({
                                 className={styles.escToggleInput}
                               />
                               <span>屏幕坐标</span>
+                            </label>
+                            <label className={styles.escToggleRow}>
+                              <input
+                                type="checkbox"
+                                checked={showCoordinateDisplay}
+                                onChange={(e) => setShowCoordinateDisplay(e.target.checked)}
+                                className={styles.escToggleInput}
+                              />
+                              <span>打开坐标显示</span>
                             </label>
                             <label className={styles.escToggleRow}>
                               <input type="checkbox" checked={showCollisionShells} onChange={(e) => setShowCollisionShells(e.target.checked)} className={styles.escToggleInput} />
@@ -14530,6 +16544,95 @@ export default function BattleArena({
                               />
                               <span>跳跃细节和地面距离</span>
                             </label>
+                          </div>
+                          </>
+                        ) : escTestPage === 'camera' ? (
+                          <div className={styles.escCameraTestPanel}>
+                            <div className={styles.escCameraTestToolbar}>
+                              <label className={`${styles.escToggleRow} ${styles.escCameraEventToggle}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={showCameraEventTestingPanel}
+                                  onChange={(e) => setShowCameraEventTestingPanel(e.target.checked)}
+                                  className={styles.escToggleInput}
+                                />
+                                <span>镜头事件记录</span>
+                              </label>
+                              <button type="button" className={styles.escInlineButton} onClick={clearCameraDebugEntries}>清空</button>
+                              <button type="button" className={styles.escInlineButton} onClick={() => void copyCameraDebugEntries()}>复制</button>
+                            </div>
+                            <div className={styles.escCameraMetricGrid}>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>冲刺状态</span>
+                                <strong>{cameraDashPredictionDebug.active ? '冲刺中' : '待机'}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>碰撞预测</span>
+                                <strong>{cameraDashPredictionDebug.collisionAware ? '运行' : cameraDashPredictionDebug.collisionReady ? '就绪' : '等待'}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>领先帧</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.leadTicks, 1)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>预测修正</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.collisionDelta)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>服务端差</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.serverRenderGap)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>渲染误差</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.renderPredictionGap)}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>镜头距离</span>
+                                <strong>{formatCameraDashNumber(cameraZoomToDistance(cameraDashPredictionDebug.cameraZoom))}</strong>
+                              </div>
+                              <div className={styles.escCameraMetricBox}>
+                                <span>俯仰角</span>
+                                <strong>{formatCameraDashNumber(cameraDashPredictionDebug.cameraPitch)} / {formatCameraDashNumber(cameraDashPredictionDebug.minPitch)}..{formatCameraDashNumber(cameraDashPredictionDebug.maxPitch)}</strong>
+                              </div>
+                            </div>
+                            <div className={styles.escCameraVectorPanel}>
+                              <div className={styles.escCameraSectionHeader}>
+                                <span>位置</span>
+                                <span>{cameraDashPredictionDebug.stoppedByCollision ? '碰撞停止' : '跟随中'}</span>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>服务端</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.serverPosition)}</strong>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>渲染</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.renderPosition)}</strong>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>碰撞预测</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.predictedPosition)}</strong>
+                              </div>
+                              <div className={styles.escCameraVectorRow}>
+                                <span>线性预测</span>
+                                <strong>{formatCameraDashPosition(cameraDashPredictionDebug.linearPosition)}</strong>
+                              </div>
+                            </div>
+                            <div className={styles.escCameraEventPanel}>
+                              <div className={styles.escCameraSectionHeader}>
+                                <span>事件日志</span>
+                                <span>{cameraDebugEntries.length}</span>
+                              </div>
+                              <div className={styles.escCameraEventList}>
+                                {cameraDebugEntries.length === 0 ? (
+                                  <div className={styles.escCameraEmptyState}>暂无记录</div>
+                                ) : cameraDebugEntries.slice(-8).reverse().map((entry) => (
+                                  <div className={styles.escCameraEventItem} key={entry.id}>
+                                    <span>{entry.type}</span>
+                                    <strong>{entry.message}</strong>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         ) : escTestPage === 'martial' ? (
                           <div className={styles.escTestGrid}>
@@ -14691,6 +16794,152 @@ export default function BattleArena({
                                 className={styles.escRangeInput}
                                 aria-label="清除聊天记录高度"
                               />
+                            </div>
+                          </div>
+                        ) : escTestPage === 'kill' ? (
+                          <div className={styles.escTestGrid}>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀提示宽度</span>
+                                <button type="button" className={styles.escInlineButton} onClick={previewYumenKillNotice}>预览</button>
+                                <span>{getYumenHudSettingScale(yumenKillNoticeSize.width, YUMEN_KILL_NOTICE_BASE_WIDTH).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillNoticeSize.width, YUMEN_KILL_NOTICE_BASE_WIDTH)}
+                                onChange={(e) => setYumenKillNoticeSize((current) => ({
+                                  ...current,
+                                  width: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_NOTICE_BASE_WIDTH, normalizeYumenKillNoticeWidth),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀提示宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀提示高度</span>
+                                <span>{getYumenHudSettingScale(yumenKillNoticeSize.height, YUMEN_KILL_NOTICE_BASE_HEIGHT).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillNoticeSize.height, YUMEN_KILL_NOTICE_BASE_HEIGHT)}
+                                onChange={(e) => setYumenKillNoticeSize((current) => ({
+                                  ...current,
+                                  height: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_NOTICE_BASE_HEIGHT, normalizeYumenKillNoticeHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀提示高度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀确认宽度</span>
+                                <button type="button" className={styles.escInlineButton} onClick={previewYumenKillConfirm}>预览</button>
+                                <span>{getYumenHudSettingScale(yumenKillConfirmSize.width, YUMEN_KILL_CONFIRM_BASE_WIDTH).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillConfirmSize.width, YUMEN_KILL_CONFIRM_BASE_WIDTH)}
+                                onChange={(e) => setYumenKillConfirmSize((current) => ({
+                                  ...current,
+                                  width: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_CONFIRM_BASE_WIDTH, normalizeYumenKillConfirmWidth),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀确认宽度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>击杀确认高度</span>
+                                <span>{getYumenHudSettingScale(yumenKillConfirmSize.height, YUMEN_KILL_CONFIRM_BASE_HEIGHT).toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={getYumenHudSettingScale(yumenKillConfirmSize.height, YUMEN_KILL_CONFIRM_BASE_HEIGHT)}
+                                onChange={(e) => setYumenKillConfirmSize((current) => ({
+                                  ...current,
+                                  height: scaleYumenHudSettingValue(e.target.value, YUMEN_KILL_CONFIRM_BASE_HEIGHT, normalizeYumenKillConfirmHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="击杀确认高度"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>剩余人数缩放</span>
+                                <span>{yumenAliveCountScale.toFixed(1)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min={YUMEN_HUD_SETTING_MIN_SCALE}
+                                max={YUMEN_HUD_SETTING_MAX_SCALE}
+                                step="0.1"
+                                value={yumenAliveCountScale}
+                                onChange={(e) => setYumenAliveCountSize(() => ({
+                                  width: scaleYumenHudSettingValue(e.target.value, YUMEN_ALIVE_COUNT_BASE_WIDTH, normalizeYumenAliveCountWidth),
+                                  height: scaleYumenHudSettingValue(e.target.value, YUMEN_ALIVE_COUNT_BASE_HEIGHT, normalizeYumenAliveCountHeight),
+                                }))}
+                                className={styles.escRangeInput}
+                                aria-label="剩余人数缩放"
+                              />
+                            </div>
+                          </div>
+                        ) : escTestPage === 'sandstorm' ? (
+                          <div className={styles.escTestGrid}>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>橙色量</span>
+                                <span>{Math.round(yumenSandstormOverlaySettings.orangeAmount)}%</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="0"
+                                max="100"
+                                step="1"
+                                value={yumenSandstormOverlaySettings.orangeAmount}
+                                onChange={(e) => setYumenSandstormOverlaySettings((current) => normalizeSandstormOverlaySettings({ ...current, orangeAmount: e.target.value }))}
+                                className={styles.escRangeInput}
+                                aria-label="狂沙橙色量"
+                              />
+                            </div>
+                            <div className={styles.escSettingControl}>
+                              <div className={styles.escRangeHeader}>
+                                <span>明暗</span>
+                                <span>{Math.round(yumenSandstormOverlaySettings.brightness)}</span>
+                              </div>
+                              <input
+                                type="range"
+                                min="-40"
+                                max="40"
+                                step="1"
+                                value={yumenSandstormOverlaySettings.brightness}
+                                onChange={(e) => setYumenSandstormOverlaySettings((current) => normalizeSandstormOverlaySettings({ ...current, brightness: e.target.value }))}
+                                className={styles.escRangeInput}
+                                aria-label="狂沙明暗"
+                              />
+                            </div>
+                            <div className={`${styles.escSettingControl} ${styles.sandstormValuePanel}`}>
+                              <div className={styles.escRangeHeader}>
+                                <span>最终值</span>
+                                <button type="button" className={styles.escInlineButton} onClick={copyYumenSandstormOverlayValues}>复制</button>
+                              </div>
+                              <div className={styles.sandstormValueRows}>
+                                <div><span>RGB</span> {yumenSandstormOverlayValues.r}, {yumenSandstormOverlayValues.g}, {yumenSandstormOverlayValues.b}</div>
+                                <div><span>Alpha</span> {yumenSandstormOverlayValues.alpha.toFixed(3)}</div>
+                                <div>{yumenSandstormOverlayValues.rgba}</div>
+                              </div>
                             </div>
                           </div>
                         ) : (
@@ -15026,7 +17275,7 @@ export default function BattleArena({
           </div>
         </div>
       )}
-      {mode === 'collision-test' && !collisionReady && (
+      {isExportedMap && !collisionReady && (
         <div style={{
           position: 'absolute',
           top: 20,
@@ -15124,65 +17373,6 @@ export default function BattleArena({
           </div>
           <div className={styles.loadPerfGameCounts}>
             Three {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.objects)} objects · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.geometries)} geometries · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.textures)} textures · {formatLoadPerfNumber(loadPerformanceSnapshot.sceneMetrics?.calls)} draws
-          </div>
-        </div>
-      )}
-
-      {showCrashDiagnosticsPanel && (
-        <div className={`${styles.uiFloatingPanel} ${styles.crashDiagPanel}`} data-ui-interactive data-crash-diagnostics-panel>
-          <div className={styles.loadPerfHeader}>
-            <div>
-              <div className={styles.uiFloatingTitle}>崩溃诊断</div>
-              <div className={styles.loadPerfSummary}>
-                行为 {crashDiagnosticsSummary.breadcrumbCount} 条 · 断线 {crashDiagnosticsSummary.disconnectCount} 次 · {crashDiagnosticsSummary.lastUploadStatus}
-              </div>
-            </div>
-            <div className={styles.loadPerfHeaderActions}>
-              <button
-                type="button"
-                className={styles.loadPerfCopyButton}
-                onClick={copyCrashDiagnosticsReport}
-              >
-                <Clipboard size={13} />
-                <span>复制</span>
-              </button>
-              <button
-                type="button"
-                className={styles.loadPerfCopyButton}
-                onClick={downloadCrashDiagnosticsReport}
-              >
-                <Download size={13} />
-                <span>下载</span>
-              </button>
-              <button
-                type="button"
-                className={styles.loadPerfCopyButton}
-                onClick={() => void uploadCrashDiagnosticsReport()}
-              >
-                <UploadCloud size={13} />
-                <span>上传</span>
-              </button>
-              <button
-                type="button"
-                className={styles.loadPerfCloseButton}
-                onClick={() => setShowCrashDiagnosticsPanel(false)}
-                aria-label="关闭崩溃诊断"
-              >
-                <X size={14} />
-              </button>
-            </div>
-          </div>
-          <div className={styles.crashDiagGrid}>
-            <div><span>Session</span><strong>{crashDiagnosticsSummary.sessionId?.slice(0, 8) ?? '-'}</strong></div>
-            <div><span>启动</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.startedAt)}</strong></div>
-            <div><span>心跳</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastHeartbeatAt)}</strong></div>
-            <div><span>断线</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastDisconnectAt)}</strong></div>
-            <div><span>重连</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastReconnectAt)}</strong></div>
-            <div><span>致命</span><strong>{formatCrashDiagTime(crashDiagnosticsSummary.lastFatalAt)}</strong></div>
-          </div>
-          <div className={styles.crashDiagRelation}>{crashDiagnosticsSummary.relationSummary}</div>
-          <div className={styles.crashDiagUploadLine}>
-            报告 {crashDiagnosticsSummary.lastReportId ?? '-'} · {crashDiagnosticsSummary.lastUploadError ?? 'ready'}
           </div>
         </div>
       )}
@@ -15462,6 +17652,7 @@ export default function BattleArena({
                   <StatusBar
                     buffs={targetBuffs}
                     debugLabel={isSelf ? 'me-target' : 'opp'}
+                    onCopyBuffName={appendAbilityNameToChatInput}
                     visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
                     allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
                     onCancelBuff={
@@ -15807,8 +17998,9 @@ export default function BattleArena({
       <div className={styles.bottomRightQuickToggles} data-ui-interactive>
         <button
           type="button"
-          className={`${styles.bottomRightQuickButton} ${showMartialPanel ? styles.bottomRightQuickButtonActive : ''}`}
+          className={`${styles.bottomRightQuickButton} ${showMartialPanel ? styles.bottomRightQuickButtonActive : ''} ${!canOpenMartialPanel ? styles.bottomRightQuickButtonBlocked : ''}`}
           aria-label="打开武学界面"
+          aria-disabled={!canOpenMartialPanel}
           title="武学界面"
           onClick={toggleMartialPanel}
         >
@@ -15835,6 +18027,8 @@ export default function BattleArena({
       </div>
 
       {/* ===== CONTROL PANEL: combat helpers + dummy spawn (bottom-right, left of cheat) ===== */}
+      {canAccessTestingPanels && (
+        <>
       <button
         style={{
           position: 'absolute', bottom: 80, right: 290, zIndex: 210,
@@ -15923,7 +18117,359 @@ export default function BattleArena({
                 opacity: runningCheatAction ? 0.55 : 1,
               }}
             >补满物品</button>
+            {isYumenMode && (
+              <label style={{
+                minHeight: 29,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                borderRadius: 4,
+                border: '1px solid rgba(120, 195, 255, 0.42)',
+                background: 'rgba(45, 70, 95, 0.22)',
+                color: '#c8e7ff',
+                fontSize: 11,
+                fontWeight: 700,
+                padding: '5px 7px',
+                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                opacity: runningCheatAction ? 0.55 : 1,
+              }}>
+                <input
+                  type="checkbox"
+                  checked={safeZone?.autoFullHeal === true}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const enabled = event.target.checked;
+                    void runCheatAction(
+                      'yumen-auto-full-heal',
+                      '/api/game/cheat/yumen/auto-full-heal',
+                      enabled ? '自动满血已开启' : '自动满血已关闭',
+                      { enabled },
+                    );
+                  }}
+                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                />
+                <span>自动满血</span>
+              </label>
+            )}
+            <label style={{
+              minHeight: 29,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              borderRadius: 4,
+              border: '1px solid rgba(180, 165, 255, 0.42)',
+              background: 'rgba(65, 58, 105, 0.22)',
+              color: '#ded8ff',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '5px 7px',
+              cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+              opacity: runningCheatAction ? 0.55 : 1,
+            }}>
+              <input
+                type="checkbox"
+                checked={safeZone?.testShortCooldown === true || testShortCooldownEnabled}
+                disabled={!!runningCheatAction}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  const actionId = isYumenMode ? 'yumen-test-short-cooldown' : 'test-short-cooldown';
+                  const url = isYumenMode ? '/api/game/cheat/yumen/test-short-cooldown' : '/api/game/cheat/test-short-cooldown';
+                  void runCheatAction(
+                    actionId,
+                    url,
+                    enabled ? '测试缩短CD已开启' : '测试缩短CD已关闭',
+                    { enabled },
+                  );
+                }}
+                style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+              />
+              <span>测试缩短cd</span>
+            </label>
           </div>
+
+          {isYumenMode && (
+            <>
+              <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>玉门关</div>
+              <button
+                type="button"
+                disabled={!!runningCheatAction}
+                onClick={() => void runCheatAction('yumen-revive-all', '/api/game/cheat/yumen/revive-all', '全部玩家已复活')}
+                style={{
+                  background: 'rgba(40, 160, 80, 0.22)', color: '#c8ffd8',
+                  border: '1px solid rgba(95, 225, 135, 0.62)', borderRadius: 4,
+                  fontSize: 11, padding: '6px 8px',
+                  cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                  opacity: runningCheatAction ? 0.55 : 1,
+                }}
+              >复活全部玩家</button>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-random-spawn-points', '/api/game/cheat/yumen/random-spawn-points', '已随机分配出生点')}
+                  style={{
+                    background: 'rgba(70, 145, 210, 0.22)', color: '#c8e7ff',
+                    border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >随机出生点</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-gather-middle', '/api/game/cheat/yumen/gather-middle', '已集合到中间')}
+                  style={{
+                    background: 'rgba(60, 155, 120, 0.22)', color: '#bff5da',
+                    border: '1px solid rgba(105, 220, 165, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >集合到中间</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-drop-to-ground', '/api/game/cheat/yumen/drop-to-ground', '已执行虚空救援')}
+                  style={{
+                    background: 'rgba(95, 85, 45, 0.28)', color: '#f7e0a0',
+                    border: '1px solid rgba(230, 195, 100, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >虚空救援</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-drop-to-top-hit', '/api/game/cheat/yumen/drop-to-top-hit', 'Z轴已落到顶部命中点')}
+                  style={{
+                    background: 'rgba(55, 115, 160, 0.28)', color: '#c8e7ff',
+                    border: '1px solid rgba(105, 190, 245, 0.64)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >Z救援</button>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction || yumenAlivePlayerCount > 1}
+                  onClick={() => void runCheatAction('yumen-end-game', '/api/game/cheat/yumen/end-game', '战场已结算')}
+                  style={{
+                    background: yumenAlivePlayerCount <= 1 ? 'rgba(210, 80, 70, 0.24)' : 'rgba(70, 80, 92, 0.20)',
+                    color: yumenAlivePlayerCount <= 1 ? '#ffc4bd' : '#aeb9c3',
+                    border: yumenAlivePlayerCount <= 1 ? '1px solid rgba(255, 130, 120, 0.62)' : '1px solid rgba(150, 165, 178, 0.42)',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    padding: '6px 8px',
+                    cursor: runningCheatAction || yumenAlivePlayerCount > 1 ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >结束战场</button>
+                <label style={{
+                  minHeight: 29,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  borderRadius: 4,
+                  border: '1px solid rgba(255, 176, 104, 0.48)',
+                  background: 'rgba(92, 54, 28, 0.28)',
+                  color: '#ffd7b8',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '5px 7px',
+                  cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                  opacity: runningCheatAction ? 0.55 : 1,
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={safeZone?.autoSettle === true}
+                    disabled={!!runningCheatAction}
+                    onChange={(event) => {
+                      const enabled = event.target.checked;
+                      void (async () => {
+                        await runCheatAction(
+                          'yumen-auto-settle',
+                          '/api/game/cheat/yumen/auto-settle',
+                          enabled ? '自动结算已开启' : '自动结算已关闭',
+                          { enabled },
+                        );
+                      })();
+                    }}
+                    style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                  />
+                  <span>自动结算</span>
+                </label>
+              </div>
+              <button
+                type="button"
+                disabled={!!runningCheatAction}
+                onClick={() => void (async () => {
+                  const ok = await runCheatAction('yumen-restart-game', '/api/game/cheat/yumen/restart-game', '游戏已重新开始');
+                  if (ok) yumenAutoFullShrinkStartedRef.current = null;
+                })()}
+                style={{
+                  width: '100%',
+                  background: 'rgba(70, 145, 210, 0.22)',
+                  color: '#c8e7ff',
+                  border: '1px solid rgba(115, 185, 255, 0.62)',
+                  borderRadius: 4,
+                  fontSize: 11,
+                  padding: '6px 8px',
+                  cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                  opacity: runningCheatAction ? 0.55 : 1,
+                }}
+              >重新开始游戏</button>
+              <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>毒圈</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-start-shrink', '/api/game/cheat/yumen/start-shrink', '快速缩圈已开始', { damageMode: yumenDamageMode })}
+                  style={{
+                    background: 'rgba(210, 80, 70, 0.22)', color: '#ffc4bd',
+                    border: '1px solid rgba(255, 130, 120, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >开始快速缩圈</button>
+                <select
+                  value={yumenDamageMode}
+                  disabled={!!runningCheatAction}
+                  onChange={(event) => {
+                    const nextMode = event.target.value === 'full' ? 'full' : 'test';
+                    setYumenDamageMode(nextMode);
+                    void runCheatAction('yumen-damage-mode', '/api/game/cheat/yumen/damage-mode', nextMode === 'full' ? '毒圈伤害已切换为完整' : '毒圈伤害已切换为测试', { damageMode: nextMode });
+                  }}
+                  style={{
+                    minHeight: 29,
+                    borderRadius: 4,
+                    border: '1px solid rgba(255, 210, 120, 0.58)',
+                    background: 'rgba(35, 28, 18, 0.94)',
+                    color: '#ffe0a0',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    padding: '5px 7px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                  title="快速缩圈伤害模式"
+                >
+                  <option value="full">完整</option>
+                  <option value="test">测试</option>
+                </select>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={() => void runCheatAction('yumen-start-full-shrink', '/api/game/cheat/yumen/start-full-shrink', '完整缩圈已开始')}
+                  style={{
+                    background: 'rgba(60, 155, 120, 0.22)', color: '#bff5da',
+                    border: '1px solid rgba(105, 220, 165, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >开始完整缩圈</button>
+                <label style={{
+                  minHeight: 29,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 5,
+                  borderRadius: 4,
+                  border: '1px solid rgba(120, 195, 255, 0.42)',
+                  background: 'rgba(45, 70, 95, 0.22)',
+                  color: '#c8e7ff',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '5px 7px',
+                  cursor: 'pointer',
+                }}>
+                  <input
+                    type="checkbox"
+                    checked={yumenAutoFullShrink}
+                    onChange={(event) => setYumenAutoFullShrink(event.target.checked)}
+                    style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+                  />
+                  <span>游戏开始时自动开始</span>
+                </label>
+                <div style={{ gridColumn: '1 / -1', display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 6 }}>
+                  <button
+                    type="button"
+                    disabled={!!runningCheatAction}
+                    onClick={() => void runCheatAction('yumen-pause-shrink', '/api/game/cheat/yumen/pause-shrink', '缩圈已暂停')}
+                    style={{
+                      background: 'rgba(95, 85, 45, 0.28)', color: '#f7e0a0',
+                      border: '1px solid rgba(230, 195, 100, 0.62)', borderRadius: 4,
+                      fontSize: 11, padding: '6px 8px',
+                      cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                      opacity: runningCheatAction ? 0.55 : 1,
+                    }}
+                  >暂停</button>
+                  <button
+                    type="button"
+                    disabled={!!runningCheatAction}
+                    onClick={() => void runCheatAction('yumen-resume-shrink', '/api/game/cheat/yumen/resume-shrink', '缩圈已继续')}
+                    style={{
+                      background: 'rgba(70, 145, 210, 0.22)', color: '#c8e7ff',
+                      border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                      fontSize: 11, padding: '6px 8px',
+                      cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                      opacity: runningCheatAction ? 0.55 : 1,
+                    }}
+                  >继续</button>
+                  <button
+                    type="button"
+                    disabled={!!runningCheatAction}
+                    onClick={() => void runCheatAction('yumen-reset-shrink', '/api/game/cheat/yumen/reset-shrink', '缩圈已重置')}
+                    style={{
+                      background: 'rgba(110, 125, 150, 0.24)', color: '#d9e4f2',
+                      border: '1px solid rgba(175, 195, 220, 0.58)', borderRadius: 4,
+                      fontSize: 11, padding: '6px 8px',
+                      cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                      opacity: runningCheatAction ? 0.55 : 1,
+                    }}
+                  >重置</button>
+                </div>
+              </div>
+              <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>边界</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !yumenBoundaryEditMode;
+                    setYumenBoundaryEditMode(next);
+                    if (next) {
+                      mouseStateRef.current.isLeft = false;
+                      mouseStateRef.current.isRight = false;
+                      mouseStateRef.current.dragDistance = 0;
+                      manualCameraLookActiveRef.current = false;
+                    }
+                  }}
+                  style={{
+                    background: yumenBoundaryEditMode ? 'rgba(245, 210, 80, 0.38)' : 'rgba(245, 210, 80, 0.16)',
+                    color: '#fff0a8',
+                    border: '1px solid rgba(255, 225, 120, 0.66)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px', cursor: 'pointer',
+                  }}
+                >{yumenBoundaryEditMode ? '退出边界编辑' : '边界编辑'}</button>
+                <button
+                  type="button"
+                  disabled={!!runningCheatAction}
+                  onClick={restoreYumenPlayAreaDefault}
+                  style={{
+                    background: 'rgba(70, 145, 210, 0.20)', color: '#c8e7ff',
+                    border: '1px solid rgba(115, 185, 255, 0.62)', borderRadius: 4,
+                    fontSize: 11, padding: '6px 8px',
+                    cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+                    opacity: runningCheatAction ? 0.55 : 1,
+                  }}
+                >恢复默认边界</button>
+              </div>
+            </>
+          )}
 
           <div style={{ fontSize: 11, color: '#9ed5ff', fontWeight: 700, marginTop: 4 }}>木桩</div>
           {pendingDummySpawn && (
@@ -16019,6 +18565,8 @@ export default function BattleArena({
             >清除木桩</button>
           </div>
         </div>
+      )}
+        </>
       )}
 
       {/* ===== CHEAT: Ability picker (bottom-right, toggleable) ===== */}
@@ -16229,53 +18777,83 @@ export default function BattleArena({
       )}
 
       {/* ===== SAFE ZONE TIMER / PROGRESS BAR ===== */}
-      {safeZone && safeZone.nextChangeIn > 0 && (
-        <div style={{
-          position: 'absolute',
-          left: '95%',
-          top: '30%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 4,
-          pointerEvents: 'none',
-          zIndex: 500,
-        }}>
-          {/* Progress bar container */}
+      {safeZone && (safeZone.nextChangeIn > 0 || safeZone.phase === 'complete' || safeZone.fullPoison) && (() => {
+        const isShrinking = safeZone.shrinking || safeZone.phase === 'shrinking';
+        const isComplete = safeZone.phase === 'complete' || safeZone.fullPoison || Number(safeZone.currentHalf ?? 0) <= 0;
+        const seconds = Math.max(0, Math.ceil(Number(safeZone.nextChangeIn ?? 0)));
+        const phaseStartedAt = Number(safeZone.phaseStartedAt ?? 0);
+        const phaseEndsAt = Number(safeZone.phaseEndsAt ?? 0);
+        const phaseDuration = Math.max(1, phaseEndsAt - phaseStartedAt);
+        const phaseRemainingMs = Math.max(0, Number(safeZone.nextChangeIn ?? 0) * 1000);
+        const barPercent = isComplete ? 100 : Math.min(100, Math.max(0, ((phaseDuration - phaseRemainingMs) / phaseDuration) * 100));
+        const timerLabel = isComplete ? '已全毒' : isShrinking ? '风暴缩圈中' : safeZone.phase === 'waiting' ? '风暴等待中' : '风暴倒计时';
+        const phaseLabel = isComplete ? '全毒' : isShrinking ? '缩圈中' : safeZone.phase === 'countdown' ? '倒计时' : '等待中';
+        const phaseColor = isComplete
+          ? 'rgba(218, 70, 54, 0.82)'
+          : isShrinking
+            ? 'linear-gradient(90deg, rgba(228,81,48,0.95), rgba(247,128,67,0.95))'
+            : safeZone.phase === 'countdown'
+              ? 'linear-gradient(90deg, rgba(230,186,45,0.95), rgba(255,222,92,0.95))'
+              : 'linear-gradient(90deg, rgba(61,177,205,0.92), rgba(145,224,235,0.92))';
+        return (
           <div style={{
-            width: 120,
-            height: 12,
-            background: 'rgba(0,0,0,0.5)',
-            borderRadius: 3,
-            border: '1px solid rgba(255,255,255,0.2)',
-            overflow: 'hidden',
-          }}>
-            {safeZone.shrinking && (
-              <div style={{
-                width: `${Math.min(100, safeZone.shrinkProgress * 100)}%`,
-                height: '100%',
-                background: 'linear-gradient(90deg, #ff4444, #ff8800)',
-                borderRadius: 3,
-                transition: 'width 0.3s linear',
-              }} />
-            )}
-          </div>
-          {/* Timer text */}
-          <div style={{
-            color: safeZone.shrinking ? '#ff8800' : '#ffffff',
-            fontSize: 13,
-            fontWeight: 700,
+            position: 'absolute',
+            right: 32,
+            top: 374,
+            width: 214,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 5,
+            pointerEvents: 'none',
+            zIndex: 500,
             fontFamily: '"Microsoft YaHei", "PingFang SC", sans-serif',
-            textShadow: '1px 1px 3px rgba(0,0,0,0.8)',
-            whiteSpace: 'nowrap',
           }}>
-            {safeZone.shrinking
-              ? `缩圈中 ${Math.ceil(safeZone.nextChangeIn)}s`
-              : `风暴倒计时: ${Math.ceil(safeZone.nextChangeIn)}`}
+            <div style={{
+              height: 18,
+              position: 'relative',
+              borderRadius: 3,
+              overflow: 'hidden',
+              background: 'rgba(20, 34, 40, 0.86)',
+              border: '1px solid rgba(115, 210, 231, 0.34)',
+              boxShadow: '0 3px 10px rgba(0,0,0,0.42)',
+            }}>
+              <div style={{
+                width: `${barPercent}%`,
+                height: '100%',
+                background: phaseColor,
+              }} />
+              <div style={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#eaffff',
+                fontSize: 11,
+                fontWeight: 800,
+                textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+                letterSpacing: 0,
+              }}>{phaseLabel}</div>
+            </div>
+            <div style={{
+              alignSelf: 'center',
+              minWidth: 142,
+              padding: '2px 10px',
+              borderRadius: 3,
+              background: 'transparent',
+              border: 'none',
+              color: '#e8fbff',
+              fontSize: 13,
+              fontWeight: 800,
+              textAlign: 'center',
+              textShadow: '0 1px 2px rgba(0,0,0,0.85)',
+              whiteSpace: 'nowrap',
+            }}>
+              {isComplete ? '已全毒' : `${timerLabel}: ${seconds}`}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ===== FLOATING DAMAGE / HEAL NUMBERS ===== */}
       {floats.map(entry => {

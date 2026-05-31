@@ -404,6 +404,7 @@ class ClientCrashRecorder {
   private originalConsoleWarn: typeof console.warn | null = null;
   private consoleWrapping = false;
   private frontendLogUploadInFlight = false;
+  private frontendLogQueue: StoredFrontendLogQueue = { entries: [], dropped: 0 };
 
   startSession(context: CrashRecorderContext) {
     if (typeof window === "undefined") return;
@@ -624,7 +625,10 @@ class ClientCrashRecorder {
       this.activeSession.lastAliveAt = now;
     }
     this.recordBreadcrumb("fatal:error", { error: sanitizeValue(error), data }, "fatal", true);
-    void this.uploadReport(reason, { compact: false, eventAt: now }).catch(() => undefined);
+    const report = this.buildReport(reason, { compact: false, eventAt: now });
+    const consoleError = this.originalConsoleError ?? (typeof console !== "undefined" ? console.error.bind(console) : null);
+    consoleError?.("[Zhenchuan][crash-diagnostics]", summary, report);
+    void this.uploadReportObject(report, false).catch(() => undefined);
   }
 
   buildReport(reason: CrashReportReason, options?: { compact?: boolean; eventAt?: number; extra?: Record<string, unknown> }) {
@@ -665,6 +669,7 @@ class ClientCrashRecorder {
   private installGlobalHandlers() {
     if (this.installed || typeof window === "undefined") return;
     this.installed = true;
+    this.frontendLogQueue = readStorage<StoredFrontendLogQueue>(FRONTEND_LOG_QUEUE_KEY, { entries: [], dropped: 0 });
 
     window.addEventListener("error", (event) => {
       this.recordFatalError(event.error ?? event.message, {
@@ -795,7 +800,7 @@ class ClientCrashRecorder {
   }
 
   private appendFrontendLog(breadcrumb: CrashBreadcrumb) {
-    const queue = readStorage<StoredFrontendLogQueue>(FRONTEND_LOG_QUEUE_KEY, { entries: [], dropped: 0 });
+    const queue = this.frontendLogQueue;
     const context = sanitizeValue(this.activeSession?.context ?? this.context) as CrashRecorderContext;
     queue.entries.push({
       schemaVersion: 1,
@@ -814,7 +819,6 @@ class ClientCrashRecorder {
       queue.entries = queue.entries.slice(-MAX_FRONTEND_LOG_QUEUE);
       queue.dropped += dropped;
     }
-    writeStorage(FRONTEND_LOG_QUEUE_KEY, queue);
   }
 
   private buildFrontendLogBatch(reason: string, entries: FrontendLogEntry[], droppedBeforeBatch: number): FrontendLogBatch {
@@ -836,12 +840,13 @@ class ClientCrashRecorder {
 
   private removeUploadedFrontendLogs(uploadedLogIds: string[]) {
     const uploaded = new Set(uploadedLogIds);
-    const queue = readStorage<StoredFrontendLogQueue>(FRONTEND_LOG_QUEUE_KEY, { entries: [], dropped: 0 });
+    const queue = this.frontendLogQueue;
     const remaining = queue.entries.filter((entry) => !uploaded.has(entry.logId));
     const nextQueue: StoredFrontendLogQueue = {
       entries: remaining,
       dropped: 0,
     };
+    this.frontendLogQueue = nextQueue;
     if (nextQueue.entries.length > 0) writeStorage(FRONTEND_LOG_QUEUE_KEY, nextQueue);
     else removeStorage(FRONTEND_LOG_QUEUE_KEY);
   }
@@ -851,8 +856,12 @@ class ClientCrashRecorder {
     removeStorage(BUFFER_KEY);
 
     const frontendQueue = readStorage<StoredFrontendLogQueue>(FRONTEND_LOG_QUEUE_KEY, { entries: [], dropped: 0 });
-    const frontendEntries = frontendQueue.entries.filter((entry) => entry.sessionId !== sessionId);
-    if (frontendEntries.length > 0) writeStorage(FRONTEND_LOG_QUEUE_KEY, { entries: frontendEntries, dropped: 0 });
+    const frontendEntries = [
+      ...this.frontendLogQueue.entries,
+      ...frontendQueue.entries,
+    ].filter((entry, index, list) => entry.sessionId !== sessionId && list.findIndex((item) => item.logId === entry.logId) === index);
+    this.frontendLogQueue = { entries: frontendEntries, dropped: 0 };
+    if (frontendEntries.length > 0) writeStorage(FRONTEND_LOG_QUEUE_KEY, this.frontendLogQueue);
     else removeStorage(FRONTEND_LOG_QUEUE_KEY);
 
     const reportQueue = readStorage<StoredQueue>(QUEUE_KEY, { reports: [] });
@@ -882,7 +891,7 @@ class ClientCrashRecorder {
 
   private async flushFrontendLogs(reason = "timer", keepalive = false) {
     if (this.frontendLogUploadInFlight || typeof window === "undefined") return;
-    const queue = readStorage<StoredFrontendLogQueue>(FRONTEND_LOG_QUEUE_KEY, { entries: [], dropped: 0 });
+    const queue = this.frontendLogQueue;
     if (queue.entries.length === 0) return;
 
     const entries = queue.entries.slice(0, MAX_FRONTEND_LOG_BATCH);
@@ -1014,7 +1023,7 @@ class ClientCrashRecorder {
 
   private tryBeaconFrontendLogs(reason: string) {
     if (typeof navigator === "undefined" || typeof navigator.sendBeacon !== "function") return;
-    const queue = readStorage<StoredFrontendLogQueue>(FRONTEND_LOG_QUEUE_KEY, { entries: [], dropped: 0 });
+    const queue = this.frontendLogQueue;
     if (queue.entries.length === 0) return;
     const entries = queue.entries.slice(-MAX_FRONTEND_LOG_BATCH);
     const batch = this.buildFrontendLogBatch(reason, entries, queue.dropped);

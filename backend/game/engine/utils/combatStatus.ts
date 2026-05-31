@@ -2,6 +2,9 @@ import { randomUUID } from "crypto";
 import { calculateDistance, type GameEvent, type GameState, type PlayerState } from "../state/types";
 import { removeDisguiseBuffs } from "./disguise";
 
+const TI_YUN_ZONG_OUT_OF_COMBAT_BUFF_ID = 9003;
+const TING_LEI_BUFF_ID = 2322;
+
 export const COMBAT_STATUS_RANGE_UNITS = 60;
 export const COMBAT_STATUS_TIMEOUT_MS = 3_000;
 export const COMBAT_STATUS_CHECK_INTERVAL_MS = 3_000;
@@ -62,6 +65,12 @@ function setCombatFlag(params: {
     (player as any).combatLinks = {};
   }
   let changed = previousInCombat !== nextInCombat;
+  if (!previousInCombat && nextInCombat) {
+    changed = removeCombatStatusBuffs(state, player, timestamp, [TI_YUN_ZONG_OUT_OF_COMBAT_BUFF_ID]) || changed;
+  }
+  if (previousInCombat && !nextInCombat) {
+    changed = removeCombatStatusBuffs(state, player, timestamp, [TING_LEI_BUFF_ID]) || changed;
+  }
   if (nextInCombat) {
     changed = removeDisguiseBuffs(state, player, timestamp) || changed;
   }
@@ -69,6 +78,31 @@ function setCombatFlag(params: {
     emitCombatStatusEvent({ state, player, inCombat: nextInCombat, relatedUserId, timestamp });
   }
   return changed;
+}
+
+function removeCombatStatusBuffs(state: GameState, player: PlayerState, timestamp: number, buffIds: number[]): boolean {
+  if (!Array.isArray(player.buffs) || player.buffs.length === 0) return false;
+  const ids = new Set(buffIds);
+  const removed = player.buffs.filter((buff: any) => ids.has(buff.buffId));
+  if (removed.length === 0) return false;
+
+  player.buffs = player.buffs.filter((buff: any) => !ids.has(buff.buffId));
+  for (const buff of removed) {
+    state.events.push({
+      id: randomUUID(),
+      timestamp,
+      turn: state.turn,
+      type: "BUFF_EXPIRED",
+      actorUserId: player.userId,
+      targetUserId: player.userId,
+      abilityId: buff.sourceAbilityId,
+      abilityName: buff.sourceAbilityName,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+    } as GameEvent);
+  }
+  return true;
 }
 
 function getPlayerMap(state: GameState): Map<string, PlayerState> {
@@ -139,6 +173,7 @@ function eventCountsAsDamageActivity(event: any): boolean {
 
 function eventCountsAsEnemyAbilityContact(event: any): boolean {
   if (!event?.abilityId || !event.actorUserId || !event.targetUserId) return false;
+  if (event.abilityId === "shi_fang_xuan_ji") return false;
   if (event.actorUserId === event.targetUserId) return false;
   if (event.type === "COMBAT_STATUS" || event.type === "BUFF_EXPIRED" || event.type === "HEAL") return false;
   if (event.type === "PLAY_ABILITY" && event.channelPhase === "start") return false;

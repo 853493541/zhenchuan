@@ -115,7 +115,10 @@ type QuickDiagnosis = {
 };
 
 const MODE_LABELS: Record<string, string> = {
-  "collision-test": "玉门关",
+  "yumenguan-classic": "玉门关：经典",
+  "yumen-1v1-basic": "玉门关：经典",
+  test: "测试",
+  "collision-test": "测试",
   pubg: "吃鸡",
   arena: "竞技场",
 };

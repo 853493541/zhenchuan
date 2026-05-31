@@ -146,16 +146,6 @@ export function preCheckRedirect(
     if (zone && (zone.hp ?? 0) > 0) {
       const consume = Math.min(rawDamage, zone.hp);
       zone.hp = Math.max(0, zone.hp - consume);
-      pushEvent(state, {
-        turn: state.turn,
-        type: "DAMAGE",
-        actorUserId: target.userId,
-        targetUserId: target.userId,
-        abilityId: zone.abilityId ?? "ji_dian_chi_yu",
-        abilityName: zone.abilityName ?? "疾电叱羽",
-        effectType: "JI_DIAN_REDIRECT",
-        value: consume,
-      } as any);
       // Excess damage is discarded — player takes 0 regardless.
       return { adjustedDamage: 0, redirectPlayer: null, redirectAmt: 0 };
     }

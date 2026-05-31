@@ -13,8 +13,10 @@ import { getEffectiveAbilityRange } from "../utils/abilityRange";
 import { getOrCreateSpecialAbilityState, isSpecialAbilityBarAbility } from "../utils/specialAbilityBar";
 import { hasYuqiState } from "../utils/yuqi";
 import { hasMiYunConfusion } from "../utils/miyun";
+import { hasActiveYumenSpectatorBuff } from "../utils/yumenSafeZone";
 
 const SHU_SE_BUFF_ID = 2646;
+const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const REN_CHI_CHENG_ABILITY_ID = "ren_chi_cheng";
 const EXPLICIT_GROUND_DASH_ABILITY_IDS = new Set(["gu_feng_sa_ta", "han_di", "lin_shi_fei_zhua"]);
 
@@ -44,6 +46,12 @@ type ValidateCastOptions = {
 function hasEffect(player: { buffs: any[] }, type: string) {
   return player.buffs.some((b: any) =>
     isRuntimeBuffActive(b) && b.effects?.some((e: any) => e.type === type)
+  );
+}
+
+function hasShiFangXuanJi(player: { buffs?: any[] }): boolean {
+  return (player?.buffs ?? []).some((b: any) =>
+    isRuntimeBuffActive(b) && Number(b?.buffId) === SHI_FANG_XUAN_JI_BUFF_ID
   );
 }
 
@@ -251,6 +259,7 @@ export function validateCastAbility(
   }
 
   const player = state.players[playerIndex];
+  const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
 
   // Accept lookup by instanceId OR by abilityId (common abilities may be cast by abilityId)
   let instance = player.hand.find(
@@ -268,8 +277,13 @@ export function validateCastAbility(
         newInst.chargeRegenTicksRemaining = 0;
         newInst.chargeLockTicks = 0;
       }
-      player.hand.push(newInst as any);
-      instance = newInst as any;
+      if (yumenSpectator) {
+        if (!isQinggongAbility(maybeCommon)) throw new Error("ERR_NON_QINGGONG_LOCKED");
+        instance = getOrCreateSpecialAbilityState(player as any, abilityInstanceId) as any;
+      } else {
+        player.hand.push(newInst as any);
+        instance = newInst as any;
+      }
     }
   }
 
@@ -301,15 +315,32 @@ export function validateCastAbility(
   if (!ability) {
     throw new Error("ERR_ABILITY_NOT_FOUND");
   }
+  const isYouFengPiaoZong = ability.id === "you_feng_piao_zong";
+  if (yumenSpectator && !isQinggongAbility(ability)) {
+    throw new Error("ERR_NON_QINGGONG_LOCKED");
+  }
 
   const yuqiMounted = hasYuqiState(player as any);
   const mountedYuqiToggle = yuqiMounted && ability.id === "yuqi";
   let resolvedTargetUserId = options?.targetUserId;
   let resolvedEntityTargetId = options?.entityTargetId;
 
+  if (isYouFengPiaoZong) {
+    // 游风飘踪允许无目标施放；若提供了非法目标，退化为无目标而不是报错。
+    if (resolvedEntityTargetId) {
+      resolvedEntityTargetId = undefined;
+    }
+    if (resolvedTargetUserId) {
+      const optionalTarget = state.players.find((candidate) => candidate.userId === resolvedTargetUserId);
+      if (!optionalTarget || optionalTarget.userId === player.userId || (optionalTarget.hp ?? 0) <= 0) {
+        resolvedTargetUserId = undefined;
+      }
+    }
+  }
+
   ensureChargeRuntime(instance, ability);
 
-  if ((ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
+  if (!yumenSpectator && (ability as any).gcd === true && Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
@@ -369,6 +400,9 @@ export function validateCastAbility(
   ) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
+  if (isFriendlyTargetAbility && !ignoreTargetAllegiance && hasShiFangXuanJi(player as any)) {
+    throw new Error("ERR_SELECT_ENEMY_TARGET");
+  }
 
   let targetIndex =
     ability.target === "SELF" || isFriendlyTargetAbility
@@ -385,17 +419,28 @@ export function validateCastAbility(
   if (ability.target === "OPPONENT" && resolvedEntityTargetId && !explicitEntity) {
     throw new Error("ERR_TARGET_UNAVAILABLE");
   }
+  if (
+    ability.target === "OPPONENT" &&
+    !isFriendlyTargetAbility &&
+    !allowGroundCastWithoutTarget &&
+    !ignoreTargetAllegiance &&
+    !explicitEntity &&
+    targetPlayer?.userId !== player.userId &&
+    hasShiFangXuanJi(targetPlayer as any)
+  ) {
+    throw new Error("ERR_SELECT_ENEMY_TARGET");
+  }
   const targetPosition = explicitEntity?.position ?? targetPlayer.position;
 
   /* ================= COOLDOWN ================= */
-  if (hasChargeSystem(ability)) {
+  if (!yumenSpectator && hasChargeSystem(ability)) {
     if ((instance.chargeLockTicks ?? 0) > 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
     if ((instance.chargeCount ?? 0) <= 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
-  } else if (instance.cooldown > 0) {
+  } else if (!yumenSpectator && instance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 
@@ -736,6 +781,7 @@ export function validatePlayAbility(
   }
 
   const player = state.players[playerIndex];
+  const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
 
   const instance = player.hand.find((c) => c.instanceId === abilityInstanceId);
   const specialInstance = !instance &&
@@ -772,11 +818,11 @@ export function validatePlayAbility(
 
   /* ================= COOLDOWN ================= */
 
-  if (hasChargeSystem(ability)) {
+  if (!yumenSpectator && hasChargeSystem(ability)) {
     if ((resolvedInstance.chargeLockTicks ?? 0) > 0 || (resolvedInstance.chargeCount ?? 0) <= 0) {
       throw new Error("ERR_ON_COOLDOWN");
     }
-  } else if (resolvedInstance.cooldown > 0) {
+  } else if (!yumenSpectator && resolvedInstance.cooldown > 0) {
     throw new Error("ERR_ON_COOLDOWN");
   }
 

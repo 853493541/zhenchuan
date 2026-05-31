@@ -5,6 +5,8 @@ function isResourcePackRequest(url) {
     url.pathname.startsWith('/icons/') ||
     url.pathname.startsWith('/game/') ||
     url.pathname.startsWith('/fonts/') ||
+    url.pathname.startsWith('/js/') ||
+    url.pathname.startsWith('/lib/') ||
     url.pathname.startsWith('/full-exports/') ||
     url.pathname.startsWith('/_next/static/')
   );

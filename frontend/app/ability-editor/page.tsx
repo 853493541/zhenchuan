@@ -7,9 +7,12 @@ import AdControlTab from "./AdControlTab";
 import BuffEditorTab from "./BuffEditorTab";
 import AbilityBooleanDeciderTab from "./AbilityBooleanDeciderTab";
 import CanCastWhileMountedTab from "./CanCastWhileMountedTab";
+import CooldownReviewTab from "./CooldownReviewTab";
 import DamageReductionOverrideTab from "./DamageReductionOverrideTab";
+import DescriptionReviewTab, { abilityToReviewEntry, buffToReviewEntry } from "./DescriptionReviewTab";
 import HiddenBuffTab from "./HiddenBuffTab";
 import ManualCancelableBuffTab from "./ManualCancelableBuffTab";
+import BuffTimerVisibilityTab from "./BuffTimerVisibilityTab";
 import ProjectileEditorTab from "./ProjectileEditorTab";
 import DunLiWhitelistTab from "./DunLiWhitelistTab";
 import NoWeaponRequiredTab from "./NoWeaponRequiredTab";
@@ -20,11 +23,19 @@ import {
   ABILITY_RARITIES,
   AbilityBooleanDeciderMode,
   AbilityBooleanDeciderSnapshot,
+  AbilityCooldownReviewEntry,
+  AbilityCooldownReviewSnapshot,
   AbilityEditorAbility,
   AbilityEditorSnapshot,
   AbilityRarity,
   AbilitySchool,
+  AbilityDescriptionReviewEntry,
+  AbilityDescriptionReviewSnapshot,
   BuffEditorSnapshot,
+  BuffTimerVisibilityMode,
+  BuffTimerVisibilitySnapshot,
+  BuffDescriptionReviewEntry,
+  BuffDescriptionReviewSnapshot,
   CanCastWhileMountedSnapshot,
   DamageReductionOverrideMode,
   DamageReductionOverrideSnapshot,
@@ -37,6 +48,7 @@ import {
   DAMAGE_TYPE_COLOR,
   DAMAGE_TYPES,
   DamageType,
+  DescriptionReviewStatus,
   RARITY_COLOR,
   SCHOOL_COLOR,
   SCHOOL_TAGS,
@@ -58,15 +70,18 @@ const RARITY_CARD_BG: Record<string, string> = {
 };
 import styles from "./page.module.css";
 
-type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "noWeaponRequired" | "canCastWhileMounted" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "hiddenBuffs";
+type MainTab = "abilities" | "buffs" | "adControl" | "projectiles" | "dunLiWhitelist" | "guaranteedHit" | "noWeaponRequired" | "canCastWhileMounted" | "abilityDescriptionReview" | "cooldownReview" | "qinggong" | "qinggongGcdImmune" | "hasteUnaffected" | "soundReview" | "qinYinGongMing" | "damageReductionOverride" | "manualCancelableBuffs" | "buffTimerVisibility" | "hiddenBuffs" | "buffDescriptionReview";
 type EditorTabGroup = "skill" | "buff";
 
 const SKILL_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
-  { id: "adControl", label: "AD控制" },
+  { id: "adControl", label: "加成修正" },
   { id: "projectiles", label: "远程弹道" },
   { id: "dunLiWhitelist", label: "盾立白名单" },
+  { id: "guaranteedHit", label: "必定命中" },
   { id: "noWeaponRequired", label: "无需武器" },
   { id: "canCastWhileMounted", label: "可以马上施展" },
+  { id: "abilityDescriptionReview", label: "描述修正" },
+  { id: "cooldownReview", label: "CD纠正" },
   { id: "qinggong", label: "轻功" },
   { id: "qinggongGcdImmune", label: "不受轻功GCD 影响" },
   { id: "hasteUnaffected", label: "读条不受加速影响" },
@@ -76,7 +91,9 @@ const BUFF_EDITOR_TABS: Array<{ id: MainTab; label: string }> = [
   { id: "qinYinGongMing", label: "琴音共鸣" },
   { id: "damageReductionOverride", label: "减伤被顶" },
   { id: "manualCancelableBuffs", label: "主动取消" },
+  { id: "buffTimerVisibility", label: "时间显示" },
   { id: "hiddenBuffs", label: "隐藏" },
+  { id: "buffDescriptionReview", label: "描述修正" },
 ];
 
 function getEditorTabGroup(tab: MainTab): EditorTabGroup | null {
@@ -126,10 +143,16 @@ export default function AbilityEditorPage() {
       setMainTab("projectiles");
     } else if (params.get("tab") === "dunLiWhitelist") {
       setMainTab("dunLiWhitelist");
+    } else if (params.get("tab") === "guaranteedHit") {
+      setMainTab("guaranteedHit");
     } else if (params.get("tab") === "noWeaponRequired") {
       setMainTab("noWeaponRequired");
     } else if (params.get("tab") === "canCastWhileMounted") {
       setMainTab("canCastWhileMounted");
+    } else if (params.get("tab") === "abilityDescriptionReview") {
+      setMainTab("abilityDescriptionReview");
+    } else if (params.get("tab") === "cooldownReview") {
+      setMainTab("cooldownReview");
     } else if (params.get("tab") === "qinggong") {
       setMainTab("qinggong");
     } else if (params.get("tab") === "qinggongGcdImmune") {
@@ -144,8 +167,12 @@ export default function AbilityEditorPage() {
       setMainTab("damageReductionOverride");
     } else if (params.get("tab") === "manualCancelableBuffs") {
       setMainTab("manualCancelableBuffs");
+    } else if (params.get("tab") === "buffTimerVisibility") {
+      setMainTab("buffTimerVisibility");
     } else if (params.get("tab") === "hiddenBuffs") {
       setMainTab("hiddenBuffs");
+    } else if (params.get("tab") === "buffDescriptionReview") {
+      setMainTab("buffDescriptionReview");
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -217,6 +244,12 @@ export default function AbilityEditorPage() {
   const [canCastWhileMountedSnapshot, setCanCastWhileMountedSnapshot] = useState<CanCastWhileMountedSnapshot | null>(null);
   const [canCastWhileMountedLoading, setCanCastWhileMountedLoading] = useState(false);
   const [canCastWhileMountedError, setCanCastWhileMountedError] = useState("");
+  const [abilityDescriptionReviewSnapshot, setAbilityDescriptionReviewSnapshot] = useState<AbilityDescriptionReviewSnapshot | null>(null);
+  const [abilityDescriptionReviewLoading, setAbilityDescriptionReviewLoading] = useState(false);
+  const [abilityDescriptionReviewError, setAbilityDescriptionReviewError] = useState("");
+  const [cooldownReviewSnapshot, setCooldownReviewSnapshot] = useState<AbilityCooldownReviewSnapshot | null>(null);
+  const [cooldownReviewLoading, setCooldownReviewLoading] = useState(false);
+  const [cooldownReviewError, setCooldownReviewError] = useState("");
   const [qinggongSnapshot, setQinggongSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
   const [qinggongLoading, setQinggongLoading] = useState(false);
   const [qinggongError, setQinggongError] = useState("");
@@ -226,6 +259,9 @@ export default function AbilityEditorPage() {
   const [hasteUnaffectedSnapshot, setHasteUnaffectedSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
   const [hasteUnaffectedLoading, setHasteUnaffectedLoading] = useState(false);
   const [hasteUnaffectedError, setHasteUnaffectedError] = useState("");
+  const [guaranteedHitSnapshot, setGuaranteedHitSnapshot] = useState<AbilityBooleanDeciderSnapshot | null>(null);
+  const [guaranteedHitLoading, setGuaranteedHitLoading] = useState(false);
+  const [guaranteedHitError, setGuaranteedHitError] = useState("");
   const [qinYinGongMingSnapshot, setQinYinGongMingSnapshot] = useState<QinYinGongMingSnapshot | null>(null);
   const [qinYinGongMingLoading, setQinYinGongMingLoading] = useState(false);
   const [qinYinGongMingError, setQinYinGongMingError] = useState("");
@@ -235,9 +271,15 @@ export default function AbilityEditorPage() {
   const [manualCancelableBuffSnapshot, setManualCancelableBuffSnapshot] = useState<ManualCancelableBuffSnapshot | null>(null);
   const [manualCancelableBuffLoading, setManualCancelableBuffLoading] = useState(false);
   const [manualCancelableBuffError, setManualCancelableBuffError] = useState("");
+  const [buffTimerVisibilitySnapshot, setBuffTimerVisibilitySnapshot] = useState<BuffTimerVisibilitySnapshot | null>(null);
+  const [buffTimerVisibilityLoading, setBuffTimerVisibilityLoading] = useState(false);
+  const [buffTimerVisibilityError, setBuffTimerVisibilityError] = useState("");
   const [hiddenBuffSnapshot, setHiddenBuffSnapshot] = useState<HiddenBuffSnapshot | null>(null);
   const [hiddenBuffLoading, setHiddenBuffLoading] = useState(false);
   const [hiddenBuffError, setHiddenBuffError] = useState("");
+  const [buffDescriptionReviewSnapshot, setBuffDescriptionReviewSnapshot] = useState<BuffDescriptionReviewSnapshot | null>(null);
+  const [buffDescriptionReviewLoading, setBuffDescriptionReviewLoading] = useState(false);
+  const [buffDescriptionReviewError, setBuffDescriptionReviewError] = useState("");
 
   const loadBuffSnapshot = async () => {
     setBuffLoading(true);
@@ -327,6 +369,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadBuffTimerVisibilitySnapshot = async () => {
+    setBuffTimerVisibilityLoading(true);
+    setBuffTimerVisibilityError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/buff-timer-visibility", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setBuffTimerVisibilitySnapshot((await response.json()) as BuffTimerVisibilitySnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setBuffTimerVisibilityError(message);
+    } finally {
+      setBuffTimerVisibilityLoading(false);
+    }
+  };
+
   const loadHiddenBuffSnapshot = async () => {
     setHiddenBuffLoading(true);
     setHiddenBuffError("");
@@ -346,6 +410,72 @@ export default function AbilityEditorPage() {
       setHiddenBuffError(message);
     } finally {
       setHiddenBuffLoading(false);
+    }
+  };
+
+  const loadAbilityDescriptionReviewSnapshot = async () => {
+    setAbilityDescriptionReviewLoading(true);
+    setAbilityDescriptionReviewError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/description-review", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setAbilityDescriptionReviewSnapshot((await response.json()) as AbilityDescriptionReviewSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setAbilityDescriptionReviewError(message);
+    } finally {
+      setAbilityDescriptionReviewLoading(false);
+    }
+  };
+
+  const loadCooldownReviewSnapshot = async () => {
+    setCooldownReviewLoading(true);
+    setCooldownReviewError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/cooldown-review", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setCooldownReviewSnapshot((await response.json()) as AbilityCooldownReviewSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setCooldownReviewError(message);
+    } finally {
+      setCooldownReviewLoading(false);
+    }
+  };
+
+  const loadBuffDescriptionReviewSnapshot = async () => {
+    setBuffDescriptionReviewLoading(true);
+    setBuffDescriptionReviewError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/buff-description-review", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setBuffDescriptionReviewSnapshot((await response.json()) as BuffDescriptionReviewSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setBuffDescriptionReviewError(message);
+    } finally {
+      setBuffDescriptionReviewLoading(false);
     }
   };
 
@@ -459,6 +589,28 @@ export default function AbilityEditorPage() {
     }
   };
 
+  const loadGuaranteedHitSnapshot = async () => {
+    setGuaranteedHitLoading(true);
+    setGuaranteedHitError("");
+
+    try {
+      const response = await fetch("/api/game/ability-editor/guaranteed-hit", {
+        credentials: "include",
+      });
+
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      setGuaranteedHitSnapshot((await response.json()) as AbilityBooleanDeciderSnapshot);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "加载失败";
+      setGuaranteedHitError(message);
+    } finally {
+      setGuaranteedHitLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadSnapshot();
   }, []);
@@ -493,8 +645,22 @@ export default function AbilityEditorPage() {
   }, [mainTab]);
 
   useEffect(() => {
+    if (mainTab === "buffTimerVisibility") {
+      loadBuffTimerVisibilitySnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
     if (mainTab === "hiddenBuffs") {
       loadHiddenBuffSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "buffDescriptionReview" && !buffDescriptionReviewSnapshot && !buffDescriptionReviewLoading) {
+      loadBuffDescriptionReviewSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -509,6 +675,20 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "canCastWhileMounted" && !canCastWhileMountedSnapshot && !canCastWhileMountedLoading) {
       loadCanCastWhileMountedSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "abilityDescriptionReview" && !abilityDescriptionReviewSnapshot && !abilityDescriptionReviewLoading) {
+      loadAbilityDescriptionReviewSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "cooldownReview" && !cooldownReviewSnapshot && !cooldownReviewLoading) {
+      loadCooldownReviewSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -530,6 +710,13 @@ export default function AbilityEditorPage() {
   useEffect(() => {
     if (mainTab === "hasteUnaffected" && !hasteUnaffectedSnapshot && !hasteUnaffectedLoading) {
       loadHasteUnaffectedSnapshot();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab]);
+
+  useEffect(() => {
+    if (mainTab === "guaranteedHit" && !guaranteedHitSnapshot && !guaranteedHitLoading) {
+      loadGuaranteedHitSnapshot();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mainTab]);
@@ -615,6 +802,102 @@ export default function AbilityEditorPage() {
     } catch { /* silent */ }
   };
 
+  const handleAbilityDescriptionStatus = async (entry: AbilityDescriptionReviewEntry, status: DescriptionReviewStatus) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/description-review/${entry.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityDescriptionReviewSnapshot;
+      setAbilityDescriptionReviewSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleAbilityDescriptionSave = async (entry: AbilityDescriptionReviewEntry, description: string) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/description-review/${entry.id}/description`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ description }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityDescriptionReviewSnapshot;
+      setAbilityDescriptionReviewSnapshot(nextSnapshot);
+      setSnapshot((prev) => prev ? {
+        ...prev,
+        updatedAt: nextSnapshot.updatedAt,
+        abilities: prev.abilities.map((ability) => ability.id === entry.id ? { ...ability, description } : ability),
+      } : prev);
+    } catch { /* silent */ }
+  };
+
+  const handleCooldownReviewStatus = async (entry: AbilityCooldownReviewEntry, status: DescriptionReviewStatus) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/cooldown-review/${entry.id}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityCooldownReviewSnapshot;
+      setCooldownReviewSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleCooldownReviewSave = async (entry: AbilityCooldownReviewEntry, cooldownTicks: number) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/cooldown-review/${entry.id}/cooldown`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ cooldownTicks }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityCooldownReviewSnapshot;
+      setCooldownReviewSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleBuffDescriptionStatus = async (entry: BuffDescriptionReviewEntry, status: DescriptionReviewStatus) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/buff-description-review/${entry.buffId}/status`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ status }),
+      });
+      if (!res.ok) return;
+      setBuffDescriptionReviewSnapshot((await res.json()) as BuffDescriptionReviewSnapshot);
+    } catch { /* silent */ }
+  };
+
+  const handleBuffDescriptionSave = async (entry: BuffDescriptionReviewEntry, description: string) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/buff-description-review/${entry.buffId}/description`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ description }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as BuffDescriptionReviewSnapshot;
+      setBuffDescriptionReviewSnapshot(nextSnapshot);
+      setBuffSnapshot((prev) => prev ? {
+        ...prev,
+        updatedAt: nextSnapshot.updatedAt,
+        buffs: prev.buffs.map((buff) => buff.buffId === entry.buffId ? { ...buff, description } : buff),
+      } : prev);
+    } catch { /* silent */ }
+  };
+
   const handleQinggongToggle = async (abilityId: string, mode: AbilityBooleanDeciderMode) => {
     try {
       const res = await fetch(`/api/game/ability-editor/qinggong/${abilityId}`, {
@@ -662,6 +945,21 @@ export default function AbilityEditorPage() {
     } catch { /* silent */ }
   };
 
+  const handleGuaranteedHitToggle = async (abilityId: string, mode: AbilityBooleanDeciderMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/guaranteed-hit/${abilityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as AbilityBooleanDeciderSnapshot;
+      setGuaranteedHitSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
   const handleQinYinGongMingToggle = async (buffId: number, mode: "manual-include" | "manual-exclude" | "clear") => {
     try {
       const res = await fetch(`/api/game/ability-editor/qin-yin-gong-ming/${buffId}`, {
@@ -701,6 +999,21 @@ export default function AbilityEditorPage() {
       if (!res.ok) return;
       const nextSnapshot = (await res.json()) as ManualCancelableBuffSnapshot;
       setManualCancelableBuffSnapshot(nextSnapshot);
+      setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
+    } catch { /* silent */ }
+  };
+
+  const handleBuffTimerVisibilityToggle = async (buffId: number, mode: BuffTimerVisibilityMode) => {
+    try {
+      const res = await fetch(`/api/game/ability-editor/buff-timer-visibility/${buffId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode }),
+      });
+      if (!res.ok) return;
+      const nextSnapshot = (await res.json()) as BuffTimerVisibilitySnapshot;
+      setBuffTimerVisibilitySnapshot(nextSnapshot);
       setSnapshot((prev) => (prev ? { ...prev, updatedAt: nextSnapshot.updatedAt } : prev));
     } catch { /* silent */ }
   };
@@ -1140,7 +1453,7 @@ export default function AbilityEditorPage() {
 
       {/* ── Projectile abilities tab ─────────────────────────────────────────── */}
       {mainTab === "adControl" && (
-        <section className={styles.buffEditorSection}>
+        <section className={styles.adControlSection}>
           <AdControlTab
             snapshot={snapshot}
             loading={loading}
@@ -1189,6 +1502,36 @@ export default function AbilityEditorPage() {
             errorMessage={canCastWhileMountedError}
             onRetry={loadCanCastWhileMountedSnapshot}
             onToggle={handleCanCastWhileMountedToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "abilityDescriptionReview" && (
+        <section className={styles.buffEditorSection}>
+          <DescriptionReviewTab
+            kind="ability"
+            entries={abilityDescriptionReviewSnapshot?.abilities ?? []}
+            loading={abilityDescriptionReviewLoading}
+            errorMessage={abilityDescriptionReviewError}
+            onRetry={loadAbilityDescriptionReviewSnapshot}
+            onStatusChange={handleAbilityDescriptionStatus}
+            onDescriptionChange={handleAbilityDescriptionSave}
+            toReviewEntry={abilityToReviewEntry}
+            searchStorageKey="abilityEditor.descriptionReview.search"
+            loadingText="正在加载技能描述修正列表…"
+          />
+        </section>
+      )}
+
+      {mainTab === "cooldownReview" && (
+        <section className={styles.buffEditorSection}>
+          <CooldownReviewTab
+            entries={cooldownReviewSnapshot?.abilities ?? []}
+            loading={cooldownReviewLoading}
+            errorMessage={cooldownReviewError}
+            onRetry={loadCooldownReviewSnapshot}
+            onStatusChange={handleCooldownReviewStatus}
+            onCooldownChange={handleCooldownReviewSave}
           />
         </section>
       )}
@@ -1268,6 +1611,30 @@ export default function AbilityEditorPage() {
         </section>
       )}
 
+      {mainTab === "guaranteedHit" && (
+        <section className={styles.buffEditorSection}>
+          <AbilityBooleanDeciderTab
+            searchStorageKey="abilityEditor.guaranteedHit.search"
+            loadingText="正在加载必定命中列表…"
+            snapshot={guaranteedHitSnapshot}
+            loading={guaranteedHitLoading}
+            errorMessage={guaranteedHitError}
+            onRetry={loadGuaranteedHitSnapshot}
+            onToggle={handleGuaranteedHitToggle}
+            enabledColumnTitle="必定命中"
+            enabledEmptyText="当前没有必定命中的技能"
+            excludedColumnTitle="可被闪避"
+            undecidedColumnTitle="未决定"
+            decideYesLabel="设为必定命中"
+            decideNoLabel="设为可被闪避"
+            enabledActionLabel="改为可被闪避"
+            excludedActionLabel="恢复"
+            footerText=""
+            showMetadataRow={false}
+          />
+        </section>
+      )}
+
       {mainTab === "soundReview" && (
         <section id="sound-review-board" className={styles.buffEditorSection}>
           <SoundReviewTab
@@ -1315,6 +1682,18 @@ export default function AbilityEditorPage() {
         </section>
       )}
 
+      {mainTab === "buffTimerVisibility" && (
+        <section className={styles.buffEditorSection}>
+          <BuffTimerVisibilityTab
+            snapshot={buffTimerVisibilitySnapshot}
+            loading={buffTimerVisibilityLoading}
+            errorMessage={buffTimerVisibilityError}
+            onRetry={loadBuffTimerVisibilitySnapshot}
+            onToggle={handleBuffTimerVisibilityToggle}
+          />
+        </section>
+      )}
+
       {mainTab === "hiddenBuffs" && (
         <section className={styles.buffEditorSection}>
           <HiddenBuffTab
@@ -1323,6 +1702,23 @@ export default function AbilityEditorPage() {
             errorMessage={hiddenBuffError}
             onRetry={loadHiddenBuffSnapshot}
             onToggle={handleHiddenBuffToggle}
+          />
+        </section>
+      )}
+
+      {mainTab === "buffDescriptionReview" && (
+        <section className={styles.buffEditorSection}>
+          <DescriptionReviewTab
+            kind="buff"
+            entries={buffDescriptionReviewSnapshot?.buffs ?? []}
+            loading={buffDescriptionReviewLoading}
+            errorMessage={buffDescriptionReviewError}
+            onRetry={loadBuffDescriptionReviewSnapshot}
+            onStatusChange={handleBuffDescriptionStatus}
+            onDescriptionChange={handleBuffDescriptionSave}
+            toReviewEntry={buffToReviewEntry}
+            searchStorageKey="abilityEditor.buffDescriptionReview.search"
+            loadingText="正在加载气劲描述修正列表…"
           />
         </section>
       )}

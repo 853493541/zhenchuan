@@ -197,7 +197,7 @@ export interface Ability {
   hiddenFromDraft?: boolean;
 
   /**
-   * If true, this ability may still be cast while the player is in 御骑 mounted state.
+  * If true, this ability may still be cast while the player is in 骑御 mounted state.
    */
   canCastWhileMounted?: boolean;
 

@@ -96,6 +96,12 @@ function pointToSegmentDistance2D(
   return Math.sqrt(dx * dx + dy * dy);
 }
 
+function normalizePlanarDirection(x: number, y: number): { x: number; y: number } | null {
+  const len = Math.sqrt(x * x + y * y);
+  if (len <= 0.01) return null;
+  return { x: x / len, y: y / len };
+}
+
 export function handleDirectionalDash(
   state: GameState,
   source: PlayerState,
@@ -126,30 +132,35 @@ export function handleDirectionalDash(
     : 0;
   const facingX = facingLen > 0.01 ? rawFacing!.x / facingLen : 0;
   const facingY = facingLen > 0.01 ? rawFacing!.y / facingLen : 1;
+  const momentumDir = effect.preferMomentumDirection
+    ? normalizePlanarDirection(source.velocity.vx ?? 0, source.velocity.vy ?? 0) ?? source.airNudgeDir ?? null
+    : null;
+  const baseDirX = momentumDir?.x ?? facingX;
+  const baseDirY = momentumDir?.y ?? facingY;
 
   let dirX: number;
   let dirY: number;
 
   switch (effect.dirMode) {
     case "TOWARD":
-      dirX = facingX;
-      dirY = facingY;
+      dirX = baseDirX;
+      dirY = baseDirY;
       break;
     case "AWAY":
-      dirX = -facingX;
-      dirY = -facingY;
+      dirX = -baseDirX;
+      dirY = -baseDirY;
       break;
     case "PERP_LEFT":
-      dirX = -facingY;
-      dirY = facingX;
+      dirX = -baseDirY;
+      dirY = baseDirX;
       break;
     case "PERP_RIGHT":
-      dirX = facingY;
-      dirY = -facingX;
+      dirX = baseDirY;
+      dirY = -baseDirX;
       break;
     default:
-      dirX = facingX;
-      dirY = facingY;
+      dirX = baseDirX;
+      dirY = baseDirY;
       break;
   }
 
@@ -176,9 +187,12 @@ export function handleDirectionalDash(
   let arcGravityDownPerTick: number | undefined;
   const arcPeakHeight = gameplayUnitsToWorldUnits(effect.arcPeakHeight ?? 0, storedUnitScale);
   if (arcPeakHeight > 0) {
-    const halfTicks = Math.max(1, durationTicks / 2);
-    const g = (2 * arcPeakHeight) / (halfTicks * halfTicks);
-    forceVzPerTick = g * halfTicks;
+    const totalTicks = Math.max(1, durationTicks);
+    const peakStep = Math.max(1, Math.ceil(totalTicks / 2));
+    const velocityFactor = (totalTicks - 1) / 2;
+    const peakFactor = Math.max(1, (peakStep * velocityFactor) - ((peakStep * (peakStep - 1)) / 2));
+    const g = arcPeakHeight / peakFactor;
+    forceVzPerTick = g * velocityFactor;
     useArcGravity = true;
     arcGravityUpPerTick = g;
     arcGravityDownPerTick = g;
@@ -189,14 +203,17 @@ export function handleDirectionalDash(
     source.position.z = (source.position.z ?? 0) + snapUpWorld;
   }
 
+  const dashStartedAt = Date.now();
   source.activeDash = {
     abilityId: ability.id,
+    startedAt: dashStartedAt,
     vxPerTick: dirX * worldDistance / durationTicks,
     vyPerTick: dirY * worldDistance / durationTicks,
     speedPerTick: effect.speedPerTick !== undefined
       ? gameplayUnitsToWorldUnits(effect.speedPerTick, storedUnitScale)
       : undefined,
     steerByFacing: effect.steerByFacing,
+    preferMomentumDirection: effect.preferMomentumDirection,
     wallDiveOnBlock: effect.wallDiveOnBlock,
     diveVzPerTick: effect.diveVzPerTick,
     // vzPerTick: undefined — captured on first tick in movement.ts
@@ -298,7 +315,7 @@ export function handleDirectionalDash(
     { type: "DISPLACEMENT" },
     { type: "DASH_TURN_LOCK" },
   ];
-  const dashRuntimeAppliedAt = Date.now();
+  const dashRuntimeAppliedAt = dashStartedAt;
   applyDashRuntimeBuff({
     state,
     target: source,

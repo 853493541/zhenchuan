@@ -117,7 +117,12 @@ for (const entry of (soundManifest as { abilities?: AbilitySoundManifestEntry[] 
   const cleanName = cleanAbilityName(entry.name);
   if (cleanName) {
     manifestEntriesByName.set(cleanName, entry);
+    if (cleanName === '御骑') manifestEntriesByName.set('骑御', entry);
   }
+}
+
+function getDisplayAbilitySoundName(name: string) {
+  return name === '御骑' ? '骑御' : name;
 }
 
 function isChannelAbility(ability: AbilityLike | undefined) {
@@ -146,7 +151,7 @@ export type AbilitySoundFile = {
 
 export function listAbilitySoundFiles(): AbilitySoundFile[] {
   return ((soundManifest as { abilities?: AbilitySoundManifestEntry[] }).abilities ?? []).flatMap((entry) => {
-    const abilityName = cleanAbilityName(entry.name);
+    const abilityName = getDisplayAbilitySoundName(cleanAbilityName(entry.name));
     const wems = entry.wems ?? [];
     return wems
       .map((wem, index) => {
@@ -271,7 +276,7 @@ export function getAbilitySoundCue(
     }
   }
 
-  if (matchesAbility(ability, event, ['yuqi'], ['御骑'])) {
+  if (matchesAbility(ability, event, ['yuqi'], ['骑御', '御骑'])) {
     if (phase === 'channelComplete') return null;
     if (event.channelPhase !== 'start') return null;
     if (phase === 'channelStart' && urls[1]) {

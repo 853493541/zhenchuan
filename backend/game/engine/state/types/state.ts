@@ -17,9 +17,11 @@ export interface PickupItem {
 }
 
 export interface SafeZone {
+  shape?: "square" | "circle";
   centerX: number;
   centerY: number;
   currentHalf: number;
+  currentDiameter?: number;
   dps: number;
   /** Is the zone currently shrinking? */
   shrinking: boolean;
@@ -27,6 +29,56 @@ export interface SafeZone {
   shrinkProgress: number;
   /** Seconds until next phase change (shrink start or shrink end) */
   nextChangeIn: number;
+  phase?: "idle" | "waiting" | "countdown" | "shrinking" | "complete";
+  timelineMode?: "fast" | "full";
+  damageMode?: "test" | "full";
+  autoFullHeal?: boolean;
+  testShortCooldown?: boolean;
+  autoSettle?: boolean;
+  circleNumber?: number;
+  totalCircles?: number;
+  fullPoison?: boolean;
+  stageIndex?: number;
+  targetStageIndex?: number;
+  phaseStartedAt?: number;
+  phaseEndsAt?: number;
+  targetDiameter?: number;
+  targetHalf?: number;
+  targetCenterX?: number;
+  targetCenterY?: number;
+  targetVisible?: boolean;
+  paused?: boolean;
+  pausedAt?: number;
+  pausedRemainingMs?: number;
+  manualShrinking?: boolean;
+  lastShrinkAt?: number;
+  shrinkStartHalf?: number;
+  shrinkStartCenterX?: number;
+  shrinkStartCenterY?: number;
+}
+
+export interface PlayAreaBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+export interface YumenResultRow {
+  rank: number;
+  userId: PlayerID;
+  username: string;
+  kills: number;
+  damage: number;
+  score: number;
+  reward: number;
+}
+
+export interface YumenResults {
+  endedAt: number;
+  autoLeaveAt: number;
+  winnerUserId?: PlayerID;
+  rows: YumenResultRow[];
 }
 
 // ==================== ACTIVE CHANNEL ====================
@@ -112,6 +164,9 @@ export interface PlayerState {
 
   /** active buffs on player */
   buffs: ActiveBuff[];
+
+  /** Date.now() ms when the player most recently entered 玉门关狂沙. */
+  yumenKuangShaStartedAt?: number;
 
   /** Current player-selected target, used for target-of-target UI. */
   targetSelection?: TargetSelection;
@@ -225,12 +280,14 @@ export interface PlayerState {
    */
   activeDash?: {
     abilityId: string;
+    startedAt?: number;
     vxPerTick: number;    // horizontal X step per tick (units/tick)
     vyPerTick: number;    // horizontal Y step per tick (units/tick)
     lingRanCastLift?: boolean;
     sustainWhileChannelAbilityId?: string;
     speedPerTick?: number; // optional steering speed (units/tick)
     steerByFacing?: boolean;
+    preferMomentumDirection?: boolean;
     wallDiveOnBlock?: boolean;
     stopOnWall?: boolean;
     wallStunMs?: number;     // if >0 and wall blocks the dash, stop and stun for this duration
@@ -357,6 +414,7 @@ export interface TargetEntity {
   /** Active forced movement (e.g. pull, knockback). Tick-based; cleared on completion. */
   activeDash?: {
     abilityId?: string;
+    startedAt?: number;
     vxPerTick: number;
     vyPerTick: number;
     forceVzPerTick?: number;
@@ -380,8 +438,12 @@ export interface GameState {
   /** index into players[] */
   activePlayerIndex: number;
 
+  /** Testing toggle: cap runtime cooldown and charge recovery to 3 seconds. */
+  testShortCooldown?: boolean;
+
   gameOver: boolean;
   winnerUserId?: PlayerID;
+  yumenResults?: YumenResults;
   leaveNotice?: {
     userId: PlayerID;
     username: string;
@@ -396,6 +458,9 @@ export interface GameState {
 
   /** poison zone (毒圈) — shrinking safe area */
   safeZone?: SafeZone;
+
+  /** Hard movement boundary for editable 1v1 modes. */
+  playArea?: PlayAreaBounds;
 
   /** persistent ground damage zones (e.g. 狂龙乱舞) */
   groundZones?: GroundZone[];

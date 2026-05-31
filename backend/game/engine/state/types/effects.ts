@@ -232,7 +232,9 @@ export type EffectType =
   | "YOU_FENG_PIAO_ZONG"
   | "RU_YI_FA"
   // 翔极碧落: interrupt the target's channel and apply silence if successful
-  | "XIANG_JI_BI_LUO";
+  | "XIANG_JI_BI_LUO"
+  // 打断目标当前可打断运功（不附带额外效果）
+  | "INTERRUPT_CHANNEL";
 
 /**
  * Immediate ability effects
@@ -285,6 +287,12 @@ export interface AbilityEffect {
    * For DIRECTIONAL_DASH: when true, dash heading is steered by live facing every tick.
    */
   steerByFacing?: boolean;
+
+  /**
+   * For DIRECTIONAL_DASH: prefer current movement momentum / intent over plain
+   * facing when seeding and steering the dash direction.
+   */
+  preferMomentumDirection?: boolean;
 
   /**
    * For DIRECTIONAL_DASH: explicit horizontal speed in units/tick.

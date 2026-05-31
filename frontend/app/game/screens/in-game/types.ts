@@ -162,6 +162,9 @@ export type GameEventType =
   | "DODGE"
   | "BUFF_APPLIED"
   | "BUFF_EXPIRED"
+  | "YUMEN_DEFEAT"
+  | "YUMEN_REVIVE"
+  | "YUMEN_GAME_END"
   | "COMBAT_STATUS"
   | "END_TURN";
 
@@ -171,6 +174,12 @@ export interface GameEvent {
   type: GameEventType;
   actorUserId: string;
   targetUserId?: string;
+  attackerUserId?: string | null;
+  defeatedUserId?: string;
+  revivedUserId?: string;
+  winnerUserId?: string;
+  attackerName?: string | null;
+  defeatedName?: string;
   entityId?: string;
   entityName?: string;
 
@@ -178,6 +187,7 @@ export interface GameEvent {
   abilityName?: string;
   channelPhase?: "start" | "complete";
 
+  damageType?: string;
   value?: number;
   shieldAbsorbed?: number;
   isCrit?: boolean;
@@ -226,13 +236,48 @@ export interface ChatMessage {
 ========================================================= */
 
 export interface SafeZone {
+  shape?: 'square' | 'circle';
   centerX: number;
   centerY: number;
   currentHalf: number;
+  currentDiameter?: number;
   dps: number;
   shrinking: boolean;
   shrinkProgress: number;
   nextChangeIn: number;
+  phase?: 'idle' | 'waiting' | 'countdown' | 'shrinking' | 'complete';
+  timelineMode?: 'fast' | 'full';
+  damageMode?: 'test' | 'full';
+  autoFullHeal?: boolean;
+  testShortCooldown?: boolean;
+  autoSettle?: boolean;
+  circleNumber?: number;
+  totalCircles?: number;
+  fullPoison?: boolean;
+  stageIndex?: number;
+  targetStageIndex?: number;
+  phaseStartedAt?: number;
+  phaseEndsAt?: number;
+  targetDiameter?: number;
+  targetHalf?: number;
+  targetCenterX?: number;
+  targetCenterY?: number;
+  targetVisible?: boolean;
+  paused?: boolean;
+  pausedAt?: number;
+  pausedRemainingMs?: number;
+  manualShrinking?: boolean;
+  lastShrinkAt?: number;
+  shrinkStartHalf?: number;
+  shrinkStartCenterX?: number;
+  shrinkStartCenterY?: number;
+}
+
+export interface PlayAreaBounds {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
 export interface GroundZone {
@@ -275,13 +320,32 @@ export interface TargetEntity {
   wallNormal?: { x: number; y: number };
 }
 
+export interface YumenResultRow {
+  rank: number;
+  userId: string;
+  username: string;
+  kills: number;
+  damage: number;
+  score: number;
+  reward: number;
+}
+
+export interface YumenResults {
+  endedAt: number;
+  autoLeaveAt: number;
+  winnerUserId?: string;
+  rows: YumenResultRow[];
+}
+
 export interface GameState {
   turn: number;
   activePlayerIndex: number;
   unitScale?: number;
+  testShortCooldown?: boolean;
 
   gameOver: boolean;
   winnerUserId?: string;
+  yumenResults?: YumenResults;
   leaveNotice?: {
     userId: string;
     username: string;
@@ -292,6 +356,7 @@ export interface GameState {
   events: GameEvent[];
   pickups?: PickupItem[];
   safeZone?: SafeZone;
+  playArea?: PlayAreaBounds;
   groundZones?: GroundZone[];
   entities?: TargetEntity[];
 }

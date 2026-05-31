@@ -8,13 +8,19 @@ import GameSession from "../models/GameSession";
 import { getUserIdFromCookie } from "./auth";
 import { generateShop, REFRESH_COST } from "../services/economy/economyService";
 import { getIncomePerRound } from "../services/economy/economyService";
-import { initializeBattleState, generatePickups, generateArenaPickups } from "../services/battle/battleService";
+import { attachPlayerNamesToBattleState, initializeBattleState, generatePickups, generateArenaPickups } from "../services/battle/battleService";
 import { createStartingConsumableCounts } from "../services/gameplay/consumableService";
 import { completeTournamentBattle } from "../services/tournament/tournamentResultService";
 import { GameLoop } from "../engine/loop/GameLoop";
+import { getGroundHeightForMap, getTopDownHitHeightForMap, type MapContext } from "../engine/loop/movement";
+import { addBuff } from "../engine/effects/buffRuntime";
 import { ABILITIES } from "../abilities/abilities";
 import { broadcastGameUpdate } from "../services/broadcast";
 import { diffState } from "../services/flow/stateDiff";
+import { EXPORTED_MAP_HEIGHT, EXPORTED_MAP_SPAWN_POSITIONS, EXPORTED_MAP_WIDTH, exportedMap } from "../map/exportedMap";
+import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../map/exportedMapCollision";
+import { isExportedMapMode, isYumen1v1BasicMode, normalizeGameMode } from "../modes";
+import { DASH_CC_IMMUNE_BUFF_ID } from "../engine/effects/definitions/DirectionalDash";
 import type { AbilityInstance } from "../engine/state/types";
 import {
   NEW_WORLD_UNIT_SCALE,
@@ -24,6 +30,23 @@ import {
   STARTING_DEFENSE_PCT,
   STARTING_HUAJIN_PCT,
 } from "../engine/state/types";
+import {
+  YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+  YUMEN_PREP_ABILITY,
+  YUMEN_PREP_BUFF,
+  YUMEN_PREP_DURATION_MS,
+  YUMEN_SPECTATOR_BUFF_ID,
+  getYumenSafeZoneCircleNumber,
+  getYumenSafeZoneDps,
+  getYumenSafeZoneInitialWaitMs,
+  hasActiveYumenPrepBuff,
+  hasActiveYumenSpectatorBuff,
+  normalizeYumenSafeZoneDamageMode,
+  normalizeYumenSafeZoneTimelineMode,
+  type YumenSafeZoneDamageMode,
+  type YumenSafeZoneTimelineMode,
+} from "../engine/utils/yumenSafeZone";
+import { buildYumenResults, countYumenAlivePlayers } from "../engine/utils/yumenResults";
 
 const router = express.Router();
 
@@ -79,6 +102,542 @@ function getDraftCardAbilityId(card: any): string | null {
   return typeof abilityId === "string" && abilityId.trim() ? abilityId.trim() : null;
 }
 
+function clampFiniteNumber(value: unknown, fallback: number, min: number, max: number) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) return fallback;
+  return Math.max(min, Math.min(max, numericValue));
+}
+
+function getYumenFullSafeZoneRadius() {
+  return Math.hypot(EXPORTED_MAP_WIDTH / 2, EXPORTED_MAP_HEIGHT / 2);
+}
+
+function getYumenStagedSafeZoneDps(zone: any) {
+  return getYumenSafeZoneDps(zone);
+}
+
+function createYumenSafeZone(state: any) {
+  const fullHalf = getYumenFullSafeZoneRadius();
+  const existing = state?.safeZone ?? {};
+  const existingHalf = existing.shape === "circle" ? existing.currentHalf : fullHalf;
+  const allowedPhases = new Set(["idle", "waiting", "countdown", "shrinking", "complete"]);
+  const phase = allowedPhases.has(existing.phase) ? existing.phase : "idle";
+  const currentHalf = clampFiniteNumber(existingHalf, fullHalf, 0, fullHalf);
+  const currentDiameter = currentHalf * 2;
+  const inferredStageIndex = currentDiameter <= 25 ? 4 : currentDiameter <= 50 ? 3 : currentDiameter <= 100 ? 2 : currentDiameter <= 200 ? 1 : 0;
+  const zone: any = {
+    shape: "circle",
+    centerX: clampFiniteNumber(existing.centerX, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH),
+    centerY: clampFiniteNumber(existing.centerY, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT),
+    currentHalf,
+    currentDiameter,
+    dps: Math.max(0, clampFiniteNumber(existing.dps, 0, 0, 999)),
+    shrinking: existing.shrinking === true && phase === "shrinking",
+    shrinkProgress: clampFiniteNumber(existing.shrinkProgress, 0, 0, 1),
+    nextChangeIn: Math.max(0, Math.round(clampFiniteNumber(existing.nextChangeIn, 0, 0, 9999))),
+    phase,
+    circleNumber: Math.max(3, Math.floor(clampFiniteNumber(existing.circleNumber, 3, 3, YUMEN_SAFE_ZONE_TOTAL_CIRCLES))),
+    totalCircles: YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+    fullPoison: existing.fullPoison === true || phase === "complete" || currentHalf <= 0,
+    timelineMode: normalizeYumenSafeZoneTimelineMode(existing.timelineMode),
+    damageMode: normalizeYumenSafeZoneDamageMode(existing.damageMode),
+    autoFullHeal: existing.autoFullHeal === true,
+    testShortCooldown: existing.testShortCooldown === true,
+    autoSettle: existing.autoSettle === true,
+    stageIndex: Math.max(0, Math.floor(clampFiniteNumber(existing.stageIndex, inferredStageIndex, 0, 99))),
+    targetVisible: existing.targetVisible === true,
+    paused: existing.paused === true && (phase === "waiting" || phase === "countdown" || phase === "shrinking"),
+  };
+  for (const key of ["targetStageIndex", "phaseStartedAt", "phaseEndsAt", "targetDiameter", "targetHalf", "targetCenterX", "targetCenterY", "shrinkStartHalf", "shrinkStartCenterX", "shrinkStartCenterY", "pausedAt", "pausedRemainingMs"]) {
+    if (Number.isFinite(Number(existing[key]))) zone[key] = Number(existing[key]);
+  }
+  if (zone.paused) {
+    const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? Date.now()) - Date.now())));
+    zone.pausedRemainingMs = remainingMs;
+    zone.nextChangeIn = remainingMs / 1000;
+  } else {
+    delete zone.pausedAt;
+    delete zone.pausedRemainingMs;
+  }
+  if (zone.phase !== "waiting" && zone.phase !== "countdown" && zone.phase !== "shrinking") {
+    zone.nextChangeIn = 0;
+    zone.targetVisible = false;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+    zone.paused = false;
+    delete zone.pausedAt;
+    delete zone.pausedRemainingMs;
+  }
+  zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+  zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+  zone.fullPoison = zone.phase === "complete" || zone.currentHalf <= 0;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function resetYumenSafeZone(now: number) {
+  const fullHalf = getYumenFullSafeZoneRadius();
+  return {
+    shape: "circle",
+    centerX: EXPORTED_MAP_WIDTH / 2,
+    centerY: EXPORTED_MAP_HEIGHT / 2,
+    currentHalf: fullHalf,
+    currentDiameter: fullHalf * 2,
+    dps: 0,
+    shrinking: false,
+    shrinkProgress: 0,
+    nextChangeIn: 0,
+    phase: "idle",
+    timelineMode: "fast",
+    damageMode: "test",
+    stageIndex: 0,
+    circleNumber: 3,
+    totalCircles: YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+    fullPoison: false,
+    autoFullHeal: false,
+    testShortCooldown: false,
+    autoSettle: false,
+    phaseStartedAt: now,
+    phaseEndsAt: now,
+    targetVisible: false,
+    paused: false,
+  };
+}
+
+function getYumenAbilityBarLockReason(gameId: string, game: any, userId: string): string | null {
+  if (!isYumen1v1BasicMode((game as any).mode)) return null;
+  const loopState = GameLoop.get(gameId)?.getState();
+  const state = loopState ?? game.state;
+  const player = (state?.players ?? []).find((entry: any) => entry?.userId === userId);
+  if (hasActiveYumenSpectatorBuff(player as any)) return "观战中无法调整技能栏";
+  return null;
+}
+
+function getActiveYumenPrepBlock(gameId: string, game: any, now = Date.now()) {
+  const loopState = GameLoop.get(gameId)?.getState();
+  const state = loopState ?? game.state;
+  const prepEndsAt = Number((state as any)?.yumenPrep?.endsAt ?? 0);
+  const activePrepBuffEndsAt = (state?.players ?? []).reduce((latest: number, player: any) => {
+    if (!hasActiveYumenPrepBuff(player, now)) return latest;
+    const buffEndsAt = Math.max(
+      ...((player?.buffs ?? [])
+        .filter((buff: any) => buff?.buffId === YUMEN_PREP_BUFF.buffId)
+        .map((buff: any) => Number(buff?.expiresAt ?? 0))
+        .filter((expiresAt: number) => Number.isFinite(expiresAt) && expiresAt > now)),
+      latest,
+    );
+    return Math.max(latest, buffEndsAt);
+  }, 0);
+  const blockedUntil = Math.max(prepEndsAt, activePrepBuffEndsAt);
+  return blockedUntil > now ? { prepActive: true, prepEndsAt: blockedUntil } : null;
+}
+
+function startYumenSafeZone(state: any, now: number, options?: { timelineMode?: YumenSafeZoneTimelineMode; damageMode?: YumenSafeZoneDamageMode }) {
+  const zone = createYumenSafeZone(state);
+  const autoFullHeal = zone.autoFullHeal === true;
+  const testShortCooldown = zone.testShortCooldown === true;
+  const autoSettle = zone.autoSettle === true;
+  if (zone.phase === "complete" || zone.currentHalf <= 0) {
+    Object.assign(zone, resetYumenSafeZone(now));
+    zone.autoFullHeal = autoFullHeal;
+    zone.testShortCooldown = testShortCooldown;
+    zone.autoSettle = autoSettle;
+  }
+  zone.timelineMode = normalizeYumenSafeZoneTimelineMode(options?.timelineMode ?? zone.timelineMode);
+  zone.damageMode = normalizeYumenSafeZoneDamageMode(options?.damageMode ?? zone.damageMode);
+  zone.phase = "waiting";
+  zone.phaseStartedAt = now;
+  const initialWaitMs = getYumenSafeZoneInitialWaitMs(zone.timelineMode);
+  zone.phaseEndsAt = now + initialWaitMs;
+  zone.nextChangeIn = initialWaitMs / 1000;
+  zone.shrinking = false;
+  zone.shrinkProgress = 0;
+  zone.targetVisible = false;
+  zone.paused = false;
+  delete zone.pausedAt;
+  delete zone.pausedRemainingMs;
+  zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+  zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+  zone.fullPoison = false;
+  delete zone.targetStageIndex;
+  delete zone.targetDiameter;
+  delete zone.targetHalf;
+  delete zone.targetCenterX;
+  delete zone.targetCenterY;
+  delete zone.shrinkStartHalf;
+  delete zone.shrinkStartCenterX;
+  delete zone.shrinkStartCenterY;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function yumenSafeZoneStartAlreadyActive(state: any) {
+  const zone = createYumenSafeZone(state);
+  const phase = String(zone.phase ?? "idle");
+  const phaseActive = phase === "waiting" || phase === "countdown" || phase === "shrinking";
+  return {
+    active: phaseActive,
+    zone,
+  };
+}
+
+function setYumenSafeZoneDamageMode(state: any, damageMode: YumenSafeZoneDamageMode) {
+  const zone = createYumenSafeZone(state);
+  zone.damageMode = normalizeYumenSafeZoneDamageMode(damageMode);
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function stopYumenSafeZone(state: any, now: number) {
+  const zone = createYumenSafeZone(state);
+  zone.phase = "idle";
+  zone.phaseStartedAt = now;
+  zone.phaseEndsAt = now;
+  zone.nextChangeIn = 0;
+  zone.shrinking = false;
+  zone.shrinkProgress = 0;
+  zone.targetVisible = false;
+  zone.paused = false;
+  delete zone.pausedAt;
+  delete zone.pausedRemainingMs;
+  zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+  zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+  zone.fullPoison = zone.currentHalf <= 0;
+  delete zone.targetStageIndex;
+  delete zone.targetDiameter;
+  delete zone.targetHalf;
+  delete zone.targetCenterX;
+  delete zone.targetCenterY;
+  delete zone.shrinkStartHalf;
+  delete zone.shrinkStartCenterX;
+  delete zone.shrinkStartCenterY;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function pauseYumenSafeZone(state: any, now: number) {
+  const zone = createYumenSafeZone(state);
+  const phaseActive = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking";
+  if (!phaseActive) return zone;
+  const remainingMs = Math.max(0, Number(zone.phaseEndsAt ?? now) - now);
+  const elapsedMs = Math.max(0, Number(zone.phaseEndsAt ?? now) - Number(zone.phaseStartedAt ?? now) - remainingMs);
+  zone.paused = true;
+  zone.pausedAt = now;
+  zone.pausedRemainingMs = remainingMs;
+  zone.phaseStartedAt = now - elapsedMs;
+  zone.phaseEndsAt = now + remainingMs;
+  zone.nextChangeIn = remainingMs / 1000;
+  zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+  zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+  zone.fullPoison = zone.currentHalf <= 0;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function resumeYumenSafeZone(state: any, now: number) {
+  const zone = createYumenSafeZone(state);
+  const phaseActive = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking";
+  if (!phaseActive || zone.paused !== true) return zone;
+  const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? now) - now)));
+  const elapsedMs = Math.max(0, Number(zone.phaseEndsAt ?? now) - Number(zone.phaseStartedAt ?? now) - remainingMs);
+  zone.paused = false;
+  delete zone.pausedAt;
+  delete zone.pausedRemainingMs;
+  zone.phaseStartedAt = now - elapsedMs;
+  zone.phaseEndsAt = now + remainingMs;
+  zone.nextChangeIn = remainingMs / 1000;
+  zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+  zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+  zone.fullPoison = zone.currentHalf <= 0;
+  zone.dps = getYumenStagedSafeZoneDps(zone);
+  return zone;
+}
+
+function normalizeYumenPlayArea(input: any) {
+  const minSize = 12;
+  const rawMinX = clampFiniteNumber(input?.minX, 0, 0, EXPORTED_MAP_WIDTH);
+  const rawMaxX = clampFiniteNumber(input?.maxX, EXPORTED_MAP_WIDTH, 0, EXPORTED_MAP_WIDTH);
+  const rawMinY = clampFiniteNumber(input?.minY, 0, 0, EXPORTED_MAP_HEIGHT);
+  const rawMaxY = clampFiniteNumber(input?.maxY, EXPORTED_MAP_HEIGHT, 0, EXPORTED_MAP_HEIGHT);
+  let minX = Math.min(rawMinX, rawMaxX);
+  let maxX = Math.max(rawMinX, rawMaxX);
+  let minY = Math.min(rawMinY, rawMaxY);
+  let maxY = Math.max(rawMinY, rawMaxY);
+
+  if (maxX - minX < minSize) {
+    const centerX = (minX + maxX) / 2;
+    minX = clampFiniteNumber(centerX - minSize / 2, 0, 0, EXPORTED_MAP_WIDTH - minSize);
+    maxX = minX + minSize;
+  }
+  if (maxY - minY < minSize) {
+    const centerY = (minY + maxY) / 2;
+    minY = clampFiniteNumber(centerY - minSize / 2, 0, 0, EXPORTED_MAP_HEIGHT - minSize);
+    maxY = minY + minSize;
+  }
+
+  return { minX, minY, maxX, maxY };
+}
+
+function applyYumenStateUpdate(gameId: string, game: any, updater: (state: any) => Array<{ path: string; value: any }>) {
+  let liveVersion = game.state.version ?? 0;
+  const gameLoop = GameLoop.get(gameId);
+  const targetState = gameLoop ? gameLoop.getState() : game.state;
+  const diff = updater(targetState);
+  targetState.version = (targetState.version ?? 0) + 1;
+  liveVersion = targetState.version;
+  if (gameLoop) {
+    gameLoop.updateState(targetState);
+  }
+  broadcastGameUpdate({ gameId, version: liveVersion, diff, timestamp: Date.now() });
+  game.state = targetState;
+  game.markModified("state");
+  void game.save().catch((err: any) => {
+    console.error("[cheat/yumen-state] async save failed:", err?.message ?? err);
+  });
+  return { liveVersion, diff };
+}
+
+function getYumenRouteMapContext(gameId: string, state: any): MapContext {
+  const gameLoop = GameLoop.get(gameId);
+  if (gameLoop) return gameLoop.getMapCtx();
+  return {
+    objects: exportedMap.objects,
+    width: exportedMap.width,
+    height: exportedMap.height,
+    circular: false,
+    unitScale: state?.unitScale ?? 1,
+    playerRadius: COLLISION_TEST_PLAYER_RADIUS,
+    collisionSystem: getCollisionTestExportedSystem(),
+    playArea: state?.playArea,
+  };
+}
+
+function getSupportGroundZ(x: number, y: number, mapCtx: MapContext) {
+  return getGroundHeightForMap(x, y, 100000, mapCtx);
+}
+
+function getTopDownHitZ(x: number, y: number, mapCtx: MapContext) {
+  return getTopDownHitHeightForMap(x, y, mapCtx);
+}
+
+const YUMEN_START_SPAWN_Z_LIFT = 10;
+
+function getYumenLiftedSpawnZ(x: number, y: number, mapCtx: MapContext, zOverride?: number) {
+  const clampedX = clampFiniteNumber(x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const clampedY = clampFiniteNumber(y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const supportGroundZ = getSupportGroundZ(clampedX, clampedY, mapCtx);
+  const topDownHitZ = getTopDownHitZ(clampedX, clampedY, mapCtx);
+  const overrideZ = Number(zOverride);
+  const baseZ = Number.isFinite(overrideZ)
+    ? Math.max(overrideZ, supportGroundZ, topDownHitZ)
+    : Math.max(supportGroundZ, topDownHitZ);
+  return baseZ + YUMEN_START_SPAWN_Z_LIFT;
+}
+
+function faceYumenPlayerTowardCenter(player: any, centerX = EXPORTED_MAP_WIDTH / 2, centerY = EXPORTED_MAP_HEIGHT / 2) {
+  const faceX = centerX - Number(player.position?.x ?? centerX);
+  const faceY = centerY - Number(player.position?.y ?? centerY);
+  const faceLen = Math.hypot(faceX, faceY) || 1;
+  player.facing = { x: faceX / faceLen, y: faceY / faceLen };
+  return player.facing;
+}
+
+function teleportYumenPlayerTo(state: any, player: any, x: number, y: number, mapCtx: MapContext, zOverride?: number) {
+  const clampedX = clampFiniteNumber(x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const clampedY = clampFiniteNumber(y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const z = Number.isFinite(Number(zOverride)) ? Number(zOverride) : getTopDownHitZ(clampedX, clampedY, mapCtx);
+  player.position = { ...(player.position ?? {}), x: clampedX, y: clampedY, z };
+  player.velocity = { ...(player.velocity ?? {}), vx: 0, vy: 0, vz: 0 };
+  player.jumpCount = 0;
+  delete player.isPowerJump;
+  delete player.isPowerJumpCombined;
+  delete player.activeDash;
+  delete player.activeKnockback;
+  delete player.activePull;
+  return player.position;
+}
+
+function teleportYumenPlayerZToSupportGround(player: any, mapCtx: MapContext) {
+  const x = clampFiniteNumber(player?.position?.x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const y = clampFiniteNumber(player?.position?.y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const z = getSupportGroundZ(x, y, mapCtx);
+  player.position = { ...(player.position ?? {}), z };
+  player.velocity = { ...(player.velocity ?? {}), vz: 0 };
+  player.jumpCount = 0;
+  delete player.isPowerJump;
+  delete player.isPowerJumpCombined;
+  return player.position;
+}
+
+function teleportYumenPlayerZToTopDownHit(player: any, mapCtx: MapContext) {
+  const x = clampFiniteNumber(player?.position?.x, EXPORTED_MAP_WIDTH / 2, 0, EXPORTED_MAP_WIDTH);
+  const y = clampFiniteNumber(player?.position?.y, EXPORTED_MAP_HEIGHT / 2, 0, EXPORTED_MAP_HEIGHT);
+  const z = getTopDownHitZ(x, y, mapCtx);
+  player.position = { ...(player.position ?? {}), z };
+  player.velocity = { ...(player.velocity ?? {}), vz: 0 };
+  player.jumpCount = 0;
+  delete player.isPowerJump;
+  delete player.isPowerJumpCombined;
+  return player.position;
+}
+
+function capYumenRuntimeCooldownsForTesting(state: any) {
+  const diff: Array<{ path: string; value: any }> = [];
+  const cap = 90;
+  (state.players ?? []).forEach((player: any, playerIndex: number) => {
+    (player.hand ?? []).forEach((instance: any, abilityIndex: number) => {
+      if (Number(instance.cooldown ?? 0) > cap) {
+        instance.cooldown = cap;
+        diff.push({ path: `/players/${playerIndex}/hand/${abilityIndex}/cooldown`, value: cap });
+      }
+      if (Number(instance.chargeRegenTicksRemaining ?? 0) > cap) {
+        instance.chargeRegenTicksRemaining = cap;
+        diff.push({ path: `/players/${playerIndex}/hand/${abilityIndex}/chargeRegenTicksRemaining`, value: cap });
+      }
+      if (Array.isArray(instance._chargeRegenQueueTicks)) {
+        const nextQueue = instance._chargeRegenQueueTicks.map((ticks: any) => Math.min(cap, Math.max(0, Number(ticks) || 0)));
+        if (JSON.stringify(nextQueue) !== JSON.stringify(instance._chargeRegenQueueTicks)) {
+          instance._chargeRegenQueueTicks = nextQueue;
+          diff.push({ path: `/players/${playerIndex}/hand/${abilityIndex}/_chargeRegenQueueTicks`, value: nextQueue });
+        }
+      }
+    });
+    Object.entries(player.specialAbilityStates ?? {}).forEach(([abilityId, instance]: [string, any]) => {
+      if (Number(instance.cooldown ?? 0) > cap) {
+        instance.cooldown = cap;
+        diff.push({ path: `/players/${playerIndex}/specialAbilityStates/${abilityId}/cooldown`, value: cap });
+      }
+    });
+    if (Number(player.activeChannel?.cooldownTicks ?? 0) > cap) {
+      player.activeChannel.cooldownTicks = cap;
+      diff.push({ path: `/players/${playerIndex}/activeChannel/cooldownTicks`, value: cap });
+    }
+  });
+  return diff;
+}
+
+function shuffledYumenSpawnPositions() {
+  const positions = [...EXPORTED_MAP_SPAWN_POSITIONS];
+  for (let index = positions.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(Math.random() * (index + 1));
+    [positions[index], positions[swapIndex]] = [positions[swapIndex], positions[index]];
+  }
+  return positions;
+}
+
+function applyYumenBattleStartPrep(gameId: string, state: any) {
+  const now = Date.now();
+  const mapCtx = getYumenRouteMapContext(gameId, state);
+  const spawnPositions = shuffledYumenSpawnPositions();
+  let prepEndsAt = now + YUMEN_PREP_DURATION_MS;
+
+  state.safeZone = resetYumenSafeZone(now);
+  state.gameOver = false;
+  delete (state as any).winnerUserId;
+  delete (state as any).yumenResults;
+  delete (state as any).leaveNotice;
+
+  (state.players ?? []).forEach((player: any, index: number) => {
+    const spawn = spawnPositions[index % spawnPositions.length] ?? { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 };
+    teleportYumenPlayerTo(state, player, spawn.x, spawn.y, mapCtx, getYumenLiftedSpawnZ(spawn.x, spawn.y, mapCtx, (spawn as any).z));
+    faceYumenPlayerTowardCenter(player);
+
+    addBuff({
+      state,
+      sourceUserId: player.userId,
+      targetUserId: player.userId,
+      ability: YUMEN_PREP_ABILITY,
+      buffTarget: player,
+      buff: YUMEN_PREP_BUFF,
+    });
+
+    const activePrep = (player.buffs ?? []).find((buff: any) => buff?.buffId === YUMEN_PREP_BUFF.buffId);
+    prepEndsAt = Math.max(prepEndsAt, Number(activePrep?.expiresAt ?? 0) || 0);
+  });
+
+  (state as any).yumenPrep = {
+    startedAt: now,
+    endsAt: prepEndsAt,
+    announcements: {},
+  };
+}
+
+function shouldApplyYumenBattleStartPrep(state: any, now = Date.now()) {
+  const prep = (state as any)?.yumenPrep;
+  if (!Number.isFinite(Number(prep?.startedAt))) return true;
+  const prepEndsAt = Number(prep?.endsAt ?? 0);
+  if (Number.isFinite(prepEndsAt) && prepEndsAt > now) {
+    return (state?.players ?? []).some((player: any) => !hasActiveYumenPrepBuff(player, now));
+  }
+  return false;
+}
+
+function resetYumenAbilityRuntimeCard(card: any) {
+  const abilityId = card?.abilityId ?? card?.id;
+  const def = abilityId ? ABILITIES[abilityId] : undefined;
+  const maxCharges = Math.max(0, Number((def as any)?.maxCharges ?? card?.maxCharges ?? 0));
+  const nextCard: any = {
+    ...card,
+    cooldown: 0,
+    _cooldownProgress: 0,
+    chargeLockTicks: 0,
+    chargeRegenTicksRemaining: 0,
+  };
+  delete nextCard._chargeRegenQueueTicks;
+  if (maxCharges > 1) {
+    nextCard.maxCharges = maxCharges;
+    nextCard.chargeCount = maxCharges;
+  }
+  return nextCard;
+}
+
+function resetYumenPlayerForBattleStart(player: any, selectedAbilitiesByUser: Record<string, any[]> = {}) {
+  const maxHp = Math.max(1, Number(player?.maxHp ?? STARTING_BATTLE_HP));
+  const currentHand = Array.isArray(player?.hand) ? player.hand : [];
+  const savedHand = Array.isArray(player?.yumenPreDeathHand) ? player.yumenPreDeathHand : null;
+  const fallbackHand = currentHand.length > 0
+    ? currentHand
+    : buildHandFromSelectedAbilityInstances(selectedAbilitiesByUser[player.userId] ?? []);
+  const hand = cloneJson(savedHand ?? fallbackHand).map(resetYumenAbilityRuntimeCard);
+  const nextPlayer: any = {
+    ...player,
+    hp: maxHp,
+    maxHp,
+    shield: 0,
+    buffs: [],
+    hand,
+    specialAbilityStates: {},
+    globalGcdTicks: 0,
+    visualGcd: null,
+    consumableCounts: createStartingConsumableCounts(),
+    consumableCooldowns: {},
+    targetSelection: undefined,
+    inCombat: false,
+    combatLinks: {},
+    velocity: { ...(player?.velocity ?? {}), vx: 0, vy: 0, vz: 0 },
+    jumpCount: 0,
+  };
+  for (const key of [
+    "activeChannel",
+    "activeDash",
+    "activeKnockback",
+    "activePull",
+    "groundedCastLockUntil",
+    "isPowerJump",
+    "isPowerJumpCombined",
+    "lingRanCastLiftSustainChannelAbilityId",
+    "lingRanCastLiftSustainVzPerTick",
+    "tiYunZongPenaltyConsumed",
+    "yumenDefeated",
+    "yumenDefeatedAt",
+    "yumenPreDeathHand",
+    "yumenKuangShaStartedAt",
+  ]) {
+    delete nextPlayer[key];
+  }
+  return nextPlayer;
+}
+
 function dedupeDraftCardsByAbility<T extends Record<string, any>>(cards: T[]): T[] {
   const seen = new Set<string>();
   return cards.filter((card) => {
@@ -102,6 +661,26 @@ function toSelectedInstancesFromHand(hand: any[]): AbilityInstance[] {
       } as AbilityInstance;
     })
     .filter((card: AbilityInstance) => !!card.abilityId);
+}
+
+function buildHandFromSelectedAbilityInstances(selected: any[]): any[] {
+  return normalizeDraftCardSlots(selected ?? [])
+    .map((cardInstance: any, index: number) => {
+      const abilityId = cardInstance?.abilityId ?? cardInstance?.id;
+      const abilityDef = abilityId ? ABILITIES[abilityId] : undefined;
+      if (!abilityDef) return null;
+      return {
+        ...abilityDef,
+        instanceId: cardInstance?.instanceId ?? randomUUID(),
+        cooldown: Number(cardInstance?.cooldown ?? 0),
+        slotIndex: normalizeDraftSlotIndex(cardInstance?.slotIndex, index),
+      };
+    })
+    .filter((card: any) => card !== null);
+}
+
+function cloneJson<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value));
 }
 
 const DRAFT_ABILITY_SLOT_COUNT = 6;
@@ -693,12 +1272,30 @@ router.post("/battle/start", async (req, res) => {
     if (existingLoop) {
       // The loop may have been started before the pickup system was added.
       // Retroactively inject pickups if the loop state is empty so claim/inspect work.
-      // Collision-test no longer uses pickups at all.
+      // Exported-map modes no longer use pickups at all.
       const ls = existingLoop.getState();
-      const mode = ((game as any).mode ?? 'arena') as string;
+      const mode = normalizeGameMode((game as any).mode ?? 'arena');
       const isArena = mode === 'arena';
-      const isCollisionTest = mode === 'collision-test';
-      if (isCollisionTest) {
+      if (isYumen1v1BasicMode(mode) && shouldApplyYumenBattleStartPrep(ls)) {
+        const prevState = structuredClone(ls);
+        applyYumenBattleStartPrep(String(gameId), ls);
+        const diff = diffState(prevState, ls);
+        ls.version = (ls.version ?? 0) + 1;
+        existingLoop.updateState(ls);
+        game.state = ls as any;
+        game.markModified("state");
+        await game.save();
+        if (diff.length > 0) {
+          broadcastGameUpdate({
+            gameId,
+            version: ls.version,
+            diff,
+            timestamp: Date.now(),
+          });
+        }
+        return res.json({ status: "battle_already_started", prepStarted: true, version: ls.version });
+      }
+      if (isExportedMapMode(mode)) {
         if ((ls.pickups ?? []).length > 0) {
           ls.pickups = [];
           existingLoop.updateState(ls);
@@ -724,13 +1321,20 @@ router.post("/battle/start", async (req, res) => {
     }
 
     // Create battle state with positions + use finalized hands
-    const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
-    const battleState = initializeBattleState(game.tournament, playerIds, gameMode);
+    const gameMode = normalizeGameMode((game as any).mode ?? 'arena');
+    const battleState = attachPlayerNamesToBattleState(
+      initializeBattleState(game.tournament, playerIds, gameMode),
+      game.playerNames as Record<string, string> | undefined
+    );
 
     // Override hands — preserve instanceId but reset cooldowns for a fresh battle
     for (const ps of battleState.players) {
       const saved = handByUserId[ps.userId];
       if (saved) ps.hand = saved.map((c: any) => ({ ...c, cooldown: 0 }));
+    }
+
+    if (isYumen1v1BasicMode(gameMode)) {
+      applyYumenBattleStartPrep(String(gameId), battleState);
     }
 
     // Disabled: spam during testing
@@ -832,7 +1436,14 @@ router.post("/battle/complete", async (req, res) => {
         game.tournament.selectedAbilities[pid] = [];
       }
       // Initialize fresh battle state with only common abilities
-      game.state = initializeBattleState(game.tournament, allPlayers, ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test');
+      game.state = attachPlayerNamesToBattleState(
+        initializeBattleState(game.tournament, allPlayers, normalizeGameMode((game as any).mode ?? 'arena')),
+        game.playerNames as Record<string, string> | undefined
+      );
+      const nextGameMode = normalizeGameMode((game as any).mode ?? 'arena');
+      if (isYumen1v1BasicMode(nextGameMode)) {
+        applyYumenBattleStartPrep(String(gameId), game.state);
+      }
       shouldStartNextBattleLoop = true;
     }
 
@@ -841,7 +1452,7 @@ router.post("/battle/complete", async (req, res) => {
     await game.save();
 
     if (shouldStartNextBattleLoop && !GameLoop.get(gameId)) {
-      const gameMode = ((game as any).mode ?? 'arena') as 'arena' | 'pubg' | 'collision-test';
+      const gameMode = normalizeGameMode((game as any).mode ?? 'arena');
       GameLoop.start(gameId, game.state, { tickRate: 30, mode: gameMode });
       console.log(`[battle/complete] Started next battle GameLoop for ${gameId}`);
     }
@@ -888,6 +1499,10 @@ router.post("/cheat/add-ability", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
+    }
 
     const abilityDef = ABILITIES[abilityId];
     if (!abilityDef) return res.status(400).json({ error: `Ability '${abilityId}' not found` });
@@ -997,6 +1612,10 @@ router.post("/cheat/reorder-ability", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
+    }
 
     const dbPlayerIndex = game.players.indexOf(userId);
     let livePlayerIndex = dbPlayerIndex;
@@ -1094,6 +1713,10 @@ router.post("/cheat/discard-ability", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
+    }
 
     const dbPlayerIndex = game.players.indexOf(userId);
     let livePlayerIndex = dbPlayerIndex;
@@ -1176,6 +1799,10 @@ router.post("/cheat/discard-all", async (req, res) => {
     if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
     if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
     if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+    const yumenAbilityBarLockReason = getYumenAbilityBarLockReason(String(gameId), game, userId);
+    if (yumenAbilityBarLockReason) {
+      return res.status(400).json({ error: yumenAbilityBarLockReason });
+    }
 
     const dbPlayerIndex = game.players.indexOf(userId);
     let livePlayerIndex = dbPlayerIndex;
@@ -1232,6 +1859,743 @@ router.post("/cheat/discard-all", async (req, res) => {
     void game.save().catch((err: any) => {
       console.error("[cheat/discard-all] async save failed:", err?.message ?? err);
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/revive-all - Revive all 玉门关 spectators and restore their saved ability bars.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/revive-all", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const selectedAbilitiesByUser = game.tournament?.selectedAbilities ?? {};
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const timestamp = Date.now();
+      const revivedUserIds: string[] = [];
+      state.players = (state.players ?? []).map((player: any, idx: number) => {
+        const maxHp = Math.max(1, Number(player.maxHp ?? player.hp ?? 100));
+        const currentHand = Array.isArray(player.hand) ? player.hand : [];
+        const hasSavedHand = Array.isArray(player.yumenPreDeathHand);
+        const fallbackHand = currentHand.length > 0
+          ? currentHand
+          : buildHandFromSelectedAbilityInstances(selectedAbilitiesByUser[player.userId] ?? []);
+        const restoredHand = hasSavedHand ? cloneJson(player.yumenPreDeathHand) : cloneJson(fallbackHand);
+        const nextBuffs = (player.buffs ?? []).filter((buff: any) => buff?.buffId !== YUMEN_SPECTATOR_BUFF_ID);
+        const consumableCounts = createStartingConsumableCounts();
+        const nextPlayer = {
+          ...player,
+          hp: maxHp,
+          shield: 0,
+          buffs: nextBuffs,
+          hand: restoredHand,
+          consumableCounts,
+          consumableCooldowns: {},
+        };
+        revivedUserIds.push(player.userId);
+        delete (nextPlayer as any).yumenPreDeathHand;
+        delete (nextPlayer as any).yumenDefeated;
+        delete (nextPlayer as any).yumenDefeatedAt;
+        diff.push({ path: `/players/${idx}/hp`, value: maxHp });
+        diff.push({ path: `/players/${idx}/shield`, value: 0 });
+        diff.push({ path: `/players/${idx}/buffs`, value: nextBuffs });
+        diff.push({ path: `/players/${idx}/hand`, value: restoredHand });
+        diff.push({ path: `/players/${idx}/consumableCounts`, value: consumableCounts });
+        diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
+        diff.push({ path: `/players/${idx}/yumenDefeated`, value: undefined });
+        diff.push({ path: `/players/${idx}/yumenDefeatedAt`, value: undefined });
+        return nextPlayer;
+      });
+      for (const revivedUserId of revivedUserIds) {
+        state.events.push({
+          id: randomUUID(),
+          timestamp,
+          turn: state.turn,
+          type: "YUMEN_REVIVE",
+          actorUserId: userId,
+          targetUserId: revivedUserId,
+          revivedUserId,
+        });
+      }
+      state.gameOver = false;
+      delete (state as any).winnerUserId;
+      delete (state as any).yumenResults;
+      diff.push({ path: "/events", value: state.events });
+      diff.push({ path: "/gameOver", value: false });
+      diff.push({ path: "/winnerUserId", value: undefined });
+      diff.push({ path: "/yumenResults", value: undefined });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/restart-game - Restart 玉门关 at battle-start prep state.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/restart-game", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const selectedAbilitiesByUser = game.tournament?.selectedAbilities ?? {};
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const prevState = structuredClone(state);
+      state.turn = 0;
+      state.activePlayerIndex = 0;
+      state.events = [];
+      state.groundZones = [];
+      state.entities = [];
+      state.pickups = [];
+      state.players = (state.players ?? []).map((player: any) => resetYumenPlayerForBattleStart(player, selectedAbilitiesByUser));
+      applyYumenBattleStartPrep(String(gameId), state);
+      return diffState(prevState, state);
+    });
+
+    res.json({ ok: true, version: liveVersion });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/end-game - Manually finish 玉门关 once one or fewer players remain alive.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/end-game", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const gameLoop = GameLoop.get(String(gameId));
+    const currentState = gameLoop ? gameLoop.getState() : game.state;
+    const now = Date.now();
+    const aliveCount = countYumenAlivePlayers(currentState, now);
+    if (aliveCount > 1) return res.status(400).json({ error: "剩余人数大于1，暂不能结束" });
+
+    let yumenResults: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const endedAt = Date.now();
+      yumenResults = buildYumenResults(state, endedAt);
+      state.gameOver = true;
+      state.winnerUserId = yumenResults.winnerUserId;
+      state.yumenResults = yumenResults;
+      state.events.push({
+        id: randomUUID(),
+        timestamp: endedAt,
+        turn: state.turn,
+        type: "YUMEN_GAME_END",
+        actorUserId: userId,
+        winnerUserId: yumenResults.winnerUserId,
+      });
+      return [
+        { path: "/gameOver", value: true },
+        { path: "/winnerUserId", value: yumenResults.winnerUserId },
+        { path: "/yumenResults", value: yumenResults },
+        { path: "/events", value: state.events },
+      ];
+    });
+
+    res.json({ ok: true, version: liveVersion, yumenResults });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/auto-full-heal - Toggle testing auto full-heal on Yumen defeat.
+ * Body: { gameId, enabled }
+ */
+router.post("/cheat/yumen/auto-full-heal", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, enabled } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = createYumenSafeZone(state);
+      updatedSafeZone.autoFullHeal = enabled === true;
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+
+    res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.autoFullHeal, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/auto-settle - Toggle automatic Yumen settlement when alive count reaches one or fewer.
+ * Body: { gameId, enabled }
+ */
+router.post("/cheat/yumen/auto-settle", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, enabled } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let updatedSafeZone: any;
+    let settledNow = false;
+    let yumenResults: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const now = Date.now();
+      updatedSafeZone = createYumenSafeZone(state);
+      updatedSafeZone.autoSettle = enabled === true;
+      state.safeZone = updatedSafeZone;
+      const diff: Array<{ path: string; value: any }> = [{ path: "/safeZone", value: updatedSafeZone }];
+
+      if (updatedSafeZone.autoSettle === true && state.gameOver !== true && countYumenAlivePlayers(state, now) <= 1) {
+        yumenResults = buildYumenResults(state, now);
+        state.gameOver = true;
+        state.winnerUserId = yumenResults.winnerUserId;
+        state.yumenResults = yumenResults;
+        state.events.push({
+          id: randomUUID(),
+          timestamp: now,
+          turn: state.turn,
+          type: "YUMEN_GAME_END",
+          actorUserId: yumenResults.winnerUserId ?? "system",
+          winnerUserId: yumenResults.winnerUserId,
+        });
+        settledNow = true;
+        diff.push(
+          { path: "/gameOver", value: true },
+          { path: "/winnerUserId", value: yumenResults.winnerUserId },
+          { path: "/yumenResults", value: yumenResults },
+          { path: "/events", value: state.events },
+        );
+      }
+
+      return diff;
+    });
+
+    res.json({
+      ok: true,
+      version: liveVersion,
+      enabled: updatedSafeZone.autoSettle,
+      safeZone: updatedSafeZone,
+      settledNow,
+      yumenResults,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/test-short-cooldown - Toggle 3-second testing cooldown cap for Yumen.
+ * Body: { gameId, enabled }
+ */
+router.post("/cheat/yumen/test-short-cooldown", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, enabled } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关：经典" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = createYumenSafeZone(state);
+      updatedSafeZone.testShortCooldown = enabled === true;
+      state.safeZone = updatedSafeZone;
+      state.testShortCooldown = updatedSafeZone.testShortCooldown;
+      const diff: Array<{ path: string; value: any }> = [
+        { path: "/safeZone", value: updatedSafeZone },
+        { path: "/testShortCooldown", value: state.testShortCooldown },
+      ];
+      if (updatedSafeZone.testShortCooldown) diff.push(...capYumenRuntimeCooldownsForTesting(state));
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.testShortCooldown, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/test-short-cooldown - Toggle 3-second testing cooldown cap for non-Yumen test mode.
+ * Body: { gameId, enabled }
+ */
+router.post("/cheat/test-short-cooldown", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, enabled } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let enabledValue = false;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      enabledValue = enabled === true;
+      state.testShortCooldown = enabledValue;
+      const diff: Array<{ path: string; value: any }> = [{ path: "/testShortCooldown", value: enabledValue }];
+      if (enabledValue) diff.push(...capYumenRuntimeCooldownsForTesting(state));
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, enabled: enabledValue, testShortCooldown: enabledValue });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/play-area - Update 玉门关 hard movement boundary.
+ * Body: { gameId, playArea: { minX, minY, maxX, maxY } }
+ */
+router.post("/cheat/yumen/play-area", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, playArea } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const normalizedPlayArea = normalizeYumenPlayArea(playArea);
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      state.playArea = normalizedPlayArea;
+      return [{ path: "/playArea", value: normalizedPlayArea }];
+    });
+    res.json({ ok: true, version: liveVersion, playArea: normalizedPlayArea });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/random-spawn-points - Move all players to shuffled exported-map spawn points.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/random-spawn-points", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let positions: Array<{ userId: string; position: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      const spawnPositions = shuffledYumenSpawnPositions();
+      positions = [];
+      state.players = (state.players ?? []).map((player: any, index: number) => {
+        const spawn = spawnPositions[index % spawnPositions.length] ?? { x: EXPORTED_MAP_WIDTH / 2, y: EXPORTED_MAP_HEIGHT / 2 };
+        const nextPlayer = { ...player };
+        const nextPosition = teleportYumenPlayerTo(state, nextPlayer, spawn.x, spawn.y, mapCtx, getYumenLiftedSpawnZ(spawn.x, spawn.y, mapCtx, spawn.z));
+        faceYumenPlayerTowardCenter(nextPlayer);
+        positions.push({ userId: nextPlayer.userId, position: nextPosition });
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/facing`, value: nextPlayer.facing });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/gather-middle - Gather all players near the exported-map middle.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/gather-middle", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let positions: Array<{ userId: string; position: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      const centerX = EXPORTED_MAP_WIDTH / 2;
+      const centerY = EXPORTED_MAP_HEIGHT / 2;
+      const radius = 4;
+      const players = state.players ?? [];
+      positions = [];
+      state.players = players.map((player: any, index: number) => {
+        const angle = players.length > 0 ? (Math.PI * 2 * index) / players.length : 0;
+        const nextPlayer = { ...player };
+        const nextPosition = teleportYumenPlayerTo(
+          state,
+          nextPlayer,
+          centerX + Math.cos(angle) * radius,
+          centerY + Math.sin(angle) * radius,
+          mapCtx,
+        );
+        faceYumenPlayerTowardCenter(nextPlayer, centerX, centerY);
+        positions.push({ userId: nextPlayer.userId, position: nextPosition });
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/facing`, value: nextPlayer.facing });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/drop-to-ground - Only adjust each player's Z to support ground.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/drop-to-ground", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let positions: Array<{ userId: string; position: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      positions = [];
+      state.players = (state.players ?? []).map((player: any, index: number) => {
+        const nextPlayer = { ...player };
+        const nextPosition = teleportYumenPlayerZToSupportGround(nextPlayer, mapCtx);
+        positions.push({ userId: nextPlayer.userId, position: nextPosition });
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/drop-to-top-hit - Adjust the current player's Z to the first top-down collision hit.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/drop-to-top-hit", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关：经典" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let position: any = null;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      state.players = (state.players ?? []).map((player: any, index: number) => {
+        if (player?.userId !== userId) return player;
+        const nextPlayer = { ...player };
+        position = teleportYumenPlayerZToTopDownHit(nextPlayer, mapCtx);
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        return nextPlayer;
+      });
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, position });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/start-shrink - Start fast staged 玉门关 poison-zone shrink.
+ * Body: { gameId, damageMode? }
+ */
+router.post("/cheat/yumen/start-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, damageMode } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const prepBlock = getActiveYumenPrepBlock(String(gameId), game);
+    if (prepBlock) return res.status(409).json({ error: "准备时间内不能开启绝境", ...prepBlock });
+
+    const { active, zone } = yumenSafeZoneStartAlreadyActive(game.state);
+    if (active) {
+      return res.status(409).json({ error: "毒圈已在进行中", alreadyStarted: true, safeZone: zone });
+    }
+
+    const startedAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = startYumenSafeZone(state, startedAt, { timelineMode: "fast", damageMode: normalizeYumenSafeZoneDamageMode(damageMode) });
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/start-full-shrink - Start full timeline 玉门关 poison-zone shrink.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/start-full-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const prepBlock = getActiveYumenPrepBlock(String(gameId), game);
+    if (prepBlock) return res.status(409).json({ error: "准备时间内不能开启绝境", ...prepBlock });
+
+    const { active, zone } = yumenSafeZoneStartAlreadyActive(game.state);
+    if (active) {
+      return res.status(409).json({ error: "毒圈已在进行中", alreadyStarted: true, safeZone: zone });
+    }
+
+    const startedAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = startYumenSafeZone(state, startedAt, { timelineMode: "full", damageMode: "full" });
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/damage-mode - Switch yumen poison-zone damage mode live.
+ * Body: { gameId, damageMode }
+ */
+router.post("/cheat/yumen/damage-mode", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, damageMode } = req.body;
+    const normalizedDamageMode = normalizeYumenSafeZoneDamageMode(damageMode);
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = setYumenSafeZoneDamageMode(state, normalizedDamageMode);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/stop-shrink - Stop staged 玉门关 poison-zone shrink.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/stop-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const stoppedAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = stopYumenSafeZone(state, stoppedAt);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/pause-shrink - Pause staged 玉门关 poison-zone shrink in-place.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/pause-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const pausedAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = pauseYumenSafeZone(state, pausedAt);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/resume-shrink - Resume staged 玉门关 poison-zone shrink after pause.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/resume-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const resumedAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = resumeYumenSafeZone(state, resumedAt);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/yumen/reset-shrink - Reset staged 玉门关 poison-zone shrink.
+ * Body: { gameId }
+ */
+router.post("/cheat/yumen/reset-shrink", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!isYumen1v1BasicMode((game as any).mode)) return res.status(400).json({ error: "Only available in 玉门关（1v1）：基础" });
+    if (game.tournament?.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const resetAt = Date.now();
+    let updatedSafeZone: any;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      updatedSafeZone = resetYumenSafeZone(resetAt);
+      state.safeZone = updatedSafeZone;
+      return [{ path: "/safeZone", value: updatedSafeZone }];
+    });
+    res.json({ ok: true, version: liveVersion, safeZone: updatedSafeZone });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -1348,6 +2712,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         const nextCard: any = {
           ...card,
           cooldown: 0,
+          _cooldownProgress: 0,
           chargeLockTicks: 0,
           chargeRegenTicksRemaining: 0,
         };
@@ -1371,7 +2736,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       }
       nextHand.forEach((nextCard: any, cardIndex: number) => {
         const previousCard = previousHand?.[cardIndex] ?? {};
-        for (const field of ["cooldown", "chargeLockTicks", "chargeRegenTicksRemaining"]) {
+        for (const field of ["cooldown", "_cooldownProgress", "chargeLockTicks", "chargeRegenTicksRemaining"]) {
           const previousValue = Math.max(0, Number(previousCard[field] ?? 0));
           const nextValue = Math.max(0, Number(nextCard[field] ?? 0));
           if (previousValue !== nextValue) {
@@ -1395,10 +2760,14 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         const hand = resetHand(p.hand ?? []);
         pushHandRuntimeDiffs(idx, previousHand, hand);
         diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
+        if (Math.max(0, Number(p.globalGcdTicks ?? 0)) > 0) {
+          diff.push({ path: `/players/${idx}/globalGcdTicks`, value: 0 });
+        }
         return {
           ...p,
           hand,
           consumableCooldowns: {},
+          globalGcdTicks: 0,
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -1410,10 +2779,14 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
         const hand = resetHand(p.hand ?? []);
         pushHandRuntimeDiffs(idx, previousHand, hand);
         diff.push({ path: `/players/${idx}/consumableCooldowns`, value: {} });
+        if (Math.max(0, Number(p.globalGcdTicks ?? 0)) > 0) {
+          diff.push({ path: `/players/${idx}/globalGcdTicks`, value: 0 });
+        }
         return {
           ...p,
           hand,
           consumableCooldowns: {},
+          globalGcdTicks: 0,
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -1433,6 +2806,7 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
       ...p,
       hand: resetHand(p.hand ?? []),
       consumableCooldowns: {},
+      globalGcdTicks: 0,
     }));
 
     game.markModified("state");
@@ -1441,6 +2815,89 @@ router.post("/cheat/reset-cooldowns", async (req, res) => {
     void game.save().catch((err: any) => {
       console.error("[cheat/reset-cooldowns] async save failed:", err?.message ?? err);
     });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/set-player-positions - Move battle players on exported-map modes for deterministic tests.
+ * Body: { gameId, positions: [{ userId?, playerIndex?, x, y, z?, faceX?, faceY?, faceTargetX?, faceTargetY? }] }
+ */
+router.post("/cheat/set-player-positions", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, positions } = req.body;
+    const requestedPositions = Array.isArray(positions) ? positions : [];
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    const gameMode = normalizeGameMode((game as any).mode ?? "arena");
+    if (!isExportedMapMode(gameMode) && !isExportedMapMode((game as any).mode)) {
+      return res.status(400).json({ error: "Only available in exported-map modes" });
+    }
+    if (requestedPositions.length === 0) return res.status(400).json({ error: "positions required" });
+
+    const gameLoop = GameLoop.get(String(gameId));
+    const currentState = gameLoop ? gameLoop.getState() : game.state;
+    const players = Array.isArray(currentState?.players) ? currentState.players : [];
+    const resolvedRequests = requestedPositions.map((entry: any) => {
+      const playerIndex = Number.isFinite(Number(entry?.playerIndex))
+        ? Math.floor(Number(entry.playerIndex))
+        : players.findIndex((player: any) => player.userId === (entry?.userId ?? userId));
+      return { ...entry, playerIndex };
+    });
+    if (resolvedRequests.some((entry: any) => entry.playerIndex < 0 || entry.playerIndex >= players.length)) {
+      return res.status(400).json({ error: "Invalid player target" });
+    }
+
+    let movedPositions: Array<{ userId: string; position: any; facing: any }> = [];
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      const diff: Array<{ path: string; value: any }> = [];
+      const mapCtx = getYumenRouteMapContext(String(gameId), state);
+      movedPositions = [];
+
+      for (const entry of resolvedRequests) {
+        const index = entry.playerIndex;
+        const currentPlayer = state.players[index];
+        const nextPlayer = { ...currentPlayer };
+        const nextPosition = teleportYumenPlayerTo(state, nextPlayer, entry.x, entry.y, mapCtx, entry.z);
+        nextPlayer.buffs = (nextPlayer.buffs ?? []).filter((buff: any) => Number(buff?.buffId) !== DASH_CC_IMMUNE_BUFF_ID);
+
+        const targetX = Number(entry.faceTargetX);
+        const targetY = Number(entry.faceTargetY);
+        const faceX = Number(entry.faceX);
+        const faceY = Number(entry.faceY);
+        if (Number.isFinite(targetX) && Number.isFinite(targetY)) {
+          const dx = targetX - nextPosition.x;
+          const dy = targetY - nextPosition.y;
+          const len = Math.hypot(dx, dy) || 1;
+          nextPlayer.facing = { x: dx / len, y: dy / len };
+        } else if (Number.isFinite(faceX) && Number.isFinite(faceY) && Math.hypot(faceX, faceY) > 1e-6) {
+          const len = Math.hypot(faceX, faceY);
+          nextPlayer.facing = { x: faceX / len, y: faceY / len };
+        }
+
+        state.players[index] = nextPlayer;
+        diff.push({ path: `/players/${index}/position`, value: nextPlayer.position });
+        diff.push({ path: `/players/${index}/facing`, value: nextPlayer.facing });
+        diff.push({ path: `/players/${index}/velocity`, value: nextPlayer.velocity });
+        diff.push({ path: `/players/${index}/jumpCount`, value: nextPlayer.jumpCount });
+        diff.push({ path: `/players/${index}/buffs`, value: nextPlayer.buffs });
+        diff.push({ path: `/players/${index}/activeDash`, value: undefined });
+        diff.push({ path: `/players/${index}/activeKnockback`, value: undefined });
+        diff.push({ path: `/players/${index}/activePull`, value: undefined });
+        movedPositions.push({ userId: nextPlayer.userId, position: nextPlayer.position, facing: nextPlayer.facing });
+      }
+
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, positions: movedPositions });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

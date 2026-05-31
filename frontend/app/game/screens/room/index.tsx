@@ -16,7 +16,14 @@ type GameData = {
   playerNames?: Record<string, string>;
   started: boolean;
   autoStart?: boolean;
+  mode?: string;
 };
+
+function getRoomMaxPlayers(mode?: string) {
+  if (!mode || mode === "yumenguan-classic" || mode === "yumen-1v1-basic") return 6;
+  if (mode === "pubg") return 5;
+  return 2;
+}
 
 export default function RoomPage() {
   const router = useRouter();
@@ -275,14 +282,16 @@ export default function RoomPage() {
     : [];
 
   const playersJoined = playerIds.length;
-  const ready = playersJoined === 2;
+  const maxPlayers = getRoomMaxPlayers(game?.mode);
+  const ready = playersJoined >= 2;
+  const roomFull = playersJoined >= maxPlayers;
 
   const myId = me?.uid;
   const isInGame = !!(myId && playerIds.includes(myId));
   const isHost = playerIds[0] === myId;
 
   const canJoin =
-    !!me && !isInGame && playersJoined < 2 && !loadingGame;
+    !!me && !isInGame && playersJoined < maxPlayers && !loadingGame;
 
   /* =========================================================
      UI
@@ -294,11 +303,11 @@ export default function RoomPage() {
   return (
     <div className={styles.page}>
       <div className={styles.container}>
-        <h1 className={styles.title}>等待对手</h1>
-        <p className={styles.subtitle}>{playersJoined} / 2 玩家已准备</p>
+        <h1 className={styles.title}>等待玩家</h1>
+        <p className={styles.subtitle}>{playersJoined} / {maxPlayers} 玩家已准备</p>
 
         <div className={styles.playerList}>
-          {[0, 1].map((slot) => {
+          {Array.from({ length: maxPlayers }, (_, slot) => slot).map((slot) => {
             const uid = playerIds[slot];
             const username = game?.playerNames?.[uid] || "Unknown";
             const isMe = uid && uid === myId;
@@ -363,7 +372,7 @@ export default function RoomPage() {
           )}
 
           {ready && game?.autoStart && (
-            <p className={styles.statusMsg}>即将自动开始…</p>
+            <p className={styles.statusMsg}>{roomFull ? "即将自动开始…" : "等待人满自动开始…"}</p>
           )}
 
           {ready && !isHost && (

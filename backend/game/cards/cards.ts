@@ -96,8 +96,8 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
 
   yuqi: {
     id: "yuqi",
-    name: "御骑",
-    description: "未御骑时：需站立运功3秒，移动或跳跃会打断；完成后获得【御骑】\n已御骑时：瞬发解除【御骑】并下马\n御骑期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
+    name: "骑御",
+    description: "未骑御时：需站立运功3秒，移动或跳跃会打断；完成后获得【骑御】\n已骑御时：瞬发解除【骑御】并下马\n骑御期间移动速度提高100%，但按S后退速度与普通按S步行相同；只能施展带【可以马上施展】标记的招式，禁用原地/后跳，仅可进行前/左/右方向跳跃，且每次腾空至多跳跃1次",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 0,
@@ -114,7 +114,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2741,
-        name: "御骑",
+        name: "骑御",
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 365 * 24 * 60 * 60 * 1000,
@@ -128,7 +128,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   ren_chi_cheng: {
     id: "ren_chi_cheng",
     name: "任驰骋",
-    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【御骑】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
+    description: "需在地面运功0.75秒，期间可以移动但跳跃会打断；完成后获得【骑御】、【任驰骋】12秒（伤害提高15%）与【纵轻骑】5秒（免疫控制、沉默、恐惧与击退，但仍会被拉）",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 900,
@@ -144,7 +144,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     buffs: [
       {
         buffId: 2741,
-        name: "御骑",
+        name: "骑御",
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 365 * 24 * 60 * 60 * 1000,
@@ -342,13 +342,13 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   da_shizi_hou: {
     id: "da_shizi_hou",
     name: "大狮子吼",
-    description: "怒吼震慑周围8尺敌人，眩晕5秒并降低其技能冷却回复50%",
+    description: "怒吼震慑周围6尺敌人，眩晕5秒并降低其技能冷却回复50%",
     type: "CONTROL",
     target: "SELF",
-    range: 8,
+    range: 6,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 6 }],
     buffs: [
       {
         buffId: 1005,
@@ -526,7 +526,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
       {
         type: "PLACE_GROUND_ZONE",
         value: 0,
-        range: 8,
+        range: 10,
         zoneDurationMs: 8_000,
         zoneIntervalMs: 100,
         zoneOffsetUnits: 0,
@@ -780,7 +780,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
   wu_an_mi_yun: {
     id: "wu_an_mi_yun",
     name: "雾暗迷云",
-    description: "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】8秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
+    description: "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】7秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
@@ -800,7 +800,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
         name: "迷云",
         category: "DEBUFF",
         applyTo: "OPPONENT",
-        durationMs: 8_000,
+        durationMs: 7_000,
         description: "陷入混乱，释放技能时重新随机目标且不分敌我；消失后获得【雾释】20秒",
         effects: [{ type: "MIYUN_CONFUSION" }],
       },

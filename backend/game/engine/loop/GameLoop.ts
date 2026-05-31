@@ -9,21 +9,22 @@
  * - Win condition checks
  */
 
-import { GameState, MovementInput, GroundZone, TargetEntity, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
+import { GameState, MovementInput, GroundZone, TargetEntity, SafeZone, calculateDistance, gameplayUnitsToWorldUnits, normalizeStoredUnitScale } from "../state/types";
 import { checkGameOver, resetDefeatedPlayersForTesting } from "../flow/turn/checkGameOver";
 import { broadcastGameUpdate } from "../../services/broadcast";
-import { broadcastDefeatSystemChat, collectDefeatAnnouncementsFromEvents } from "../../services/chatMessages";
+import { broadcastDefeatSystemChat, broadcastSystemChat, collectDefeatAnnouncementsFromEvents, type DefeatAnnouncement } from "../../services/chatMessages";
 import { diffState } from "../../services/flow/stateDiff";
 import GameSession from "../../models/GameSession";
 import { applyMovement, resolveMapCollisions, MapContext, getGroundHeightForMap, resolveEntityHorizontalCollision } from "./movement";
 import { addBuff, pushBuffExpired } from "../effects/buffRuntime";
 import { resolveHealAmountRoll, resolveNonCritHealAmountRoll, resolveRawDamageWithCrit, resolveScheduledDamage, resolveScheduledDamageRoll } from "../utils/combatMath";
-import { applyDamageToTarget, applyHealToTarget, reconcileLinkedShieldTotal, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
+import { applyDamageToTarget, applyHealToTarget, applyPiercingDamageToTarget, reconcileLinkedShieldTotal, removeLinkedShield, resolveMaxHpPercentHealAmount } from "../utils/health";
 import { randomUUID } from "crypto";
 import { worldMap } from "../../map/worldMap";
 import { arenaMap } from "../../map/arenaMap";
 import { exportedMap } from "../../map/exportedMap";
 import { COLLISION_TEST_PLAYER_RADIUS, getCollisionTestExportedSystem } from "../../map/exportedMapCollision";
+import { type GameMode, isExportedMapMode, isYumen1v1BasicMode } from "../../modes";
 import { ABILITIES } from "../../abilities/abilities";
 import { loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
 import { blocksCardTargeting, blocksEnemyTargeting, hasKnockbackImmune, hasKnockedBackImmune, hasUntargetable, hasDamageImmune, isActiveChannelRuntime, isRuntimeBuffActive, shouldDodge, shouldDodgeForAbility } from "../rules/guards";
@@ -50,6 +51,34 @@ import { getMiYunAreaCandidates, hasMiYunConfusion, rerollMiYunAreaTargets } fro
 import { getHasteAdjustedTimingMs } from "../utils/haste";
 import { COMBAT_STATUS_CHECK_INTERVAL_MS, expireCombatStatusLinks, syncCombatStatusFromEvents } from "../utils/combatStatus";
 import {
+  YUMEN_KUANG_SHA_BUFF,
+  YUMEN_KUANG_SHA_BUFF_ID,
+  YUMEN_PIERCING_DAMAGE_TYPE,
+  YUMEN_SAFE_ZONE_ABILITY,
+  YUMEN_SPECTATOR_ABILITY,
+  YUMEN_SPECTATOR_BUFF,
+  YUMEN_PREP_BUFF_ID,
+  YUMEN_SAFE_ZONE_TARGET_DIAMETERS,
+  YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+  YUMEN_ZHANYI_ABILITY,
+  YUMEN_ZHANYI_BUFF,
+  YUMEN_ZHUI_MING_BUFF,
+  YUMEN_ZHUI_MING_BUFF_ID,
+  YUMEN_ZHUI_MING_STACK_INTERVAL_MS,
+  applyYumenKuangShaHealPenalty,
+  getYumenKuangShaDamageMultiplier,
+  getYumenSafeZoneCircleNumber,
+  getYumenSafeZoneCountdownMs,
+  getYumenSafeZoneDps,
+  getYumenSafeZoneShrinkMs,
+  getYumenSafeZoneWaitMs,
+  hasActiveYumenPrepBuff,
+  hasActiveYumenSpectatorBuff,
+  normalizeYumenSafeZoneDamageMode,
+  normalizeYumenSafeZoneTimelineMode,
+} from "../utils/yumenSafeZone";
+import { buildYumenResults, countYumenAlivePlayers } from "../utils/yumenResults";
+import {
   SAND_DISGUISE_ABILITY,
   SAND_DISGUISE_BUFF,
   SAND_DISGUISE_CONSUMABLE_ID,
@@ -60,17 +89,61 @@ import {
   removeDisguiseBuffs,
 } from "../utils/disguise";
 import { YUE_YING_SHA_BUFF_ID } from "../utils/yueYingSha";
+import { recordLagProbe, roundLagMs } from "../../../utils/lagProbe";
 
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
 const LV_YE_MAN_SHENG_RADIUS_UNITS = 6;
-const LV_YE_MAN_SHENG_RETAL_DAMAGE = 3;
 const LV_YE_MAN_SHENG_KNOCKBACK_SPEED_UNITS_PER_SEC = 20;
 const XI_BING_YU_ABILITY_ID = "xi_bing_yu";
 const XI_BING_YU_BUFF_ID = 2724;
 const YIN_QIAO_ABILITY_ID = "yin_qiao";
 const JUE_MAI_BUFF_ID = 1337;
 const WU_XIANG_JUE_SNAPSHOT_BUFF_IDS = new Set([2710, 2731, 2732, 2733, 2734]);
+const XINZHENG_ABILITY_ID = "xinzheng";
+const XINZHENG_CHANNEL_BUFF_ID = 1017;
+const XINZHENG_SONG_YAN_BUFF_ID = 1018;
+
+function addXinzhengSongYanStack(state: GameState, player: any) {
+  const ability = ABILITIES[XINZHENG_ABILITY_ID];
+  const songYanBuff = (ability as any)?.buffs?.find((entry: any) => entry?.buffId === XINZHENG_SONG_YAN_BUFF_ID);
+  if (!ability || !songYanBuff) return false;
+  addBuff({
+    state,
+    sourceUserId: player.userId,
+    targetUserId: player.userId,
+    ability: ability as any,
+    buffTarget: player as any,
+    buff: songYanBuff,
+  });
+  return true;
+}
+
+function hasActiveXinzhengChannelBuff(player: any, now = Date.now()) {
+  return (player?.buffs ?? []).some((buff: any) =>
+    buff?.buffId === XINZHENG_CHANNEL_BUFF_ID &&
+    buff?.sourceAbilityId === XINZHENG_ABILITY_ID &&
+    isRuntimeBuffActive(buff, now)
+  );
+}
+
+function removeXinzhengSongYanStacks(state: GameState, player: any) {
+  if (!Array.isArray(player?.buffs)) return false;
+  const removed = player.buffs.filter((buff: any) => buff?.buffId === XINZHENG_SONG_YAN_BUFF_ID);
+  if (removed.length === 0) return false;
+  player.buffs = player.buffs.filter((buff: any) => buff?.buffId !== XINZHENG_SONG_YAN_BUFF_ID);
+  for (const buff of removed) {
+    pushBuffExpired(state, {
+      targetUserId: player.userId,
+      buffId: buff.buffId,
+      buffName: buff.name,
+      buffCategory: buff.category,
+      sourceAbilityId: buff.sourceAbilityId,
+      sourceAbilityName: buff.sourceAbilityName,
+    });
+  }
+  return true;
+}
 
 /** 2D segment vs AABB intersection test (for LOS checks). */
 function segmentIntersectsAABB(
@@ -869,6 +942,49 @@ const PULL_CHANNEL_QINGGONG_SEAL_CONFIG: Record<string, { buffId: number; buffNa
 const PULL_CHANNEL_POST_STUN_CONFIG: Record<string, { buffId: number; buffName: string; durationMs: number }> = {
 };
 
+function removeRootAndSlowEffects(state: GameState, target: any, now: number): boolean {
+  if (!Array.isArray(target?.buffs) || target.buffs.length === 0) return false;
+
+  let changed = false;
+  const nextBuffs: any[] = [];
+  for (const buff of target.buffs) {
+    const effects = Array.isArray(buff?.effects) ? buff.effects : [];
+    if ((buff?.expiresAt ?? 0) <= now || effects.length === 0) {
+      nextBuffs.push(buff);
+      continue;
+    }
+
+    const filteredEffects = effects.filter((effect: any) => effect.type !== "ROOT" && effect.type !== "SLOW");
+    if (filteredEffects.length === effects.length) {
+      nextBuffs.push(buff);
+      continue;
+    }
+
+    changed = true;
+    if (filteredEffects.length === 0) {
+      pushBuffExpired(state, {
+        targetUserId: target.userId,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+        sourceAbilityId: buff.sourceAbilityId,
+        sourceAbilityName: buff.sourceAbilityName,
+      });
+      continue;
+    }
+
+    nextBuffs.push({
+      ...buff,
+      effects: filteredEffects,
+    });
+  }
+
+  if (changed) {
+    target.buffs = nextBuffs;
+  }
+  return changed;
+}
+
 function tryRemoveWufangRootOnHit(state: GameState, target: any, now: number): boolean {
   if (!Array.isArray(target?.buffs) || target.buffs.length === 0) return false;
 
@@ -1081,7 +1197,7 @@ const PO_CANG_QIONG_ZONE_BUFF_ID = 2705;
 
 export interface GameLoopConfig {
   tickRate?: number; // Hz (default 60)
-  mode?: "arena" | "pubg" | "collision-test";
+  mode?: GameMode;
 }
 
 /**
@@ -1108,6 +1224,7 @@ export class GameLoop {
   private zoneStartedAt = 0;
   private lastZoneDamageAt = 0;
   private isArenaMode = false;
+  private isYumenMode = false;
   private mapCtx: MapContext;
   // Index into state.events for STACK_ON_HIT_DAMAGE scanning.
   // Prevents missing immediate cast damage that lands between loop ticks.
@@ -1126,51 +1243,383 @@ export class GameLoop {
     { startTime: 30000, endTime: 40000, fromHalf: 50,  toHalf: 50,  dps: 1 },
     { startTime: 40000, endTime: 50000, fromHalf: 50,  toHalf: 25,  dps: 5 },
     { startTime: 50000, endTime: 60000, fromHalf: 25,  toHalf: 25,  dps: 5 },
-    { startTime: 60000, endTime: 65000, fromHalf: 25,  toHalf: 0,   dps: 10 },
+    { startTime: 60000, endTime: 61000, fromHalf: 25,  toHalf: 0,   dps: 10 },
   ];
 
   constructor(gameId: string, state: GameState, config?: GameLoopConfig) {
     this.gameId = gameId;
     this.state = structuredClone(state);
-    this.state.unitScale = normalizeStoredUnitScale(this.state.unitScale ?? (config?.mode === 'collision-test' ? 1 : undefined));
+    const isExportedMode = isExportedMapMode(config?.mode);
+    this.state.unitScale = normalizeStoredUnitScale(this.state.unitScale ?? (isExportedMode ? 1 : undefined));
     this.stackProcScanIndex = this.state.events?.length ?? 0;
     this.tickRate = config?.tickRate ?? 30;
     this.broadcastTickInterval = Math.max(1, Math.round(this.tickRate / 30));
     this.isArenaMode = config?.mode === 'arena';
+    this.isYumenMode = isYumen1v1BasicMode(config?.mode);
 
     // Select map based on game mode
-    const map = config?.mode === 'collision-test' ? exportedMap : this.isArenaMode ? arenaMap : worldMap;
-    const collisionSystem = config?.mode === 'collision-test' ? getCollisionTestExportedSystem() : null;
+    const map = isExportedMode ? exportedMap : this.isArenaMode ? arenaMap : worldMap;
+    const collisionSystem = isExportedMode ? getCollisionTestExportedSystem() : null;
     this.mapCtx = {
       objects: map.objects,
       width: map.width,
       height: map.height,
       circular: false,
       unitScale: this.state.unitScale,
-      playerRadius: config?.mode === 'collision-test' ? COLLISION_TEST_PLAYER_RADIUS : undefined,
+      playerRadius: isExportedMode ? COLLISION_TEST_PLAYER_RADIUS : undefined,
       collisionSystem,
+      playArea: this.state.playArea,
     };
 
-    // Initialize safe zone for arena mode
-    if (this.isArenaMode) {
-      this.zoneStartedAt = Date.now();
-      this.lastZoneDamageAt = Date.now();
-      const mapCenter = map.width / 2;
-      this.state.safeZone = {
-        centerX: mapCenter,
-        centerY: mapCenter,
-        currentHalf: mapCenter,
-        dps: 0,
-        shrinking: false,
-        shrinkProgress: 0,
-        nextChangeIn: 10,
-      };
+    // Initialize safe zone for arena mode and staged 玉门关 circles.
+    if (this.isArenaMode || this.isYumenMode) {
+      const now = Date.now();
+      this.zoneStartedAt = now;
+      this.lastZoneDamageAt = now;
+      const centerX = map.width / 2;
+      const centerY = map.height / 2;
+      const fullHalf = this.isYumenMode ? Math.hypot(map.width / 2, map.height / 2) : Math.min(map.width, map.height) / 2;
+      if (this.isYumenMode) {
+        this.ensureRandomSafeZoneInitialized(now);
+      } else if (this.state.safeZone) {
+        const previousShape = this.state.safeZone.shape;
+        this.state.safeZone.shape = this.isYumenMode ? "circle" : this.state.safeZone.shape === "circle" ? "circle" : "square";
+        this.state.safeZone.centerX = Number.isFinite(this.state.safeZone.centerX) ? this.state.safeZone.centerX : centerX;
+        this.state.safeZone.centerY = Number.isFinite(this.state.safeZone.centerY) ? this.state.safeZone.centerY : centerY;
+        const existingHalf = this.isYumenMode && previousShape !== "circle" ? fullHalf : this.state.safeZone.currentHalf;
+        this.state.safeZone.currentHalf = Math.max(0, Math.min(fullHalf, Number(existingHalf ?? fullHalf)));
+        this.state.safeZone.currentDiameter = this.state.safeZone.currentHalf * 2;
+      } else {
+        this.state.safeZone = {
+          shape: this.isYumenMode ? "circle" : "square",
+          centerX,
+          centerY,
+          currentHalf: fullHalf,
+          currentDiameter: fullHalf * 2,
+          dps: 0,
+          shrinking: false,
+          shrinkProgress: 0,
+          nextChangeIn: this.isArenaMode ? 10 : 0,
+        };
+      }
+    }
+
+    if (this.isYumenMode && !this.state.playArea) {
+      this.state.playArea = { minX: 0, minY: 0, maxX: map.width, maxY: map.height };
+      this.mapCtx.playArea = this.state.playArea;
     }
 
     // Initialize player input buffers
     this.state.players.forEach((_, idx) => {
       this.playerInputs.set(idx, null);
     });
+  }
+
+  private getRandomSafeZoneFullRadius() {
+    return Math.hypot(this.mapCtx.width / 2, this.mapCtx.height / 2);
+  }
+
+  private ensureRandomSafeZoneInitialized(now: number) {
+    const centerX = this.mapCtx.width / 2;
+    const centerY = this.mapCtx.height / 2;
+    const fullRadius = this.getRandomSafeZoneFullRadius();
+    const zone = this.state.safeZone;
+    if (
+      zone &&
+      Number.isFinite(zone.currentHalf) &&
+      Number.isFinite(zone.centerX) &&
+      Number.isFinite(zone.centerY)
+    ) {
+      zone.shape = "circle";
+      zone.currentHalf = Math.max(0, Math.min(fullRadius, Number(zone.currentHalf)));
+      zone.currentDiameter = zone.currentHalf * 2;
+      const currentDiameter = zone.currentHalf * 2;
+      const inferredStageIndex = currentDiameter <= 25 ? 4 : currentDiameter <= 50 ? 3 : currentDiameter <= 100 ? 2 : currentDiameter <= 200 ? 1 : 0;
+      const storedStageIndex = Number(zone.stageIndex);
+      zone.stageIndex = Math.max(0, Math.floor(Number.isFinite(storedStageIndex) ? storedStageIndex : inferredStageIndex));
+      zone.phase = zone.phase ?? "idle";
+      zone.nextChangeIn = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking"
+        ? Math.max(0, (Number(zone.phaseEndsAt ?? now) - now) / 1000)
+        : 0;
+      zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = zone.phase === "complete" || zone.currentHalf <= 0;
+      zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+      zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+      zone.testShortCooldown = zone.testShortCooldown === true;
+      if (zone.paused === true && (zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking")) {
+        const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? now) - now)));
+        zone.pausedRemainingMs = remainingMs;
+        zone.pausedAt = Number.isFinite(Number(zone.pausedAt)) ? Number(zone.pausedAt) : now;
+        zone.phaseEndsAt = now + remainingMs;
+        zone.nextChangeIn = remainingMs / 1000;
+      } else {
+        zone.paused = false;
+        delete zone.pausedAt;
+        delete zone.pausedRemainingMs;
+      }
+      return;
+    }
+
+    this.state.safeZone = {
+      shape: "circle",
+      centerX,
+      centerY,
+      currentHalf: fullRadius,
+      currentDiameter: fullRadius * 2,
+      dps: 0,
+      shrinking: false,
+      shrinkProgress: 0,
+      nextChangeIn: 0,
+      phase: "idle",
+      timelineMode: "fast",
+      damageMode: "test",
+      stageIndex: 0,
+      circleNumber: 3,
+      totalCircles: YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
+      fullPoison: false,
+      testShortCooldown: false,
+      phaseStartedAt: now,
+      phaseEndsAt: now,
+      targetVisible: false,
+      paused: false,
+    };
+  }
+
+  private pickRandomSafeZoneCenter(currentCenterX: number, currentCenterY: number, currentRadius: number, targetRadius: number) {
+    if (targetRadius <= 0) return { x: currentCenterX, y: currentCenterY };
+    const maxDistance = Math.max(0, currentRadius - targetRadius);
+    const minX = Math.max(0, targetRadius);
+    const maxX = Math.max(minX, this.mapCtx.width - targetRadius);
+    const minY = Math.max(0, targetRadius);
+    const maxY = Math.max(minY, this.mapCtx.height - targetRadius);
+
+    for (let attempt = 0; attempt < 64; attempt += 1) {
+      const angle = Math.random() * Math.PI * 2;
+      const distance = Math.sqrt(Math.random()) * maxDistance;
+      const candidateX = currentCenterX + Math.cos(angle) * distance;
+      const candidateY = currentCenterY + Math.sin(angle) * distance;
+      if (candidateX < minX || candidateX > maxX || candidateY < minY || candidateY > maxY) continue;
+      return { x: candidateX, y: candidateY };
+    }
+
+    const fallbackX = Math.max(minX, Math.min(maxX, currentCenterX));
+    const fallbackY = Math.max(minY, Math.min(maxY, currentCenterY));
+    const fallbackDistance = Math.hypot(fallbackX - currentCenterX, fallbackY - currentCenterY);
+    if (fallbackDistance <= maxDistance || fallbackDistance <= 0.0001) {
+      return { x: fallbackX, y: fallbackY };
+    }
+
+    const ratio = maxDistance / fallbackDistance;
+    return {
+      x: currentCenterX + (fallbackX - currentCenterX) * ratio,
+      y: currentCenterY + (fallbackY - currentCenterY) * ratio,
+    };
+  }
+
+  private getRandomZoneNextDiameter(zone: SafeZone) {
+    const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
+    return YUMEN_SAFE_ZONE_TARGET_DIAMETERS[stageIndex] ?? null;
+  }
+
+  private getRandomZoneDps(zone: SafeZone) {
+    return getYumenSafeZoneDps(zone);
+  }
+
+  private beginRandomZoneCountdown(zone: SafeZone, now: number, targetDiameter: number) {
+    const currentRadius = Math.max(0, Number(zone.currentHalf ?? this.getRandomSafeZoneFullRadius()));
+    const targetRadius = Math.max(0, targetDiameter / 2);
+    const targetCenter = this.pickRandomSafeZoneCenter(zone.centerX, zone.centerY, currentRadius, targetRadius);
+    zone.phase = "countdown";
+    zone.phaseStartedAt = now;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    zone.phaseEndsAt = now + getYumenSafeZoneCountdownMs(Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))), zone.timelineMode);
+    zone.targetStageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))) + 1;
+    zone.targetDiameter = targetDiameter;
+    zone.targetHalf = targetRadius;
+    zone.targetCenterX = targetCenter.x;
+    zone.targetCenterY = targetCenter.y;
+    zone.targetVisible = true;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = false;
+  }
+
+  private beginRandomZoneShrink(zone: SafeZone, now: number, fallbackTargetDiameter?: number) {
+    const stageIndex = Math.max(0, Math.floor(Number(zone.stageIndex ?? 0)));
+    const targetDiameter = Math.max(0, Number(zone.targetDiameter ?? fallbackTargetDiameter ?? 0));
+    const targetRadius = Math.max(0, Number(zone.targetHalf ?? targetDiameter / 2));
+    const targetCenter = targetDiameter <= 0
+      ? { x: zone.centerX, y: zone.centerY }
+      : {
+          x: Number.isFinite(zone.targetCenterX) ? Number(zone.targetCenterX) : zone.centerX,
+          y: Number.isFinite(zone.targetCenterY) ? Number(zone.targetCenterY) : zone.centerY,
+        };
+
+    zone.phase = "shrinking";
+    zone.phaseStartedAt = now;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    zone.phaseEndsAt = now + getYumenSafeZoneShrinkMs(stageIndex, zone.timelineMode);
+    zone.targetStageIndex = stageIndex + 1;
+    zone.targetDiameter = targetDiameter;
+    zone.targetHalf = targetRadius;
+    zone.targetCenterX = targetCenter.x;
+    zone.targetCenterY = targetCenter.y;
+    zone.targetVisible = targetDiameter > 0;
+    zone.shrinkStartHalf = Math.max(0, Number(zone.currentHalf ?? 0));
+    zone.shrinkStartCenterX = zone.centerX;
+    zone.shrinkStartCenterY = zone.centerY;
+    zone.shrinking = true;
+    zone.shrinkProgress = 0;
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = false;
+  }
+
+  private finishRandomZoneShrink(zone: SafeZone, now: number) {
+    const targetDiameter = Math.max(0, Number(zone.targetDiameter ?? 0));
+    const targetRadius = Math.max(0, Number(zone.targetHalf ?? targetDiameter / 2));
+    zone.centerX = Number.isFinite(zone.targetCenterX) ? Number(zone.targetCenterX) : zone.centerX;
+    zone.centerY = Number.isFinite(zone.targetCenterY) ? Number(zone.targetCenterY) : zone.centerY;
+    zone.currentHalf = targetRadius;
+    zone.currentDiameter = targetDiameter;
+    zone.stageIndex = Math.max(0, Math.floor(Number(zone.targetStageIndex ?? (Number(zone.stageIndex ?? 0) + 1))));
+    zone.targetVisible = false;
+    zone.shrinking = false;
+    zone.shrinkProgress = 0;
+    delete zone.shrinkStartCenterX;
+    delete zone.shrinkStartCenterY;
+    delete zone.shrinkStartHalf;
+
+    if (targetDiameter <= 0) {
+      zone.phase = "complete";
+      zone.phaseStartedAt = now;
+      zone.phaseEndsAt = now;
+      zone.nextChangeIn = 0;
+      zone.circleNumber = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = true;
+      zone.dps = getYumenSafeZoneDps(zone);
+      return;
+    }
+
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    const waitMs = getYumenSafeZoneWaitMs(Math.max(0, Math.floor(Number(zone.stageIndex ?? 0))), zone.timelineMode);
+    zone.phase = "waiting";
+    zone.phaseStartedAt = now;
+    zone.phaseEndsAt = now + waitMs;
+    zone.nextChangeIn = waitMs / 1000;
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = false;
+  }
+
+  private updateRandomSafeZone(now: number) {
+    this.ensureRandomSafeZoneInitialized(now);
+    const zone = this.state.safeZone;
+    if (!zone) return;
+    const phaseActive = zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking";
+    if (phaseActive && zone.paused === true) {
+      const remainingMs = Math.max(0, Number(zone.pausedRemainingMs ?? (Number(zone.phaseEndsAt ?? now) - now)));
+      const elapsedMs = Math.max(0, Number(zone.phaseEndsAt ?? now) - Number(zone.phaseStartedAt ?? now) - remainingMs);
+      zone.pausedRemainingMs = remainingMs;
+      zone.pausedAt = Number.isFinite(Number(zone.pausedAt)) ? Number(zone.pausedAt) : now;
+      zone.phaseStartedAt = now - elapsedMs;
+      zone.phaseEndsAt = now + remainingMs;
+      zone.shape = "circle";
+      zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
+      zone.nextChangeIn = remainingMs / 1000;
+      zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0;
+      zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+      zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+      zone.dps = this.getRandomZoneDps(zone);
+      return;
+    }
+    if (!phaseActive) {
+      zone.paused = false;
+      delete zone.pausedAt;
+      delete zone.pausedRemainingMs;
+    }
+    if (!phaseActive) {
+      zone.shape = "circle";
+      zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
+      zone.shrinking = false;
+      zone.shrinkProgress = 0;
+      zone.targetVisible = false;
+      zone.nextChangeIn = 0;
+      zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+      zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+      zone.fullPoison = zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0;
+      zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+      zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+      zone.dps = this.getRandomZoneDps(zone);
+      return;
+    }
+    zone.paused = false;
+    delete zone.pausedAt;
+    delete zone.pausedRemainingMs;
+
+    let transitions = 0;
+    while ((zone.phase === "waiting" || zone.phase === "countdown" || zone.phase === "shrinking") && Number(zone.phaseEndsAt ?? now) <= now && transitions < 8) {
+      transitions += 1;
+      if (zone.phase === "countdown") {
+        this.beginRandomZoneShrink(zone, now);
+      } else if (zone.phase === "shrinking") {
+        this.finishRandomZoneShrink(zone, now);
+      } else {
+        const targetDiameter = this.getRandomZoneNextDiameter(zone);
+        if (targetDiameter === null) {
+          zone.phase = "complete";
+          zone.phaseStartedAt = now;
+          zone.phaseEndsAt = now;
+          zone.nextChangeIn = 0;
+          zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+          zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+          zone.fullPoison = true;
+        } else {
+          this.beginRandomZoneCountdown(zone, now, targetDiameter);
+        }
+      }
+    }
+
+    if (zone.phase === "shrinking") {
+      const phaseStartedAt = Number(zone.phaseStartedAt ?? now);
+      const phaseEndsAt = Number(zone.phaseEndsAt ?? now);
+      const duration = Math.max(1, phaseEndsAt - phaseStartedAt);
+      const progress = Math.min(1, Math.max(0, (now - phaseStartedAt) / duration));
+      const startHalf = Number(zone.shrinkStartHalf ?? zone.currentHalf ?? 0);
+      const startCenterX = Number(zone.shrinkStartCenterX ?? zone.centerX);
+      const startCenterY = Number(zone.shrinkStartCenterY ?? zone.centerY);
+      const targetHalf = Math.max(0, Number(zone.targetHalf ?? 0));
+      const targetCenterX = Number.isFinite(zone.targetCenterX) ? Number(zone.targetCenterX) : startCenterX;
+      const targetCenterY = Number.isFinite(zone.targetCenterY) ? Number(zone.targetCenterY) : startCenterY;
+      zone.currentHalf = startHalf + (targetHalf - startHalf) * progress;
+      zone.currentDiameter = zone.currentHalf * 2;
+      zone.centerX = startCenterX + (targetCenterX - startCenterX) * progress;
+      zone.centerY = startCenterY + (targetCenterY - startCenterY) * progress;
+      zone.shrinking = true;
+      zone.shrinkProgress = progress;
+    } else {
+      zone.currentDiameter = Math.max(0, Number(zone.currentHalf ?? 0)) * 2;
+      zone.shrinking = false;
+      zone.shrinkProgress = 0;
+    }
+
+    zone.shape = "circle";
+    zone.nextChangeIn = Math.max(0, (Number(zone.phaseEndsAt ?? now) - now) / 1000);
+    zone.circleNumber = getYumenSafeZoneCircleNumber(zone);
+    zone.totalCircles = YUMEN_SAFE_ZONE_TOTAL_CIRCLES;
+    zone.fullPoison = zone.phase === "complete" || Number(zone.currentHalf ?? 0) <= 0;
+    zone.timelineMode = normalizeYumenSafeZoneTimelineMode(zone.timelineMode);
+    zone.damageMode = normalizeYumenSafeZoneDamageMode(zone.damageMode);
+    zone.dps = this.getRandomZoneDps(zone);
   }
 
   /** Compute safe zone size and damage from elapsed time */
@@ -1190,9 +1639,313 @@ export class GameLoop {
     return { currentHalf: 0, dps: 10, shrinking: false, shrinkProgress: 0, nextChangeIn: 0 };
   }
 
+  private syncYumenPrepAnnouncements(now: number): boolean {
+    if (!this.isYumenMode) return false;
+    const stateAny = this.state as any;
+    const prep = stateAny.yumenPrep;
+    if (!prep || typeof prep !== "object") return false;
+
+    let changed = false;
+    const announcements = prep.announcements && typeof prep.announcements === "object" ? prep.announcements : {};
+    if (prep.announcements !== announcements) {
+      prep.announcements = announcements;
+      changed = true;
+    }
+
+    const prepBuffs = (this.state.players ?? []).flatMap((player: any) =>
+      (player.buffs ?? []).filter((buff: any) => buff?.buffId === YUMEN_PREP_BUFF_ID)
+    );
+    const activePrep = (this.state.players ?? []).some((player: any) => hasActiveYumenPrepBuff(player, now));
+    const latestBuffEndsAt = prepBuffs.reduce((latest: number, buff: any) => Math.max(latest, Number(buff?.expiresAt ?? 0) || 0), 0);
+    const prepEndsAt = Math.max(Number(prep.endsAt ?? 0) || 0, latestBuffEndsAt);
+    if (!Number.isFinite(prepEndsAt) || prepEndsAt <= 0) return changed;
+    if (prep.endsAt !== prepEndsAt) {
+      prep.endsAt = prepEndsAt;
+      changed = true;
+    }
+
+    if (activePrep) {
+      const remainingMs = Math.max(0, prepEndsAt - now);
+      const thresholds: Array<[string, number, string]> = [
+        ["30", 30_000, "绝境将在30秒后开始。"],
+        ["20", 20_000, "绝境将在20秒后开始。"],
+        ["10", 10_000, "绝境将在10秒后开始。"],
+        ["5", 5_000, "5!"],
+        ["4", 4_000, "4!"],
+        ["3", 3_000, "3!"],
+        ["2", 2_000, "2!"],
+        ["1", 1_000, "1!"],
+      ];
+
+      for (const [key, triggerMs, text] of thresholds) {
+        if (announcements[key] === true || remainingMs > triggerMs) continue;
+        announcements[key] = true;
+        changed = true;
+        void broadcastSystemChat(this.gameId, text).catch((err) => {
+          console.error(`[GameLoop] Failed to broadcast Yumen prep chat for ${this.gameId}:`, err);
+        });
+      }
+      return changed;
+    }
+
+    if (now >= prepEndsAt && announcements.open !== true) {
+      announcements.open = true;
+      changed = true;
+      void broadcastSystemChat(this.gameId, "绝境开启!祝各位洪福齐天。").catch((err) => {
+        console.error(`[GameLoop] Failed to broadcast Yumen prep start chat for ${this.gameId}:`, err);
+      });
+    }
+
+    return changed;
+  }
+
   /** Return true if player position is outside the safe zone */
-  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number) {
+  private isOutsideZone(px: number, py: number, cx: number, cy: number, half: number, shape: "square" | "circle" = "square") {
+    if (shape === "circle") {
+      return Math.hypot(px - cx, py - cy) > half;
+    }
     return px < cx - half || px > cx + half || py < cy - half || py > cy + half;
+  }
+
+  private syncYumenKuangShaBuff(player: any, outsideSafeZone: boolean, now: number): boolean {
+    if (!this.isYumenMode || !Array.isArray(player?.buffs)) return false;
+    const matchingBuffs = player.buffs.filter((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID || buff.buffId === YUMEN_ZHUI_MING_BUFF_ID);
+    if (hasActiveYumenSpectatorBuff(player, now)) {
+      if (matchingBuffs.length === 0 && player.yumenKuangShaStartedAt === undefined) return false;
+      player.buffs = player.buffs.filter((buff: any) => buff.buffId !== YUMEN_KUANG_SHA_BUFF_ID && buff.buffId !== YUMEN_ZHUI_MING_BUFF_ID);
+      delete player.yumenKuangShaStartedAt;
+      for (const buff of matchingBuffs) {
+        pushBuffExpired(this.state, {
+          targetUserId: player.userId,
+          buffId: buff.buffId,
+          buffName: buff.name,
+          buffCategory: buff.category,
+          sourceAbilityId: buff.sourceAbilityId,
+          sourceAbilityName: buff.sourceAbilityName,
+          sourceUserId: buff.sourceUserId,
+        });
+      }
+      return true;
+    }
+    const activeKuangSha = matchingBuffs.find((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID && isRuntimeBuffActive(buff, now));
+    if (outsideSafeZone) {
+      let changed = false;
+      const startedAt = Number(player.yumenKuangShaStartedAt ?? 0);
+      if (!Number.isFinite(startedAt) || startedAt <= 0) {
+        player.yumenKuangShaStartedAt = now;
+        changed = true;
+      }
+
+      if (!activeKuangSha || Number(activeKuangSha.expiresAt ?? 0) - now <= 900) {
+        addBuff({
+          state: this.state,
+          sourceUserId: player.userId,
+          targetUserId: player.userId,
+          ability: YUMEN_SAFE_ZONE_ABILITY,
+          buffTarget: player,
+          buff: YUMEN_KUANG_SHA_BUFF,
+        });
+        changed = true;
+      }
+
+      const activeZhuiMing = player.buffs.find((buff: any) => buff.buffId === YUMEN_ZHUI_MING_BUFF_ID && isRuntimeBuffActive(buff, now));
+      const lastStackAt = Math.max(
+        Number(activeZhuiMing?.lastProcAt ?? 0),
+        Number(player.yumenKuangShaStartedAt ?? now),
+      );
+      if (now - lastStackAt >= YUMEN_ZHUI_MING_STACK_INTERVAL_MS) {
+        addBuff({
+          state: this.state,
+          sourceUserId: player.userId,
+          targetUserId: player.userId,
+          ability: YUMEN_SAFE_ZONE_ABILITY,
+          buffTarget: player,
+          buff: YUMEN_ZHUI_MING_BUFF,
+        });
+        const refreshedZhuiMing = player.buffs.find((buff: any) => buff.buffId === YUMEN_ZHUI_MING_BUFF_ID && isRuntimeBuffActive(buff, now));
+        if (refreshedZhuiMing) refreshedZhuiMing.lastProcAt = now;
+        changed = true;
+      }
+
+      return changed;
+    }
+
+    const removedBuffs = matchingBuffs.filter((buff: any) => buff.buffId === YUMEN_KUANG_SHA_BUFF_ID);
+    if (removedBuffs.length === 0 && player.yumenKuangShaStartedAt === undefined) return false;
+    player.buffs = player.buffs.filter((buff: any) => buff.buffId !== YUMEN_KUANG_SHA_BUFF_ID);
+    delete player.yumenKuangShaStartedAt;
+    for (const buff of removedBuffs) {
+      pushBuffExpired(this.state, {
+        targetUserId: player.userId,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+        sourceAbilityId: buff.sourceAbilityId,
+        sourceAbilityName: buff.sourceAbilityName,
+        sourceUserId: buff.sourceUserId,
+      });
+    }
+    return true;
+  }
+
+  private applyYumenDeathState(player: any, now: number): { changed: boolean; handChanged: boolean; consumablesChanged: boolean; worldObjectsChanged: boolean } {
+    if (!this.isYumenMode || !player || hasActiveYumenSpectatorBuff(player, now)) {
+      return { changed: false, handChanged: false, consumablesChanged: false, worldObjectsChanged: false };
+    }
+
+    const previousHand = Array.isArray(player.hand) ? JSON.parse(JSON.stringify(player.hand)) : [];
+    player.yumenPreDeathHand = previousHand;
+    const consumablesChanged = Object.keys(player.consumableCounts ?? {}).length > 0 || Object.keys(player.consumableCooldowns ?? {}).length > 0;
+
+    const removedBuffs = Array.isArray(player.buffs) ? [...player.buffs] : [];
+    for (const buff of removedBuffs) {
+      removeLinkedShield(player as any, buff as any);
+      pushBuffExpired(this.state, {
+        targetUserId: player.userId,
+        buffId: buff.buffId,
+        buffName: buff.name,
+        buffCategory: buff.category,
+        sourceAbilityId: buff.sourceAbilityId,
+        sourceAbilityName: buff.sourceAbilityName,
+        sourceUserId: buff.sourceUserId,
+      });
+    }
+
+    player.hp = 0;
+    player.shield = 0;
+    player.yumenDefeated = true;
+    player.yumenDefeatedAt = now;
+    player.buffs = [];
+    player.hand = [];
+    player.consumableCounts = {};
+    player.consumableCooldowns = {};
+    player.specialAbilityStates = {};
+    player.globalGcdTicks = 0;
+    delete player.visualGcd;
+    delete player.activeChannel;
+    delete player.activeDash;
+    delete player.targetSelection;
+    delete player.yumenKuangShaStartedAt;
+    const playerCombatLinks = (player as any).combatLinks && typeof (player as any).combatLinks === "object" && !Array.isArray((player as any).combatLinks)
+      ? (player as any).combatLinks
+      : {};
+    const playerRelatedCombatUserId = Object.keys(playerCombatLinks)[0];
+    const playerWasInCombat = player.inCombat === true || Object.keys(playerCombatLinks).length > 0;
+    delete player.combatLinks;
+    player.inCombat = false;
+    if (playerWasInCombat) {
+      this.state.events.push({
+        id: randomUUID(),
+        timestamp: now,
+        turn: this.state.turn,
+        type: "COMBAT_STATUS",
+        actorUserId: player.userId,
+        targetUserId: player.userId,
+        combatStatus: "exit",
+        inCombat: false,
+        relatedUserId: playerRelatedCombatUserId,
+      });
+    }
+
+    for (const other of this.state.players ?? []) {
+      if (other.userId === player.userId) continue;
+      const otherLinks = (other as any).combatLinks && typeof (other as any).combatLinks === "object" && !Array.isArray((other as any).combatLinks)
+        ? (other as any).combatLinks
+        : {};
+      if (otherLinks[player.userId]) {
+        delete otherLinks[player.userId];
+      }
+      if (Object.keys(otherLinks).length === 0) {
+        const otherWasInCombat = (other as any).inCombat === true;
+        delete (other as any).combatLinks;
+        (other as any).inCombat = false;
+        if (otherWasInCombat) {
+          this.state.events.push({
+            id: randomUUID(),
+            timestamp: now,
+            turn: this.state.turn,
+            type: "COMBAT_STATUS",
+            actorUserId: other.userId,
+            targetUserId: other.userId,
+            combatStatus: "exit",
+            inCombat: false,
+            relatedUserId: player.userId,
+          });
+        }
+      }
+    }
+    clearTargetSelectionsTargetingPlayer(this.state, player.userId);
+
+    const groundZonesBefore = this.state.groundZones?.length ?? 0;
+    if (Array.isArray(this.state.groundZones)) {
+      this.state.groundZones = this.state.groundZones.filter((zone: any) => zone?.ownerUserId !== player.userId);
+    }
+    const entitiesBefore = this.state.entities?.length ?? 0;
+    if (Array.isArray(this.state.entities)) {
+      this.state.entities = this.state.entities.filter((entity: any) => entity?.ownerUserId !== player.userId);
+    }
+
+    addBuff({
+      state: this.state,
+      sourceUserId: player.userId,
+      targetUserId: player.userId,
+      ability: YUMEN_SPECTATOR_ABILITY,
+      buffTarget: player,
+      buff: YUMEN_SPECTATOR_BUFF,
+    });
+
+    return {
+      changed: true,
+      handChanged: true,
+      consumablesChanged,
+      worldObjectsChanged: (this.state.groundZones?.length ?? 0) !== groundZonesBefore || (this.state.entities?.length ?? 0) !== entitiesBefore,
+    };
+  }
+
+  private applyYumenKillReward(attackerUserId: string | null | undefined, defeatedUserIds: Set<string>, now: number): boolean {
+    if (!attackerUserId || defeatedUserIds.has(attackerUserId)) return false;
+    const attacker = this.state.players.find((player) => player.userId === attackerUserId);
+    if (!attacker || attacker.hp <= 0 || hasActiveYumenSpectatorBuff(attacker as any, now)) return false;
+    addBuff({
+      state: this.state,
+      sourceUserId: attacker.userId,
+      targetUserId: attacker.userId,
+      ability: YUMEN_ZHANYI_ABILITY,
+      buffTarget: attacker as any,
+      buff: YUMEN_ZHANYI_BUFF,
+    });
+    return true;
+  }
+
+  private getYumenDefeatEventName(userId: string | null | undefined): string | undefined {
+    if (!userId) return undefined;
+    const player = this.state.players.find((entry: any) => entry.userId === userId) as any;
+    if (typeof player?.username === "string" && player.username.trim()) return player.username.trim();
+    const stateNames = (this.state as any).playerNames;
+    const stateName = stateNames && typeof stateNames === "object" ? stateNames[userId] : undefined;
+    if (typeof stateName === "string" && stateName.trim()) return stateName.trim();
+    return `User${String(userId).slice(-4)}`;
+  }
+
+  private pushYumenDefeatEvents(announcements: DefeatAnnouncement[], now: number) {
+    for (const announcement of announcements) {
+      this.state.events.push({
+        id: randomUUID(),
+        timestamp: now,
+        turn: this.state.turn,
+        type: "YUMEN_DEFEAT",
+        actorUserId: announcement.attackerUserId ?? announcement.defeatedUserId,
+        targetUserId: announcement.defeatedUserId,
+        attackerUserId: announcement.attackerUserId ?? null,
+        defeatedUserId: announcement.defeatedUserId,
+        attackerName: this.getYumenDefeatEventName(announcement.attackerUserId) ?? "大漠狂沙",
+        defeatedName: this.getYumenDefeatEventName(announcement.defeatedUserId),
+      });
+    }
+  }
+
+  private syncDynamicMapContext() {
+    this.mapCtx.playArea = this.state.playArea;
   }
 
   private pruneEventHistoryForBroadcast(): boolean {
@@ -1340,6 +2093,24 @@ export class GameLoop {
     return true;
   }
 
+  setPlayerInputForUser(
+    userId: string,
+    input: MovementInput | null,
+    seq?: number,
+    clientSession?: { id: string; startedAt: number },
+  ): { accepted: boolean; playerIndex: number; position: any; velocity: any } | null {
+    const playerIndex = this.state.players.findIndex((player) => player.userId === userId);
+    if (playerIndex === -1) return null;
+    const accepted = this.setPlayerInput(playerIndex, input, seq, clientSession);
+    const player = this.state.players[playerIndex];
+    return {
+      accepted,
+      playerIndex,
+      position: { ...player.position },
+      velocity: player.velocity ? { ...player.velocity } : undefined,
+    };
+  }
+
   hasPendingJump(playerIndex: number): boolean {
     const input = this.playerInputs.get(playerIndex);
     return input?.jump === true;
@@ -1368,9 +2139,24 @@ export class GameLoop {
     console.log(`[GameLoop] Using adaptive timer loop — tickDuration=${tickDuration.toFixed(2)}ms`);
 
     let lastTickTime = performance.now();
+    let lastCallbackAt = lastTickTime;
     const MAX_TICKS_PER_CALLBACK = 6;
     const runTicks = () => {
       if (!this.isRunning) return;
+      const callbackStartedAt = performance.now();
+      const callbackGapMs = callbackStartedAt - lastCallbackAt;
+      lastCallbackAt = callbackStartedAt;
+      if (callbackGapMs >= 150) {
+        recordLagProbe("game-loop-callback-gap", {
+          gameId: this.gameId,
+          version: this.state.version ?? null,
+          gapMs: roundLagMs(callbackGapMs),
+          tickDurationMs: roundLagMs(tickDuration),
+          playerCount: this.state.players.length,
+          eventCount: this.state.events.length,
+          gameOver: this.state.gameOver === true,
+        });
+      }
       let ticksProcessed = 0;
 
       while (ticksProcessed < MAX_TICKS_PER_CALLBACK) {
@@ -1393,6 +2179,20 @@ export class GameLoop {
         lastTickTime = now;
       }
 
+      const callbackTotalMs = performance.now() - callbackStartedAt;
+      if (callbackTotalMs >= 100 || ticksProcessed >= MAX_TICKS_PER_CALLBACK) {
+        recordLagProbe("game-loop-callback-work", {
+          gameId: this.gameId,
+          version: this.state.version ?? null,
+          ticksProcessed,
+          callbackMs: roundLagMs(callbackTotalMs),
+          tickDurationMs: roundLagMs(tickDuration),
+          playerCount: this.state.players.length,
+          eventCount: this.state.events.length,
+          gameOver: this.state.gameOver === true,
+        });
+      }
+
       const delayMs = Math.max(1, Math.ceil(lastTickTime + tickDuration - now));
       this.tickInterval = setTimeout(runTicks, delayMs);
     };
@@ -1406,6 +2206,7 @@ export class GameLoop {
   private tick() {
     const tickStart = performance.now();
     const storedUnitScale = normalizeStoredUnitScale(this.state.unitScale);
+    this.syncDynamicMapContext();
 
     if (this.state.gameOver) {
       this.stop();
@@ -1708,6 +2509,10 @@ export class GameLoop {
         const hanDiAbility = ABILITIES["han_di"] as any;
         if (hanDiAbility) {
           const stunBuff = hanDiAbility.buffs?.[0];
+          const dashEffect = Array.isArray(hanDiAbility.effects)
+            ? hanDiAbility.effects.find((candidate: any) => candidate?.type === "GROUND_TARGET_DASH")
+            : null;
+          const aoeDamage = Number(dashEffect?.aoeDamage ?? 1);
           if (stunBuff) {
             for (const opp of getMiYunAffectedHostileTargets({
               state: this.state,
@@ -1731,7 +2536,7 @@ export class GameLoop {
                 state: this.state,
                 source: player as any,
                 target: opp,
-                baseDamage: 1,
+                baseDamage: aoeDamage,
                 abilityId: "han_di",
                 abilityName: hanDiAbility.name,
                 effectType: "DAMAGE",
@@ -1744,10 +2549,14 @@ export class GameLoop {
         }
       }
 
-      // 跃潮斩波: when dash ends, deal 15 damage to enemies within 8u
+      // 跃潮斩波: when dash ends, deal configured landing damage to enemies within 8u
       if (dashAbilityIdBefore === "yue_chao_zhan_bo" && !player.activeDash) {
         const yczbAbility = ABILITIES["yue_chao_zhan_bo"] as any;
         if (yczbAbility) {
+          const dashEffect = Array.isArray(yczbAbility.effects)
+            ? yczbAbility.effects.find((entry: any) => entry?.type === "DASH")
+            : null;
+          const landingDamage = Number(dashEffect?.landingDamage ?? 15);
           const hitTargets = getMiYunAffectedHostileTargets({
             state: this.state,
             source: player as any,
@@ -1774,7 +2583,7 @@ export class GameLoop {
               state: this.state,
               source: player as any,
               target: opp,
-              baseDamage: 15,
+              baseDamage: landingDamage,
               abilityId: "yue_chao_zhan_bo",
               abilityName: yczbAbility.name,
               effectType: "DAMAGE",
@@ -1791,10 +2600,29 @@ export class GameLoop {
         if (stunMs > 0) {
           const jiuAbility = ABILITIES["jiu_zhuan_gui_yi"] as any;
           const yuHuaBuff = jiuAbility?.buffs?.find((b: any) => b.buffId === 9202);
+          const knockbackEffect = Array.isArray(jiuAbility?.effects)
+            ? jiuAbility.effects.find((effect: any) => effect?.type === "KNOCKBACK_DASH")
+            : null;
+          const wallHitDamage = Number(knockbackEffect?.wallHitDamage ?? 0);
           if (jiuAbility && yuHuaBuff) {
             // Remove the KNOCKED_BACK phase debuff so it doesn't overlap
             player.buffs = player.buffs.filter((b) => b.buffId !== 9101);
             const sourceId: string = (player as any)._wallKnockSourceUserId ?? player.userId;
+
+            if (wallHitDamage > 0) {
+              applyDamageToHostileTarget({
+                state: this.state,
+                source: { userId: sourceId, buffs: [] },
+                target: { kind: "player", target: player as any },
+                baseDamage: wallHitDamage,
+                abilityId: "jiu_zhuan_gui_yi",
+                abilityName: jiuAbility.name,
+                effectType: "DAMAGE",
+                damageType: jiuAbility.damageType,
+                timestamp: Date.now(),
+              });
+            }
+
             // addBuff handles: 递减, CONTROL_IMMUNE check, BUFF_APPLIED event, status bar
             addBuff({
               state: this.state,
@@ -1878,6 +2706,11 @@ export class GameLoop {
       if (dashAbilityIdBefore === "he_gui_gu_shan" && !player.activeDash) {
         const heAbility = ABILITIES["he_gui_gu_shan"] as any;
         if (heAbility) {
+          const dashEffect = Array.isArray(heAbility.effects)
+            ? heAbility.effects.find((entry: any) => entry?.type === "DIRECTIONAL_DASH")
+            : null;
+          const landDamage = Number(dashEffect?.landDamage ?? 2);
+          const closeBonusDamage = Number(dashEffect?.closeBonusDamage ?? 2);
           const stunBuff = heAbility.buffs?.find((b: any) => b.buffId === 2325);
           for (const opp of getMiYunAffectedHostileTargets({
             state: this.state,
@@ -1892,7 +2725,7 @@ export class GameLoop {
               state: this.state,
               source: player as any,
               target: opp,
-              baseDamage: 2,
+              baseDamage: landDamage,
               abilityId: "he_gui_gu_shan",
               abilityName: heAbility.name,
               effectType: "DAMAGE",
@@ -1904,7 +2737,7 @@ export class GameLoop {
                 state: this.state,
                 source: player as any,
                 target: opp,
-                baseDamage: 2,
+                baseDamage: closeBonusDamage,
                 abilityId: "he_gui_gu_shan",
                 abilityName: heAbility.name,
                 effectType: "DAMAGE",
@@ -2136,22 +2969,33 @@ export class GameLoop {
 
     // 1a-ch. Process active channels: out-of-range / LOS cancel + completion
     let channelStateChanged = false;
-    if (this.state.players.length === 2) {
-      for (let idx = 0; idx < 2; idx++) {
-        const player = this.state.players[idx];
+    const channelPlayers = this.state.players ?? [];
+    for (let idx = 0; idx < channelPlayers.length; idx++) {
+        const player = channelPlayers[idx];
         if (!player.activeChannel) continue;
 
         const ch = player.activeChannel;
-        const opp = this.state.players[idx === 0 ? 1 : 0];
         const targetEntity = ch.entityTargetId
           ? (this.state.entities ?? []).find((entity) => entity.id === ch.entityTargetId) ?? null
           : null;
+        const fallbackTargetPlayer = channelPlayers.find((candidate, candidateIndex) => (
+          candidateIndex !== idx && (candidate.hp ?? 0) > 0
+        )) ?? channelPlayers.find((candidate, candidateIndex) => candidateIndex !== idx) ?? null;
         const targetPlayer = targetEntity
           ? null
-          : this.state.players.find((p) => p.userId === ch.targetUserId) ?? opp;
-        const targetPosition = targetEntity?.position ?? targetPlayer?.position;
+          : (typeof ch.targetUserId === "string"
+            ? channelPlayers.find((p) => p.userId === ch.targetUserId) ?? null
+            : fallbackTargetPlayer);
         const channelAbility = (ABILITIES as any)[ch.abilityId] as any;
         const isConsumableChannel = typeof (ch as any).consumableId === "string";
+        const targetPosition = targetEntity?.position ?? targetPlayer?.position ?? (
+          isConsumableChannel || channelAbility?.target !== "OPPONENT" ? player.position : undefined
+        );
+        const channelTargetAlive = targetEntity
+          ? (targetEntity.hp ?? 0) > 0
+          : targetPlayer
+            ? (targetPlayer.hp ?? 0) > 0
+            : (player.hp ?? 0) > 0;
 
         // Silence interrupts ability channels. Consumable channels ignore lockouts, but real displacement still breaks them.
         if ((!isConsumableChannel && hasBuffEffect(player as any, "SILENCE")) || hasBuffEffect(player as any, "DISPLACEMENT")) {
@@ -2160,7 +3004,7 @@ export class GameLoop {
           continue;
         }
 
-        if (!targetPosition || ((targetEntity?.hp ?? targetPlayer?.hp ?? 0) <= 0)) {
+        if (!targetPosition || !channelTargetAlive) {
           cancelActiveChannel(this.state, player as any);
           channelStateChanged = true;
           continue;
@@ -2253,7 +3097,8 @@ export class GameLoop {
                 target: player as any,
                 base: e.value ?? 0,
               });
-              const applied = applyHealToTarget(player as any, healRoll.heal);
+              const healAmount = applyYumenKuangShaHealPenalty(ch.abilityId, player as any, healRoll.heal, chNow);
+              const applied = applyHealToTarget(player as any, healAmount);
               this.state.events.push({
                 id: randomUUID(),
                 timestamp: chNow,
@@ -2279,9 +3124,17 @@ export class GameLoop {
           const lhnElapsed = Math.max(0, Math.min(chNow, ch.startedAt + ch.durationMs) - ch.startedAt);
           const lhnDueTickCount = Math.min(3, Math.floor(lhnElapsed / lhnInterval));
           const lhnCompletedTickCount = Math.min(3, Math.max(0, Number((ch as any).lianHuanNuTickCount ?? 0)));
+          const lhnEffect = Array.isArray((channelAbility as any)?.channelEffects)
+            ? (channelAbility as any).channelEffects.find((entry: any) => entry?.type === "LIAN_HUAN_NU_TICK")
+            : null;
+          const lhnTickDamages = [
+            Number(lhnEffect?.tickDamage1 ?? 1),
+            Number(lhnEffect?.tickDamage2 ?? 2),
+            Number(lhnEffect?.tickDamage3 ?? 3),
+          ];
           for (let tickIdx = lhnCompletedTickCount; tickIdx < lhnDueTickCount && (targetPlayer.hp ?? 0) > 0; tickIdx++) {
             (ch as any).lianHuanNuTickCount = tickIdx + 1;
-            const lhnDmg = tickIdx + 1; // 1, 2, 3
+            const lhnDmg = lhnTickDamages[tickIdx] ?? (tickIdx + 1);
             if (!blocksEnemyTargeting(targetPlayer as any)) {
               const lhnAbility = (ABILITIES["lian_huan_nu"] ?? { id: "lian_huan_nu", name: "连环弩" }) as any;
               const reflectVictim = getDunLiReflectVictim(this.state, player.userId, targetPlayer as any, lhnAbility);
@@ -2394,7 +3247,8 @@ export class GameLoop {
           for (const e of ch.effects) {
             if (e.type === "TIMED_SELF_HEAL") {
               const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
-              const applied = applyHealToTarget(player as any, healRoll.heal);
+              const healAmount = applyYumenKuangShaHealPenalty(ch.abilityId, player as any, healRoll.heal, chNow);
+              const applied = applyHealToTarget(player as any, healAmount);
               if (applied > 0) {
                 this.state.events.push({
                   id: randomUUID(),
@@ -2734,8 +3588,8 @@ export class GameLoop {
                     });
                     if (idx === -1) break;
                     const removed = (dispelTarget.buffs as any[])[idx];
-                    removeLinkedShield(dispelTarget as any, removed);
                     (dispelTarget.buffs as any[]).splice(idx, 1);
+                    removeLinkedShield(dispelTarget as any, removed);
                     pushBuffExpired(this.state, {
                       targetUserId: dispelTarget.userId,
                       buffId: removed.buffId,
@@ -2776,6 +3630,12 @@ export class GameLoop {
           }
 
           if (ch.abilityId === YIN_QIAO_ABILITY_ID && targetPlayer && !channelEffectDodged) {
+            const yinQiaoExtraPerStack = Array.isArray((channelAbility as any)?.channelEffects)
+              ? Number(
+                  ((channelAbility as any).channelEffects.find((entry: any) => entry?.type === "TIMED_AOE_DAMAGE") as any)
+                    ?.extraPerStackDamage ?? 1
+                )
+              : 1;
             const jueMaiIndex = (targetPlayer.buffs as any[]).findIndex(
               (buff: any) =>
                 buff.buffId === JUE_MAI_BUFF_ID &&
@@ -2783,7 +3643,7 @@ export class GameLoop {
             );
             if (jueMaiIndex !== -1) {
               const jueMaiBuff = (targetPlayer.buffs as any[])[jueMaiIndex];
-              const extraDamage = Math.max(0, Number(jueMaiBuff.stacks ?? 0));
+              const extraDamage = Math.max(0, Number(jueMaiBuff.stacks ?? 0) * yinQiaoExtraPerStack);
               if (extraDamage > 0) {
                 const appliedExtraDamage = applyDamageToHostileTarget({
                   state: this.state,
@@ -2852,6 +3712,14 @@ export class GameLoop {
             }
           }
 
+          if (ch.abilityId === "shi_fang_xuan_ji") {
+            channelStateChanged = clearTargetSelectionsTargetingPlayer(this.state, player.userId) || channelStateChanged;
+          }
+
+          if (ch.abilityId === "ren_chi_cheng" && removeRootAndSlowEffects(this.state, player as any, chNow)) {
+            channelStateChanged = true;
+          }
+
           breakSanliuXiaOnSuccessfulChannelComplete({
             state: this.state,
             player: player as any,
@@ -2903,8 +3771,8 @@ export class GameLoop {
           channelStateChanged = true;
         }
       }
-    }
     this.state.players.forEach((player) => {
+      const yumenSpectator = hasActiveYumenSpectatorBuff(player as any);
       const cooldownSlowSum = player.buffs
         .filter((b: any) => isRuntimeBuffActive(b))
         .flatMap((b) => b.effects)
@@ -2912,7 +3780,10 @@ export class GameLoop {
         .reduce((sum: number, e: any) => sum + (e.value ?? 0), 0);
       const cooldownRate = Math.max(0, 1 - cooldownSlowSum);
 
-      if (Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
+      if (yumenSpectator) {
+        (player as any).globalGcdTicks = 0;
+        (player as any)._globalGcdProgress = 0;
+      } else if (Math.max(0, Number((player as any).globalGcdTicks ?? 0)) > 0) {
         (player as any)._globalGcdProgress = ((player as any)._globalGcdProgress ?? 0) + cooldownRate;
         while ((player as any)._globalGcdProgress >= 1 && (player as any).globalGcdTicks > 0) {
           (player as any).globalGcdTicks--;
@@ -2942,6 +3813,19 @@ export class GameLoop {
         const abilityId = ability.abilityId || ability.id;
         const abilityDef = (ABILITIES as any)[abilityId];
         const maxCharges = Math.max(0, Number(abilityDef?.maxCharges ?? 0));
+
+        if (yumenSpectator) {
+          ability.cooldown = 0;
+          ability._cooldownProgress = 0;
+          if (maxCharges > 1) {
+            ability.chargeCount = maxCharges;
+            ability.chargeLockTicks = 0;
+            ability.chargeRegenTicksRemaining = 0;
+            ability._chargeRegenQueueTicks = [];
+            ability._chargeRegenProgress = 0;
+          }
+          return;
+        }
 
         if (maxCharges > 1) {
           if (typeof ability.chargeCount !== "number") ability.chargeCount = maxCharges;
@@ -3034,6 +3918,9 @@ export class GameLoop {
     let buffsChanged = this.state.players.some(
       (p, idx) => (p.buffs?.length ?? 0) !== buffCountsBefore[idx]
     ) || movementBuffsChanged || channelStateChanged || movementStateChanged;
+    buffsChanged = this.syncYumenPrepAnnouncements(now) || buffsChanged;
+    let handStateChanged = false;
+    let consumableStateChanged = false;
 
     // Cancel channel buffs whose out-of-range condition is exceeded (e.g. 云飞玉皇)
     if (this.state.players.length === 2) {
@@ -3155,7 +4042,8 @@ export class GameLoop {
                 buffsChanged = true;
               } else if (e.type === "PERIODIC_HEAL") {
                 const healRoll = resolveHealAmountRoll({ source: player as any, target: player, base: e.value ?? 0 });
-                const applied = applyHealToTarget(player as any, healRoll.heal);
+                const healAmount = applyYumenKuangShaHealPenalty(buff.sourceAbilityId, player as any, healRoll.heal, now);
+                const applied = applyHealToTarget(player as any, healAmount);
                 if (applied > 0) {
                   this.state.events.push({
                     id: randomUUID(), timestamp: now, turn: this.state.turn,
@@ -3296,6 +4184,9 @@ export class GameLoop {
                     damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                     timestamp: now,
                   });
+                  if (buff.sourceAbilityId === XINZHENG_ABILITY_ID) {
+                    addXinzhengSongYanStack(this.state, player as any);
+                  }
                   buffsChanged = true;
                 }
               } else if (e.type === "CHANNEL_AOE_TICK_DAMAGE") {
@@ -3464,7 +4355,7 @@ export class GameLoop {
                 z: center.z ?? 0,
                 height: radiusWorld,
                 radius: radiusWorld,
-                expiresAt: now + 1_000,
+                expiresAt: now + 500,
                 damagePerInterval: 0,
                 intervalMs: 1_000,
                 lastTickAt: now,
@@ -3662,6 +4553,7 @@ export class GameLoop {
 
               buffsChanged = true;
             }
+
           }
         }
       }
@@ -3750,6 +4642,9 @@ export class GameLoop {
         });
       }
       if (naturallyExpired.length > 0 || player.buffs.length !== before) buffsChanged = true;
+      if (!hasActiveXinzhengChannelBuff(player as any, now)) {
+        buffsChanged = removeXinzhengSongYanStacks(this.state, player as any) || buffsChanged;
+      }
 
       if (!hasYuqiState(player as any, now)) {
         const lingeringZongQingQi = player.buffs.filter((b) => b.buffId === ZONG_QING_QI_BUFF_ID);
@@ -3984,34 +4879,52 @@ export class GameLoop {
       }
     }
 
-    // 1d. 毒圈 — poison zone damage (arena mode only, 1x per second)
-    if (this.isArenaMode && this.state.safeZone) {
-      const elapsedMs = now - this.zoneStartedAt;
-      const { currentHalf, dps, shrinking, shrinkProgress, nextChangeIn } = this.computeSafeZone(elapsedMs);
-      this.state.safeZone.currentHalf = currentHalf;
-      this.state.safeZone.dps = dps;
-      this.state.safeZone.shrinking = shrinking;
-      this.state.safeZone.shrinkProgress = shrinkProgress;
-      this.state.safeZone.nextChangeIn = nextChangeIn;
+    // 1d. 毒圈 — poison zone damage (arena timed mode, yumen staged mode)
+    if ((this.isArenaMode || this.isYumenMode) && this.state.safeZone) {
+      if (this.isArenaMode) {
+        const elapsedMs = now - this.zoneStartedAt;
+        const { currentHalf, dps, shrinking, shrinkProgress, nextChangeIn } = this.computeSafeZone(elapsedMs);
+        this.state.safeZone.currentHalf = currentHalf;
+        this.state.safeZone.currentDiameter = currentHalf * 2;
+        this.state.safeZone.dps = dps;
+        this.state.safeZone.shrinking = shrinking;
+        this.state.safeZone.shrinkProgress = shrinkProgress;
+        this.state.safeZone.nextChangeIn = nextChangeIn;
+      } else if (this.isYumenMode) {
+        this.updateRandomSafeZone(now);
+      }
+
+      const currentHalf = this.state.safeZone.currentHalf;
+      const dps = this.state.safeZone.dps;
+      const zoneShape = this.state.safeZone.shape === "circle" ? "circle" : "square";
+      const cx = this.state.safeZone.centerX;
+      const cy = this.state.safeZone.centerY;
+
+      if (this.isYumenMode) {
+        for (const player of this.state.players) {
+          const outsideSafeZone = this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf, zoneShape);
+          buffsChanged = this.syncYumenKuangShaBuff(player as any, outsideSafeZone, now) || buffsChanged;
+        }
+      }
 
       // Apply damage once per second
       if (dps > 0 && now - this.lastZoneDamageAt >= 1000) {
         this.lastZoneDamageAt = now;
-        const cx = this.state.safeZone.centerX;
-        const cy = this.state.safeZone.centerY;
         for (const player of this.state.players) {
-          if (player.hp <= 0) continue;
-          if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf)) {
-            const szResult = applyDamageToTarget(player as any, dps);
+          if (player.hp <= 0 || hasActiveYumenSpectatorBuff(player as any, now)) continue;
+          if (this.isOutsideZone(player.position.x, player.position.y, cx, cy, currentHalf, zoneShape)) {
+            const zoneDamage = this.isYumenMode ? dps * getYumenKuangShaDamageMultiplier(player as any, now) : dps;
+            const szResult = applyPiercingDamageToTarget(player as any, zoneDamage);
             this.state.events.push({
               id: randomUUID(), timestamp: now, turn: this.state.turn,
               type: "DAMAGE",
               actorUserId: player.userId,
               targetUserId: player.userId,
-              abilityName: "毒圈",
+              abilityId: "yumen_sandstorm",
+              abilityName: "狂沙",
               effectType: "PERIODIC_DAMAGE",
-              value: dps,
-              shieldAbsorbed: szResult.shieldAbsorbed > 0 ? szResult.shieldAbsorbed : undefined,
+              value: szResult.totalDamage,
+              damageType: YUMEN_PIERCING_DAMAGE_TYPE,
             });
             buffsChanged = true; // triggers HP + event broadcast
           }
@@ -4906,6 +5819,7 @@ export class GameLoop {
       for (const evt of thisTickEvents) {
         if (
           evt.type === "DAMAGE" &&
+          evt.damageType !== YUMEN_PIERCING_DAMAGE_TYPE &&
           evt.effectType !== "STACK_ON_HIT_DAMAGE" &&
           (evt.value ?? 0) > 0 &&
           evt.targetUserId
@@ -4983,11 +5897,15 @@ export class GameLoop {
             buffsChanged = true;
           }
 
+          const lvYeAbility = ABILITIES[LV_YE_MAN_SHENG_ABILITY_ID] as any;
+          const lvYeEffect = Array.isArray(lvYeAbility?.effects)
+            ? lvYeAbility.effects.find((entry: any) => entry?.type === "PLACE_LV_YE_MAN_SHENG_FIELD")
+            : null;
           const retaliateDamage = applyDamageToHostileTarget({
             state: this.state,
             source: protector as any,
             target: { kind: "player", target: attacker } as any,
-            baseDamage: LV_YE_MAN_SHENG_RETAL_DAMAGE,
+            baseDamage: Number(lvYeEffect?.retaliateDamage ?? 3),
             abilityId: LV_YE_MAN_SHENG_ABILITY_ID,
             abilityName: "绿野蔓生",
             effectType: "DAMAGE",
@@ -5123,6 +6041,7 @@ export class GameLoop {
               evt.type === "DAMAGE" &&
               evt.targetUserId === targetId &&
               (evt.value ?? 0) > 0 &&
+              evt.damageType !== YUMEN_PIERCING_DAMAGE_TYPE &&
               evt.effectType !== "YING_TIAN_SHIELD"
             ) {
               tickDmg += evt.value ?? 0;
@@ -5133,7 +6052,7 @@ export class GameLoop {
           }
           const ytMaxHp = targetPlayer.maxHp ?? 100;
           const ytLostHp = ytMaxHp - targetPlayer.hp;
-          if (ytLostHp > 0) {
+          if (tickDmg > 0 && ytLostHp > 0) {
             const ytHealPct = ytEffect.value ?? 0.06;
             const ytHealAmt = Math.floor(ytLostHp * ytHealPct);
             const ytApplied = applyHealToTarget(targetPlayer as any, ytHealAmt);
@@ -5244,17 +6163,83 @@ export class GameLoop {
     // 2. Check win condition. Testing mode keeps the same battle running by
     // restoring everyone when any player hits 0 HP.
     const winStart = performance.now();
-    const defeatedUserIds = this.state.players.filter((player) => player.hp <= 0).map((player) => player.userId);
-    const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(this.state, eventDiffStart, defeatedUserIds);
-    if (resetDefeatedPlayersForTesting(this.state)) {
-      for (const announcement of defeatAnnouncements) {
-        void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
-          console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+    if (this.isYumenMode) {
+      const defeatedUserIds = this.state.players
+        .filter((player: any) => player.hp <= 0 && player.yumenDefeated !== true && !hasActiveYumenSpectatorBuff(player as any, now))
+        .map((player) => player.userId);
+      const defeatedUserIdSet = new Set(defeatedUserIds);
+      const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(
+        this.state,
+        eventDiffStart,
+        defeatedUserIds,
+        { includeHistoricalFallback: false, allowUnattributed: true, recentDamageFallbackMs: 3000 },
+      );
+
+      if (defeatedUserIds.length > 0) {
+        if (this.state.safeZone?.autoFullHeal === true) {
+          this.state.safeZone.autoFullHeal = false;
+        }
+
+        const rewardedAttackers = new Set<string>();
+        for (const announcement of defeatAnnouncements) {
+          const attackerUserId = announcement.attackerUserId ?? null;
+          if (!attackerUserId || rewardedAttackers.has(attackerUserId)) continue;
+          if (this.applyYumenKillReward(attackerUserId, defeatedUserIdSet, now)) {
+            rewardedAttackers.add(attackerUserId);
+            buffsChanged = true;
+          }
+        }
+
+        for (const defeatedUserId of defeatedUserIds) {
+          const defeatedPlayer = this.state.players.find((player) => player.userId === defeatedUserId);
+          const result = this.applyYumenDeathState(defeatedPlayer as any, now);
+          if (result.changed) {
+            buffsChanged = true;
+            handStateChanged = handStateChanged || result.handChanged;
+            consumableStateChanged = consumableStateChanged || result.consumablesChanged;
+            movementStateChanged = true;
+            combatStatusChanged = true;
+          }
+        }
+
+        this.state.gameOver = false;
+        delete (this.state as any).winnerUserId;
+        this.pushYumenDefeatEvents(defeatAnnouncements, now);
+
+        for (const announcement of defeatAnnouncements) {
+          void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+            console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+          });
+        }
+      }
+
+      if (!this.state.gameOver && this.state.safeZone?.autoSettle === true && countYumenAlivePlayers(this.state, now) <= 1) {
+        const yumenResults = buildYumenResults(this.state, now);
+        this.state.gameOver = true;
+        this.state.winnerUserId = yumenResults.winnerUserId;
+        (this.state as any).yumenResults = yumenResults;
+        this.state.events.push({
+          id: randomUUID(),
+          timestamp: now,
+          turn: this.state.turn,
+          type: "YUMEN_GAME_END",
+          actorUserId: yumenResults.winnerUserId ?? "system",
+          winnerUserId: yumenResults.winnerUserId,
         });
       }
-      buffsChanged = true;
     } else {
-      checkGameOver(this.state);
+      const defeatedUserIds = this.state.players.filter((player) => player.hp <= 0).map((player) => player.userId);
+      const defeatAnnouncements = collectDefeatAnnouncementsFromEvents(this.state, eventDiffStart, defeatedUserIds);
+      if (resetDefeatedPlayersForTesting(this.state)) {
+        for (const announcement of defeatAnnouncements) {
+          void broadcastDefeatSystemChat(this.gameId, announcement.defeatedUserId, announcement.attackerUserId).catch((err) => {
+            console.error(`[GameLoop] Failed to broadcast defeat chat for ${this.gameId}:`, err);
+          });
+        }
+        buffsChanged = true;
+      } else {
+        checkGameOver(this.state);
+      }
     }
     const winTime = performance.now() - winStart;
 
@@ -5287,6 +6272,7 @@ export class GameLoop {
       });
       const compactActiveDash = (dash: any) => dash ? {
         abilityId: dash.abilityId,
+        ...(typeof dash.startedAt === "number" ? { startedAt: dash.startedAt } : {}),
         vxPerTick: roundForBroadcast(dash.vxPerTick, 5),
         vyPerTick: roundForBroadcast(dash.vyPerTick, 5),
         ...(typeof dash.vzPerTick === "number" ? { vzPerTick: roundForBroadcast(dash.vzPerTick, 5) } : {}),
@@ -5391,6 +6377,10 @@ export class GameLoop {
         pushPatchIfChanged("/safeZone", this.state.safeZone);
       }
 
+      if (this.state.playArea) {
+        pushPatchIfChanged("/playArea", this.state.playArea);
+      }
+
       // Append ground zones so frontend can render persistent damage areas
       if (this.state.groundZones !== undefined) {
         pushPatchIfChanged("/groundZones", this.state.groundZones);
@@ -5406,9 +6396,16 @@ export class GameLoop {
       // or when new events were emitted this tick (e.g. pure channel completion).
       const hasNewEvents = this.state.events.length > eventDiffStart;
       const eventsPruned = this.pruneEventHistoryForBroadcast();
-      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged) {
+      if (buffsChanged || hasNewEvents || channelStateChanged || eventsPruned || combatStatusChanged || handStateChanged || consumableStateChanged) {
         this.state.players.forEach((p, pidx) => {
           pushPatchIfChanged(`/players/${pidx}/buffs`, p.buffs);
+          if (handStateChanged) {
+            pushPatchIfChanged(`/players/${pidx}/hand`, p.hand);
+          }
+          if (consumableStateChanged) {
+            pushPatchIfChanged(`/players/${pidx}/consumableCounts`, (p as any).consumableCounts ?? {});
+            pushPatchIfChanged(`/players/${pidx}/consumableCooldowns`, (p as any).consumableCooldowns ?? {});
+          }
         });
         // Also push hp patches if periodic effects changed them
         this.state.players.forEach((p, pidx) => {
@@ -5444,6 +6441,9 @@ export class GameLoop {
           if (this.state.winnerUserId) {
             diff.push({ path: "/winnerUserId", value: this.state.winnerUserId });
           }
+          if ((this.state as any).yumenResults) {
+            diff.push({ path: "/yumenResults", value: (this.state as any).yumenResults });
+          }
           // Capture broadcast payload before the async save so we close over the
           // correct values even if the loop is stopped/cleared before .then() fires.
           const broadcastPayload = {
@@ -5474,14 +6474,31 @@ export class GameLoop {
       saveTime = performance.now() - saveStart;
     }
 
+    const tickTotal = performance.now() - tickStart;
+
     // One-shot: log tick execution time on dash start/end
     const anyDashing = this.state.players.some(p => !!p.activeDash);
     if (anyDashing) {
-      const tickTotal = performance.now() - tickStart;
       const tr = this.state.players.find(p => p.activeDash)?.activeDash?.ticksRemaining;
       if (tr === 59) {
         console.log(`[TICK-PERF] tick()=${tickTotal.toFixed(1)}ms  move=${moveTime.toFixed(1)}ms  broadcast=${broadcastTime.toFixed(1)}ms  save=${saveTime.toFixed(1)}ms  broadcastInterval=${this.broadcastTickInterval}`);
       }
+    }
+
+    if (tickTotal >= 80 || moveTime >= 40 || broadcastTime >= 40) {
+      recordLagProbe("game-loop-slow-tick", {
+        gameId: this.gameId,
+        version: this.state.version ?? null,
+        tickMs: roundLagMs(tickTotal),
+        moveMs: roundLagMs(moveTime),
+        broadcastMs: roundLagMs(broadcastTime),
+        saveScheduleMs: roundLagMs(saveTime),
+        playerCount: this.state.players.length,
+        entityCount: this.state.entities?.length ?? 0,
+        eventCount: this.state.events.length,
+        broadcastInterval: this.broadcastTickInterval,
+        buffsPerPlayer: this.state.players.map((player) => player.buffs?.length ?? 0),
+      });
     }
 
   }
@@ -5506,6 +6523,10 @@ export class GameLoop {
    * Save game state to database
    */
   private async saveToDB() {
+    const saveStartedAt = performance.now();
+    const version = this.state.version ?? null;
+    let saved = false;
+    let missingGame = false;
     try {
       const game = await GameSession.findByIdAndUpdate(
         this.gameId,
@@ -5514,15 +6535,36 @@ export class GameLoop {
       );
 
       if (!game) {
+        missingGame = true;
         console.warn(
           `[GameLoop] Game ${this.gameId} not found in DB, stopping loop`
         );
         this.stop();
+      } else {
+        saved = true;
       }
     } catch (err) {
       console.error(`[GameLoop] Error saving game ${this.gameId}:`, err);
+      recordLagProbe("game-loop-db-save-error", {
+        gameId: this.gameId,
+        version,
+        error: err instanceof Error ? err.message : String(err),
+      });
       // Don't stop the loop on save errors - just log and continue
       // This prevents cascading failures
+    } finally {
+      const saveMs = performance.now() - saveStartedAt;
+      if (saveMs >= 100) {
+        recordLagProbe("game-loop-db-save-slow", {
+          gameId: this.gameId,
+          version,
+          saveMs: roundLagMs(saveMs),
+          saved,
+          missingGame,
+          playerCount: this.state.players.length,
+          eventCount: this.state.events.length,
+        });
+      }
     }
   }
 
@@ -5543,13 +6585,28 @@ export class GameLoop {
    * Get current game state snapshot (for ability casting validation)
    */
   getState(): GameState {
-    return structuredClone(this.state);
+    const cloneStartedAt = performance.now();
+    const cloned = structuredClone(this.state);
+    const cloneMs = performance.now() - cloneStartedAt;
+    if (cloneMs >= 50) {
+      recordLagProbe("game-loop-clone-slow", {
+        gameId: this.gameId,
+        operation: "getState",
+        version: this.state.version ?? null,
+        cloneMs: roundLagMs(cloneMs),
+        playerCount: this.state.players.length,
+        entityCount: this.state.entities?.length ?? 0,
+        eventCount: this.state.events.length,
+      });
+    }
+    return cloned;
   }
 
   /**
    * Expose map context for LOS validation in ability cast path.
    */
   getMapCtx(): MapContext {
+    this.syncDynamicMapContext();
     return this.mapCtx;
   }
 
@@ -5568,7 +6625,21 @@ export class GameLoop {
    * Called by gameplay routes
    */
   updateState(newState: GameState) {
+    const cloneStartedAt = performance.now();
     this.state = structuredClone(newState);
+    const cloneMs = performance.now() - cloneStartedAt;
+    if (cloneMs >= 50) {
+      recordLagProbe("game-loop-clone-slow", {
+        gameId: this.gameId,
+        operation: "updateState",
+        version: this.state.version ?? null,
+        cloneMs: roundLagMs(cloneMs),
+        playerCount: this.state.players.length,
+        entityCount: this.state.entities?.length ?? 0,
+        eventCount: this.state.events.length,
+      });
+    }
+    this.syncDynamicMapContext();
     if (this.stackProcScanIndex > this.state.events.length) {
       this.stackProcScanIndex = this.state.events.length;
     }

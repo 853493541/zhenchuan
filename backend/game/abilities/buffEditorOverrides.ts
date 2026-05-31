@@ -20,25 +20,31 @@ export interface BuffEditorOverrideEntry {
   hidden?: boolean;
   name?: string;
   description?: string;
+  descriptionReviewStatus?: DescriptionReviewStatus;
   properties?: BuffProperty[];
   durationMs?: number;
   qinYinGongMingStealable?: boolean;
   qinYinGongMingUnstealable?: boolean;
   manualCancelable?: boolean;
   manualCancelExcluded?: boolean;
+  timerVisible?: boolean;
 }
+
+export type DescriptionReviewStatus = "fixed" | "needs-more" | "unfixed";
 
 interface StoredBuffEditorOverrideEntry {
   attribute?: BuffAttribute;
   hidden?: boolean;
   name?: string;
   description?: string;
+  descriptionReviewStatus?: DescriptionReviewStatus;
   properties?: BuffProperty[];
   durationMs?: number;
   qinYinGongMingStealable?: boolean;
   qinYinGongMingUnstealable?: boolean;
   manualCancelable?: boolean;
   manualCancelExcluded?: boolean;
+  timerVisible?: boolean;
 }
 
 interface StoredBuffEditorOverrides {
@@ -80,6 +86,10 @@ function normalizeDurationMs(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) return undefined;
   // 100ms min (0.1s), 300s max
   return Math.max(100, Math.min(300_000, Math.round(value)));
+}
+
+export function isDescriptionReviewStatus(value: unknown): value is DescriptionReviewStatus {
+  return value === "fixed" || value === "needs-more" || value === "unfixed";
 }
 
 function normalizeProperties(value: unknown): BuffProperty[] | undefined {
@@ -155,6 +165,7 @@ function normalizeOverrideEntry(
   const hidden = typeof value.hidden === "boolean" ? value.hidden : undefined;
   const name = normalizeName(value.name);
   const description = normalizeDescription(value.description);
+  const descriptionReviewStatus = isDescriptionReviewStatus(value.descriptionReviewStatus) ? value.descriptionReviewStatus : undefined;
   const properties = normalizeProperties((value as Record<string, unknown>).properties);
   const durationMs = normalizeDurationMs((value as Record<string, unknown>).durationMs);
   const qinYinGongMingStealable =
@@ -173,18 +184,24 @@ function normalizeOverrideEntry(
     typeof (value as Record<string, unknown>).manualCancelExcluded === "boolean"
       ? (value as Record<string, unknown>).manualCancelExcluded as boolean
       : undefined;
+  const timerVisible =
+    typeof (value as Record<string, unknown>).timerVisible === "boolean"
+      ? (value as Record<string, unknown>).timerVisible as boolean
+      : undefined;
 
   if (
     attribute === "\u672a\u9009\u62e9" &&
     hidden === undefined &&
     !name &&
     !description &&
+    descriptionReviewStatus === undefined &&
     properties === undefined &&
     durationMs === undefined &&
     qinYinGongMingStealable !== true &&
     qinYinGongMingUnstealable !== true &&
     manualCancelable !== true &&
-    manualCancelExcluded !== true
+    manualCancelExcluded !== true &&
+    timerVisible === undefined
   ) {
     return null;
   }
@@ -194,6 +211,7 @@ function normalizeOverrideEntry(
     ...(hidden === undefined ? {} : { hidden }),
     ...(name ? { name } : {}),
     ...(description ? { description } : {}),
+    ...(descriptionReviewStatus ? { descriptionReviewStatus } : {}),
     // Save even if empty [] \u2014 empty array is a valid sentinel meaning "user cleared all properties"
     ...(properties !== undefined ? { properties } : {}),
     ...(durationMs !== undefined ? { durationMs } : {}),
@@ -201,6 +219,7 @@ function normalizeOverrideEntry(
     ...(qinYinGongMingUnstealable === true ? { qinYinGongMingUnstealable: true } : {}),
     ...(manualCancelable === true ? { manualCancelable: true } : {}),
     ...(manualCancelExcluded === true ? { manualCancelExcluded: true } : {}),
+    ...(timerVisible === undefined ? {} : { timerVisible }),
   };
 }
 
@@ -316,8 +335,6 @@ export function applyPropertyOverridesToEffects(
     } else {
       effects.push({ type: "DODGE", chance });
     }
-  } else if (dodgeIdx >= 0) {
-    effects.splice(dodgeIdx, 1);
   }
 
   // 外功闪避 ↔ PHYSICAL_DODGE (uses 'chance' field, 0.0–1.0)
@@ -331,8 +348,6 @@ export function applyPropertyOverridesToEffects(
     } else {
       effects.push({ type: "PHYSICAL_DODGE", chance });
     }
-  } else if (physDodgeIdx >= 0) {
-    effects.splice(physDodgeIdx, 1);
   }
 
   // 沉默免疫 ↔ SILENCE_IMMUNE (also confers interrupt immunity at runtime).

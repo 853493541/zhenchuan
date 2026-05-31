@@ -46,6 +46,7 @@ export type {
   GameState,
   PickupItem,
   SafeZone,
+  PlayAreaBounds,
   GroundZone,
   TargetEntity,
   ActiveChannel,

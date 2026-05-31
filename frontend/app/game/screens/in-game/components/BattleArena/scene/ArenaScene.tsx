@@ -1,6 +1,6 @@
 'use client';
 
-import { MutableRefObject, useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { MutableRefObject, useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Line } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
@@ -11,21 +11,54 @@ import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import TargetEntityVisual from './TargetEntityVisual';
 import CameraRig from './CameraRig';
-import type { PickupItem, GroundZone, TargetEntity } from '../../../types';
+import type { PickupItem, GroundZone, TargetEntity, PlayAreaBounds, SafeZone } from '../../../types';
 import { getMapForMode } from '../worldMap';
 import ExportedMapScene, { GROUP_POS_X, GROUP_POS_Y, GROUP_POS_Z, RENDER_SF_XZ, RENDER_SF_Y, type SceneLoadTimingEvent } from './ExportedMapScene';
 import type { MapCollisionSystem } from './MapCollisionSystem';
+import { isExportedMapMode, isYumen1v1BasicMode } from '../../../../../gameModes';
 
-// Colors for up to 5 opponents (index 0 = primary, etc.)
-const OPP_COLORS = ['#cc3333', '#cc8800', '#9933cc', '#cc3388'];
-const OPP_EMISSIVES = ['#440000', '#332200', '#220044', '#330022'];
+const OPP_COLORS = ['#cc3333', '#cc3333', '#cc3333', '#cc3333'];
+const OPP_EMISSIVES = ['#440000', '#440000', '#440000', '#440000'];
 
 const LEGACY_STORED_UNIT_SCALE = 2.2;
 const COLLISION_TEST_VIS_RADIUS = 0.384;
 const CHANNEL_RING_WAIST_Z = 1.0;
+const YUMEN_SAFE_ZONE_RING_CLEARANCE = 0.34;
+const YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE = 50;
+const YUMEN_BOUNDARY_LINE_VISIBLE_DISTANCE = 30;
+
+type LinePoint = [number, number, number];
+type NearbyLineSegment = { key: string; points: [LinePoint, LinePoint] };
+
+function distancePointToLineSegment2D(px: number, pz: number, a: LinePoint, b: LinePoint): number {
+  const abX = b[0] - a[0];
+  const abZ = b[2] - a[2];
+  const lengthSq = abX * abX + abZ * abZ;
+  if (lengthSq <= 1e-6) return Math.hypot(px - a[0], pz - a[2]);
+  const t = Math.max(0, Math.min(1, ((px - a[0]) * abX + (pz - a[2]) * abZ) / lengthSq));
+  return Math.hypot(px - (a[0] + abX * t), pz - (a[2] + abZ * t));
+}
+
+function buildNearbyLineSegments(points: LinePoint[] | null | undefined, playerSceneX: number, playerSceneZ: number, distance: number, keyPrefix: string): NearbyLineSegment[] {
+  if (!points || points.length < 2) return [];
+  const segments: NearbyLineSegment[] = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const a = points[index];
+    const b = points[index + 1];
+    if (distancePointToLineSegment2D(playerSceneX, playerSceneZ, a, b) <= distance) {
+      segments.push({ key: `${keyPrefix}-${index}`, points: [a, b] });
+    }
+  }
+  return segments;
+}
+
+function nearbySegmentSignature(segments: NearbyLineSegment[]): string {
+  const pointSignature = (point: LinePoint) => `${point[0].toFixed(2)},${point[1].toFixed(2)},${point[2].toFixed(2)}`;
+  return segments.map((segment) => `${segment.key}:${pointSignature(segment.points[0])}>${pointSignature(segment.points[1])}`).join('|');
+}
 
 function getStoredUnitScale(mode?: string): number {
-  return mode === 'collision-test' ? 1 : LEGACY_STORED_UNIT_SCALE;
+  return isExportedMapMode(mode) ? 1 : LEGACY_STORED_UNIT_SCALE;
 }
 
 const STEALTH_BUFF_IDS = new Set([1011, 1012, 1013, 1021]);
@@ -34,6 +67,7 @@ const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
 const DISGUISE_BUFF_IDS = new Set([980001]);
+const YUMEN_SPECTATOR_BUFF_ID = 990202;
 
 function isActiveBuffClient(buff: any, now = Date.now()): boolean {
   const expiresAt = Number(buff?.expiresAt ?? 0);
@@ -87,6 +121,13 @@ function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
   return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
 }
 
+function hasYumenSpectatorBuff(buffs?: any[]): boolean {
+  return activeBuffsClient(buffs).some((b: any) =>
+    b?.buffId === YUMEN_SPECTATOR_BUFF_ID ||
+    (typeof b?.name === 'string' && b.name.includes('观战中'))
+  );
+}
+
 function hasShiFangXuanJiBuff(buffs?: any[]): boolean {
   return activeBuffsClient(buffs).some((b: any) =>
     b?.buffId === SHI_FANG_XUAN_JI_BUFF_ID ||
@@ -104,6 +145,7 @@ interface PlayerInfo {
   facing?: { x: number; y: number };
   buffs?: any[];
   hand?: any[];
+  yumenDefeated?: boolean;
 }
 
 type ScreenBounds = { cx: number; topY: number; baseY: number; rs: number };
@@ -114,6 +156,7 @@ interface ArenaSceneProps {
   allOpponents?: PlayerInfo[];
   /** All non-me players */
   opponents: PlayerInfo[];
+  yumenSpectatorUserIds?: string[];
   selectedTargetId: string | null;
   onSelectTarget?: (userId: string) => void;
   pickups: PickupItem[];
@@ -132,6 +175,7 @@ interface ArenaSceneProps {
   camPitchRef: MutableRefObject<number>;
   camZoomRef: MutableRefObject<number>;
   cameraMoveCommandActiveRef?: MutableRefObject<boolean>;
+  cameraForwardMoveCommandActiveRef?: MutableRefObject<boolean>;
   cameraLookInputVersionRef?: MutableRefObject<number>;
   manualCameraLookActiveRef?: MutableRefObject<boolean>;
   onCameraDebugEvent?: (entry: {
@@ -148,7 +192,10 @@ interface ArenaSceneProps {
     wallClamp: boolean;
     probeClamp: boolean;
     groundClamp: boolean;
+    skyLook: boolean;
     recenter: boolean;
+    forwardMove: boolean;
+    lookUpRatio: number;
     wallDebug?: {
       hitCount: number;
       sampleCount: number;
@@ -180,7 +227,10 @@ interface ArenaSceneProps {
   opponentScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   entityScreenBoundsRef?: MutableRefObject<Record<string, ScreenBounds>>;
   mode?: string;
-  safeZone?: { centerX: number; centerY: number; currentHalf: number; dps: number; shrinking: boolean; shrinkProgress: number; nextChangeIn: number };
+  safeZone?: SafeZone;
+  playArea?: PlayAreaBounds;
+  onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
+  boundaryEditMode?: boolean;
   groundZones?: GroundZone[];
   /** HP-bearing targetable entities (e.g. 逐云寒蕊) */
   entities?: TargetEntity[];
@@ -275,8 +325,8 @@ const DEFAULT_DIR_LIGHT_CONFIG: DirLightConfig = {
 };
 
 /**
- * Sets renderer properties for collision-test mode.
- * Must render FIRST in the isCollisionTest block so its useEffect fires before EnvProbe.
+ * Sets renderer properties for exported-map modes.
+ * Must render first in the exported-map block so its useEffect fires before EnvProbe.
  */
 function CollisionTestSetup({ blueprintMode, t }: { blueprintMode: boolean; t: EnvToggles }) {
   const { gl } = useThree();
@@ -474,10 +524,318 @@ function SceneMetricsProbe({ onSceneMetrics }: { onSceneMetrics: (metrics: Scene
   return null;
 }
 
+type BoundaryHandle = 'nw' | 'ne' | 'sw' | 'se';
+
+function normalizePlayAreaBounds(playArea: PlayAreaBounds | undefined, mapWidth: number, mapHeight: number): PlayAreaBounds {
+  const rawMinX = Math.max(0, Math.min(mapWidth, Number(playArea?.minX ?? 0)));
+  const rawMaxX = Math.max(0, Math.min(mapWidth, Number(playArea?.maxX ?? mapWidth)));
+  const rawMinY = Math.max(0, Math.min(mapHeight, Number(playArea?.minY ?? 0)));
+  const rawMaxY = Math.max(0, Math.min(mapHeight, Number(playArea?.maxY ?? mapHeight)));
+  return {
+    minX: Math.min(rawMinX, rawMaxX),
+    minY: Math.min(rawMinY, rawMaxY),
+    maxX: Math.max(rawMinX, rawMaxX),
+    maxY: Math.max(rawMinY, rawMaxY),
+  };
+}
+
+function updateBoundaryHandle(bounds: PlayAreaBounds, handle: BoundaryHandle, worldX: number, worldY: number, mapWidth: number, mapHeight: number): PlayAreaBounds {
+  const minSize = 12;
+  const next = { ...bounds };
+  const clampedX = Math.max(0, Math.min(mapWidth, worldX));
+  const clampedY = Math.max(0, Math.min(mapHeight, worldY));
+  if (handle === 'nw' || handle === 'sw') next.minX = Math.min(clampedX, next.maxX - minSize);
+  if (handle === 'ne' || handle === 'se') next.maxX = Math.max(clampedX, next.minX + minSize);
+  if (handle === 'nw' || handle === 'ne') next.minY = Math.min(clampedY, next.maxY - minSize);
+  if (handle === 'sw' || handle === 'se') next.maxY = Math.max(clampedY, next.minY + minSize);
+  return normalizePlayAreaBounds(next, mapWidth, mapHeight);
+}
+
+function YumenBoundaryOverlay({
+  playArea,
+  mapWidth,
+  mapHeight,
+  worldHalfX,
+  worldHalfY,
+  localRenderPosRef,
+  onPlayAreaChange,
+  boundaryEditMode = false,
+  getZoneTerrainZ,
+}: {
+  playArea?: PlayAreaBounds;
+  mapWidth: number;
+  mapHeight: number;
+  worldHalfX: number;
+  worldHalfY: number;
+  localRenderPosRef: MutableRefObject<{ x: number; y: number; z?: number }>;
+  onPlayAreaChange?: (playArea: PlayAreaBounds) => void;
+  boundaryEditMode?: boolean;
+  getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
+}) {
+  const [draftBounds, setDraftBounds] = useState(() => normalizePlayAreaBounds(playArea, mapWidth, mapHeight));
+  const [visibleBoundarySegments, setVisibleBoundarySegments] = useState<NearbyLineSegment[]>([]);
+  const draftBoundsRef = useRef(draftBounds);
+  const visibleBoundarySignatureRef = useRef('');
+  const dragHandleRef = useRef<BoundaryHandle | null>(null);
+  const activePointerIdRef = useRef<number | null>(null);
+  const dragPlaneRef = useRef(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0));
+  const dragPointRef = useRef(new THREE.Vector3());
+
+  useEffect(() => {
+    draftBoundsRef.current = draftBounds;
+  }, [draftBounds]);
+
+  useEffect(() => {
+    if (!dragHandleRef.current) {
+      setDraftBounds(normalizePlayAreaBounds(playArea, mapWidth, mapHeight));
+    }
+  }, [playArea, mapWidth, mapHeight]);
+
+  const bounds = draftBounds;
+  const minX = bounds.minX - worldHalfX;
+  const maxX = bounds.maxX - worldHalfX;
+  const minZ = worldHalfY - bounds.minY;
+  const maxZ = worldHalfY - bounds.maxY;
+  const centerX = (minX + maxX) / 2;
+  const centerZ = (minZ + maxZ) / 2;
+  const width = Math.max(0.1, maxX - minX);
+  const depth = Math.max(0.1, minZ - maxZ);
+  const wallHeight = 10;
+  const wallY = wallHeight / 2;
+  const handlePositions: Record<BoundaryHandle, [number, number, number]> = {
+    nw: [minX, wallY, minZ],
+    ne: [maxX, wallY, minZ],
+    sw: [minX, wallY, maxZ],
+    se: [maxX, wallY, maxZ],
+  };
+  const boundaryGroundLine: [number, number, number][] = [];
+  const boundaryLineClearance = 0.6;
+  const xLineSamples = Math.max(2, Math.ceil((bounds.maxX - bounds.minX) / 10) + 1);
+  const yLineSamples = Math.max(2, Math.ceil((bounds.maxY - bounds.minY) / 10) + 1);
+  const addBoundaryPoint = (worldX: number, worldY: number) => {
+    boundaryGroundLine.push([
+      worldX - worldHalfX,
+      getZoneTerrainZ(worldX, worldY, 0) + boundaryLineClearance,
+      worldHalfY - worldY,
+    ]);
+  };
+  for (let i = 0; i < xLineSamples; i += 1) {
+    const t = xLineSamples === 1 ? 0 : i / (xLineSamples - 1);
+    addBoundaryPoint(bounds.minX + (bounds.maxX - bounds.minX) * t, bounds.minY);
+  }
+  for (let i = 1; i < yLineSamples; i += 1) {
+    const t = yLineSamples === 1 ? 0 : i / (yLineSamples - 1);
+    addBoundaryPoint(bounds.maxX, bounds.minY + (bounds.maxY - bounds.minY) * t);
+  }
+  for (let i = 1; i < xLineSamples; i += 1) {
+    const t = xLineSamples === 1 ? 0 : i / (xLineSamples - 1);
+    addBoundaryPoint(bounds.maxX - (bounds.maxX - bounds.minX) * t, bounds.maxY);
+  }
+  for (let i = 1; i < yLineSamples; i += 1) {
+    const t = yLineSamples === 1 ? 0 : i / (yLineSamples - 1);
+    addBoundaryPoint(bounds.minX, bounds.maxY - (bounds.maxY - bounds.minY) * t);
+  }
+
+  useFrame(() => {
+    const player = localRenderPosRef.current;
+    const playerSceneX = player.x - worldHalfX;
+    const playerSceneZ = worldHalfY - player.y;
+    const nextSegments = buildNearbyLineSegments(boundaryGroundLine, playerSceneX, playerSceneZ, YUMEN_BOUNDARY_LINE_VISIBLE_DISTANCE, 'boundary');
+    const signature = nearbySegmentSignature(nextSegments);
+    if (signature !== visibleBoundarySignatureRef.current) {
+      visibleBoundarySignatureRef.current = signature;
+      setVisibleBoundarySegments(nextSegments);
+    }
+  });
+
+  const applyDragPoint = (event: any) => {
+    const handle = dragHandleRef.current;
+    if (!handle) return;
+    event.stopPropagation();
+    const dragPoint = event.ray?.intersectPlane?.(dragPlaneRef.current, dragPointRef.current);
+    if (!dragPoint) return;
+    const next = updateBoundaryHandle(
+      draftBoundsRef.current,
+      handle,
+      dragPoint.x + worldHalfX,
+      worldHalfY - dragPoint.z,
+      mapWidth,
+      mapHeight,
+    );
+    draftBoundsRef.current = next;
+    setDraftBounds(next);
+  };
+
+  const finishDrag = (event: any) => {
+    if (!dragHandleRef.current) return;
+    event.stopPropagation();
+    try {
+      if (activePointerIdRef.current !== null && event.target?.releasePointerCapture) {
+        event.target.releasePointerCapture(activePointerIdRef.current);
+      }
+    } catch {
+      // Pointer capture can already be released by the browser.
+    }
+    dragHandleRef.current = null;
+    activePointerIdRef.current = null;
+    onPlayAreaChange?.(draftBoundsRef.current);
+  };
+
+  return (
+    <group renderOrder={20}>
+      {visibleBoundarySegments.map((segment) => (
+        <Line
+          key={`${segment.key}-glow`}
+          points={segment.points}
+          color="#ff1f1f"
+          lineWidth={5}
+          transparent
+          opacity={0.22}
+          renderOrder={33}
+          depthTest={false}
+          depthWrite={false}
+        />
+      ))}
+      {visibleBoundarySegments.map((segment) => (
+        <Line
+          key={segment.key}
+          points={segment.points}
+          color="#ff2f2f"
+          lineWidth={2}
+          transparent
+          opacity={0.94}
+          renderOrder={34}
+          depthTest={false}
+          depthWrite={false}
+        />
+      ))}
+      {boundaryEditMode && (Object.keys(handlePositions) as BoundaryHandle[]).map((handle) => (
+        <mesh
+          key={handle}
+          position={handlePositions[handle]}
+          renderOrder={42}
+          onPointerDown={(event) => {
+            event.stopPropagation();
+            dragHandleRef.current = handle;
+            activePointerIdRef.current = event.pointerId;
+            event.target?.setPointerCapture?.(event.pointerId);
+          }}
+          onPointerMove={applyDragPoint}
+          onPointerUp={finishDrag}
+          onPointerCancel={finishDrag}
+        >
+          <cylinderGeometry args={[1.4, 1.4, wallHeight + 2, 18]} />
+          <meshBasicMaterial color="#fde047" transparent opacity={0.94} depthTest={false} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+function YumenSafeZoneOverlay({
+  safeZone,
+  worldHalfX,
+  worldHalfY,
+  localRenderPosRef,
+  getZoneTerrainZ,
+  structureXrayActive,
+  onStructureXrayActiveChange,
+}: {
+  safeZone?: SafeZone;
+  worldHalfX: number;
+  worldHalfY: number;
+  localRenderPosRef: MutableRefObject<{ x: number; y: number; z?: number }>;
+  getZoneTerrainZ: (worldX: number, worldY: number, worldZ?: number) => number;
+  structureXrayActive: boolean;
+  onStructureXrayActiveChange: (active: boolean) => void;
+}) {
+  const [xraySegments, setXraySegments] = useState<{ current: NearbyLineSegment[]; target: NearbyLineSegment[] }>({ current: [], target: [] });
+  const xraySignatureRef = useRef({ current: '', target: '' });
+  const showCurrentLine = true;
+  const visual = useMemo(() => {
+    if (!safeZone) return null;
+    const radius = Math.max(0, Number(safeZone.currentHalf ?? 0));
+    if (radius <= 0) return null;
+    const segments = 180;
+    const buildRingPoints = (centerX: number, centerY: number, ringRadius: number) => {
+      const points: LinePoint[] = [];
+      for (let segmentIndex = 0; segmentIndex <= segments; segmentIndex += 1) {
+        const angle = (segmentIndex / segments) * Math.PI * 2;
+        const worldX = centerX + Math.cos(angle) * ringRadius;
+        const worldY = centerY + Math.sin(angle) * ringRadius;
+        points.push([
+          worldX - worldHalfX,
+          getZoneTerrainZ(worldX, worldY, 0) + YUMEN_SAFE_ZONE_RING_CLEARANCE,
+          worldHalfY - worldY,
+        ]);
+      }
+      return points;
+    };
+
+    const bottomPoints = buildRingPoints(safeZone.centerX, safeZone.centerY, radius);
+
+    return { bottomPoints, radius };
+  }, [safeZone, worldHalfX, worldHalfY, getZoneTerrainZ]);
+
+  useFrame(() => {
+    if (!visual || !safeZone) {
+      setXraySegments((previous) => (previous.current.length || previous.target.length ? { current: [], target: [] } : previous));
+      xraySignatureRef.current = { current: '', target: '' };
+      if (structureXrayActive) onStructureXrayActiveChange(false);
+      return;
+    }
+    const player = localRenderPosRef.current;
+    const playerSceneX = player.x - worldHalfX;
+    const playerSceneZ = worldHalfY - player.y;
+    const current = showCurrentLine ? buildNearbyLineSegments(visual.bottomPoints, playerSceneX, playerSceneZ, YUMEN_SAFE_ZONE_LINE_XRAY_DISTANCE, 'safe-current') : [];
+    const currentSignature = nearbySegmentSignature(current);
+    if (currentSignature !== xraySignatureRef.current.current || xraySignatureRef.current.target) {
+      xraySignatureRef.current = { current: currentSignature, target: '' };
+      setXraySegments({ current, target: [] });
+    }
+    const nearLine = current.length > 0;
+    if (structureXrayActive !== nearLine) onStructureXrayActiveChange(nearLine);
+  });
+
+  useEffect(() => {
+    return () => onStructureXrayActiveChange(false);
+  }, [onStructureXrayActiveChange]);
+
+  if (!visual) return null;
+  return (
+    <group renderOrder={18}>
+      {showCurrentLine && (
+        <Line
+          points={visual.bottomPoints}
+          color="#ffffff"
+          lineWidth={5}
+          renderOrder={20}
+          depthTest={true}
+          depthWrite={false}
+        />
+      )}
+      {xraySegments.current.map((segment) => (
+        <Line
+          key={segment.key}
+          points={segment.points}
+          color="#ffffff"
+          lineWidth={5}
+          transparent
+          opacity={0.96}
+          renderOrder={41}
+          depthTest={false}
+          depthWrite={false}
+        />
+      ))}
+    </group>
+  );
+}
+
 export default function ArenaScene({
   me,
   allOpponents,
   opponents,
+  yumenSpectatorUserIds = [],
   selectedTargetId,
   onSelectTarget,
   pickups,
@@ -491,6 +849,7 @@ export default function ArenaScene({
   camPitchRef,
   camZoomRef,
   cameraMoveCommandActiveRef,
+  cameraForwardMoveCommandActiveRef,
   cameraLookInputVersionRef,
   manualCameraLookActiveRef,
   onCameraDebugEvent,
@@ -502,6 +861,9 @@ export default function ArenaScene({
   entityScreenBoundsRef,
   mode,
   safeZone,
+  playArea,
+  onPlayAreaChange,
+  boundaryEditMode,
   groundZones,
   entities,
   selectedEntityId,
@@ -532,21 +894,31 @@ export default function ArenaScene({
   const worldHalfY = mapHeight / 2;
   const isArena = mode === 'arena';
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const [safeZoneStructureXrayActive, setSafeZoneStructureXrayActive] = useState(false);
   const zoneProbeRef = useRef(new THREE.Vector3());
+  const hasGroundZoneTimers = (groundZones?.length ?? 0) > 0;
+  const yumenSpectatorUserIdSet = useMemo(() => new Set(yumenSpectatorUserIds), [yumenSpectatorUserIds]);
 
   useEffect(() => {
+    if (!hasGroundZoneTimers) return;
     const id = window.setInterval(() => setNowMs(Date.now()), 250);
     return () => window.clearInterval(id);
-  }, []);
+  }, [hasGroundZoneTimers]);
 
   const selectedTarget = selectedTargetId
-    ? opponents.find((o) => o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && !shouldHideByStealthFromEnemyView(o.buffs))
+    ? opponents.find((o) => {
+        const targetYumenSpectator = hasYumenSpectatorBuff(o.buffs) || o.yumenDefeated === true || yumenSpectatorUserIdSet.has(o.userId);
+        const selfYumenSpectator = hasYumenSpectatorBuff(me?.buffs) || me.yumenDefeated === true || yumenSpectatorUserIdSet.has(me.userId);
+        return o.userId === selectedTargetId && !hasDisguiseBuff(o.buffs) && (!shouldHideByStealthFromEnemyView(o.buffs) || (selfYumenSpectator && targetYumenSpectator));
+      })
     : null;
   const selectedEntity = selectedEntityId
     ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
     : null;
   const meDisguised = hasDisguiseBuff(me?.buffs);
-  const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs));
+  const meYumenSpectator = hasYumenSpectatorBuff(me?.buffs) || me.yumenDefeated === true || yumenSpectatorUserIdSet.has(me.userId);
+  const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs) || meYumenSpectator);
+  const meShiFang = hasShiFangXuanJiBuff(me?.buffs);
 
   const targetAnchor = selectedTarget
     ? selectedTarget.position
@@ -579,12 +951,14 @@ export default function ArenaScene({
     onGroundPointerDown(e.point.x + worldHalfX, worldHalfY - e.point.z, e.point.y);
   };
 
-  const isCollisionTest = mode === 'collision-test';
+  const isExportedMap = isExportedMapMode(mode);
+  const isYumenMode = isYumen1v1BasicMode(mode);
+  const showCircularSafeZoneOverlay = isYumenMode;
 
-  const getZoneVisualZ = (worldX: number, worldY: number, worldZ = 0) => {
+  const getZoneVisualZ = useCallback((worldX: number, worldY: number, worldZ = 0) => {
     let groundZ = 0;
 
-    if (isCollisionTest && collisionSystemRef?.current) {
+    if (isExportedMap && collisionSystemRef?.current) {
       const probe = zoneProbeRef.current;
       probe.set(
         (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF_XZ,
@@ -608,7 +982,26 @@ export default function ArenaScene({
     }
 
     return Math.max(worldZ, groundZ) + 0.16;
-  };
+  }, [collisionSystemRef, isExportedMap, mapObjects, worldHalfX, worldHalfY]);
+
+  const getZoneTerrainZ = useCallback((worldX: number, worldY: number, worldZ = 0) => {
+    let groundZ = 0;
+
+    if (isExportedMap && collisionSystemRef?.current) {
+      const probe = zoneProbeRef.current;
+      probe.set(
+        (worldX - worldHalfX - GROUP_POS_X) / RENDER_SF_XZ,
+        5000,
+        (worldHalfY - worldY - GROUP_POS_Z) / RENDER_SF_XZ,
+      );
+      const terrainY = collisionSystemRef.current.getTerrainGroundY(probe);
+      if (terrainY !== null) {
+        groundZ = terrainY * RENDER_SF_Y + GROUP_POS_Y;
+      }
+    }
+
+    return Math.max(worldZ, groundZ) + 0.16;
+  }, [collisionSystemRef, isExportedMap, worldHalfX, worldHalfY]);
 
   return (
     <>
@@ -620,12 +1013,13 @@ export default function ArenaScene({
         camPitchRef={camPitchRef}
         camZoomRef={camZoomRef}
         moveCommandActiveRef={cameraMoveCommandActiveRef}
+        forwardMoveActiveRef={cameraForwardMoveCommandActiveRef}
         cameraLookInputVersionRef={cameraLookInputVersionRef}
         manualCameraLookActiveRef={manualCameraLookActiveRef}
         onCameraDebugEvent={onCameraDebugEvent}
         worldHalfX={worldHalfX}
         worldHalfY={worldHalfY}
-        collisionSystemRef={isCollisionTest ? collisionSystemRef : undefined}
+        collisionSystemRef={isExportedMap ? collisionSystemRef : undefined}
       />
 
       {/* Lighting — mode-specific */}
@@ -634,7 +1028,7 @@ export default function ArenaScene({
           <ambientLight intensity={1.1} color="#f4f6ff" />
           <directionalLight position={[300, 500, 100]} intensity={2.6} color="#eef4ff" />
         </>
-      ) : isCollisionTest ? (
+      ) : isExportedMap ? (
         <>
           <CollisionTestSetup blueprintMode={blueprintMode} t={envToggles ?? DEFAULT_ENV_TOGGLES} />
           <CameraFarSetup far={envToggles?.cameraFar ? 500000 : 2000} />
@@ -659,8 +1053,8 @@ export default function ArenaScene({
           worldX={me.position.x}
           worldY={me.position.y}
           worldZ={me.position.z ?? 0}
-          color="#1a66cc"
-          emissive="#0a2255"
+          color={meShiFang ? '#2acb6b' : '#1a66cc'}
+          emissive={meShiFang ? '#0c5d34' : '#0a2255'}
           hp={me.hp}
           shield={me.shield ?? 0}
           maxHp={me.maxHp ?? maxHp}
@@ -673,22 +1067,23 @@ export default function ArenaScene({
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
           isDisguised={meDisguised}
-          hideHpBar={meDisguised}
-          cameraFadeEnabled={isCollisionTest && !selfOnlyMode}
-          hpColorOverride={hasShiFangXuanJiBuff(me.buffs) ? '#2acb6b' : undefined}
+          hideHpBar={meDisguised || meYumenSpectator}
+          cameraFadeEnabled={isExportedMap && !selfOnlyMode}
+          hpColorOverride={meShiFang ? '#2acb6b' : undefined}
         />
       )}
 
       {!selfOnlyMode && (
         <>
           {/* World */}
-          {isCollisionTest ? (
+          {isExportedMap ? (
             <ExportedMapScene
               worldWidth={mapWidth}
               worldHeight={mapHeight}
               showCollisionShells={showCollisionShells}
               blueprintMode={blueprintMode}
               hideVisuals={blindWorldMode}
+              terrainDepthPrepass={isYumenMode && safeZoneStructureXrayActive}
               onCollisionSystemReady={onCollisionSystemReady}
               onLoadTiming={onSceneLoadTiming}
               onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
@@ -707,6 +1102,30 @@ export default function ArenaScene({
               />
               {!blindWorldMode && <MapObjects localRenderPosRef={localRenderPosRef} mapObjects={mapObjects} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
             </>
+          )}
+          {isYumenMode && (
+            <YumenBoundaryOverlay
+              playArea={playArea}
+              mapWidth={mapWidth}
+              mapHeight={mapHeight}
+              worldHalfX={worldHalfX}
+              worldHalfY={worldHalfY}
+              localRenderPosRef={localRenderPosRef}
+              onPlayAreaChange={onPlayAreaChange}
+              boundaryEditMode={boundaryEditMode}
+              getZoneTerrainZ={getZoneTerrainZ}
+            />
+          )}
+          {showCircularSafeZoneOverlay && (
+            <YumenSafeZoneOverlay
+              safeZone={safeZone}
+              worldHalfX={worldHalfX}
+              worldHalfY={worldHalfY}
+              localRenderPosRef={localRenderPosRef}
+              getZoneTerrainZ={getZoneTerrainZ}
+              structureXrayActive={isYumenMode ? safeZoneStructureXrayActive : false}
+              onStructureXrayActiveChange={isYumenMode ? setSafeZoneStructureXrayActive : () => undefined}
+            />
           )}
           {!blueprintMode && <PickupBooks pickups={pickups} localRenderPosRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} />}
 
@@ -901,7 +1320,9 @@ export default function ArenaScene({
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
         const disguised = hasDisguiseBuff(opp.buffs);
-        const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs);
+        const oppShiFang = hasShiFangXuanJiBuff(opp.buffs);
+        const oppYumenSpectator = hasYumenSpectatorBuff(opp.buffs) || opp.yumenDefeated === true || yumenSpectatorUserIdSet.has(opp.userId);
+        const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs) && !(meYumenSpectator && oppYumenSpectator);
         if (hiddenByStealth) return null;
 
         const dx = opp.position.x - me.position.x;
@@ -929,8 +1350,8 @@ export default function ArenaScene({
               worldX={opp.position.x}
               worldY={opp.position.y}
               worldZ={opp.position.z ?? 0}
-              color={OPP_COLORS[i % OPP_COLORS.length]}
-              emissive={OPP_EMISSIVES[i % OPP_EMISSIVES.length]}
+              color={oppShiFang ? '#2acb6b' : (oppYumenSpectator ? '#8c8c8c' : OPP_COLORS[i % OPP_COLORS.length])}
+              emissive={oppShiFang ? '#0c5d34' : (oppYumenSpectator ? '#1d1d1d' : OPP_EMISSIVES[i % OPP_EMISSIVES.length])}
               hp={opp.hp}
               shield={opp.shield ?? 0}
               maxHp={opp.maxHp ?? maxHp}
@@ -954,10 +1375,12 @@ export default function ArenaScene({
               }
               worldHalfX={worldHalfX}
               worldHalfY={worldHalfY}
-              isStealthed={!disguised && hasSanliuXiaBuff(opp.buffs)}
+              isStealthed={!disguised && (hasSanliuXiaBuff(opp.buffs) || oppYumenSpectator)}
               isDisguised={disguised}
               hideHpBar={disguised || hasZhuYunHideBuff(opp.buffs)}
-              hpColorOverride={hasShiFangXuanJiBuff(opp.buffs) ? '#2acb6b' : undefined}
+              hideHealthMeter={oppYumenSpectator}
+              nameColorOverride={oppYumenSpectator ? '#b7b7b7' : (oppShiFang ? '#7cffb0' : undefined)}
+              hpColorOverride={oppShiFang ? '#2acb6b' : undefined}
               instantSnapAtRef={opponentInstantSnapAtRef}
               instantSnapWindowMs={600}
             />
@@ -966,12 +1389,12 @@ export default function ArenaScene({
       })}
 
       </>}  {/* end !blueprintMode */}
-      {!selfOnlyMode && isCollisionTest && collisionDebugRef && showCollisionShells && (
+      {!selfOnlyMode && isExportedMap && collisionDebugRef && showCollisionShells && (
         <CollisionProbeOverlay debugRef={collisionDebugRef} />
       )}
 
       {/* Player's own collision sphere (visible when Shell/Blueprint is on) */}
-      {!selfOnlyMode && isCollisionTest && collisionReady && (showCollisionShells || blueprintMode) && (
+      {!selfOnlyMode && isExportedMap && collisionReady && (showCollisionShells || blueprintMode) && (
         <PlayerCollisionSphere posRef={localRenderPosRef} worldHalfX={worldHalfX} worldHalfY={worldHalfY} playerRadius={COLLISION_TEST_VIS_RADIUS} />
       )}
     </>

@@ -6,6 +6,7 @@ import {
 } from "../services";
 import GameSession from "../models/GameSession";
 import { getUserIdFromCookie } from "./auth";
+import { DEFAULT_GAME_MODE, normalizeGameMode } from "../modes";
 
 const router = express.Router();
 
@@ -13,7 +14,7 @@ router.post("/create", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
     const { mode } = req.body;
-    const validMode = mode === 'pubg' ? 'pubg' : mode === 'collision-test' ? 'collision-test' : 'arena';
+    const validMode = mode === undefined ? DEFAULT_GAME_MODE : normalizeGameMode(mode);
     const game = await createGame(userId, validMode);
     res.json(game);
   } catch (err: any) {
@@ -76,7 +77,6 @@ router.get("/waiting", async (_req, res) => {
 
     const games = await GameSession.find({
       started: false,
-      players: { $size: 1 },
     }).sort({ createdAt: -1 });
 
     res.json(games);

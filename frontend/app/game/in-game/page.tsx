@@ -35,6 +35,7 @@ export default async function Page({ searchParams }: PageProps) {
     uid: string;
     username: string;
     displayName?: string;
+    isAdmin?: boolean;
   };
 
   // Don't fetch token on server - let client do it
@@ -46,6 +47,7 @@ export default async function Page({ searchParams }: PageProps) {
       gameId={gameId}
       selfUserId={me.uid}
       selfUsername={me.displayName || me.username}
+      selfIsAdmin={me.isAdmin === true}
       authToken=""
     />
   );

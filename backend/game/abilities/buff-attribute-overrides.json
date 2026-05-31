@@ -1,33 +1,54 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-24T05:11:37.133Z",
+  "updatedAt": "2026-05-31T22:39:31.964Z",
   "buffs": {
     "1001": {
-      "attribute": "毒性"
+      "attribute": "毒性",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1002": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "击倒",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1003": {
-      "attribute": "阳性"
+      "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1004": {
-      "attribute": "蛊"
+      "attribute": "蛊",
+      "description": "使目标无法施展任何招式",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1005": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕，冷却回复速度降低50%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1007": {
       "attribute": "无",
+      "description": "无法被目标选中且移动速度提高20%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1008": {
       "attribute": "未选择",
-      "name": "散流霞·隐藏"
+      "name": "散流霞·隐藏",
+      "description": "散流霞立刻生效：不可选中，处于位移状态",
+      "descriptionReviewStatus": "fixed"
     },
     "1009": {
       "attribute": "阴性",
+      "description": "受到的伤害降低40%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -35,10 +56,18 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
+    },
+    "1010": {
+      "attribute": "未选择",
+      "description": "隐藏BUFF:冲刺期间可转向",
+      "descriptionReviewStatus": "fixed"
     },
     "1011": {
       "attribute": "无",
+      "description": "隐身，受到的伤害降低20%，移动速度提高100%，施展招式则会出现",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -47,35 +76,58 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1012": {
       "attribute": "无",
+      "description": "隐身，移动状态降低50%，可以移动，施展轻功或任何招式将结束隐身状态",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1013": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1014": {
       "attribute": "无",
+      "description": "不受控制效果影响（被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": true
     },
     "1016": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1017": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
+    },
+    "1018": {
+      "attribute": "未选择",
+      "description": "会心提高3%",
+      "descriptionReviewStatus": "fixed",
+      "qinYinGongMingUnstealable": true,
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "1019": {
       "attribute": "无",
+      "description": "基础攻击力提高100%，免疫锁足、减速效果，移动速度降低50%，受到的伤害降低50%，运功不会被伤害打退",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -84,126 +136,217 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1020": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "虚化漂浮状态，被命中几率降低65%，移动速度提高30%，期间免疫控制",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1021": {
       "attribute": "无",
+      "description": "该状态下不受移动限制，移动不会使隐身消失",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1025": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1030": {
       "attribute": "阴性",
-      "manualCancelable": true
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1031": {
       "attribute": "无",
+      "description": "不受招式控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1033": {
       "attribute": "无",
+      "description": "不受控制招式影响(击退和被拉除外)，移动速度提高100%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1202": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1221": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "减疗50%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1310": {
       "attribute": "无",
+      "description": "自身免疫控制(击退和被拉除外)",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "1311": {
       "attribute": "无",
-      "name": "生太极·减速"
+      "name": "生太极·减速",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
     },
     "1320": {
       "attribute": "无",
+      "description": "无敌",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "1321": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "玄剑化生势",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1322": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "不可获得镇山河效果",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
     },
     "1323": {
       "attribute": "无",
+      "description": "无敌",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "1330": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1331": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏BUFF：存在期间，五方行尽锁足不会因受击解除",
+      "descriptionReviewStatus": "fixed"
     },
     "1332": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "化劲等级降低6%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1333": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "化劲等级降低12%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1334": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1335": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1336": {
       "attribute": "混元",
-      "manualCancelable": true
+      "description": "会心效果提高20%",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1337": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "经脉受到损伤，侠士目标招式调息速度降低1%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1340": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "倒在地上",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1342": {
-      "attribute": "阳性"
+      "attribute": "阳性",
+      "description": "移动速度降低20%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1343": {
       "attribute": "无",
+      "description": "天策府秘传武技，在自己的外功伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1344": {
       "attribute": "外功",
-      "manualCancelable": true
+      "description": "每秒恢复5%气血和内力值",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1345": {
       "attribute": "未选择",
       "hidden": true,
-      "name": "亢龙有悔·僵直"
+      "name": "亢龙有悔·僵直",
+      "description": "隐藏BUFF: 施放后定身：无法移动、跳跃、施放技能，且冻结在当前高度（空中不下落）",
+      "descriptionReviewStatus": "fixed"
     },
     "1346": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1347": {
-      "attribute": "阳性"
+      "attribute": "阳性",
+      "description": "移动速度降低48%，跳跃能力降低",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1348": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每层受到的伤害提高20%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "1349": {
       "attribute": "无",
+      "description": "不受招式控制效果影响（被拉，击退除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1350": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -212,20 +355,34 @@
         }
       ],
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1351": {
       "attribute": "未选择",
       "hidden": true,
-      "name": "龙啸九天·僵直"
+      "name": "龙啸九天·僵直",
+      "description": "隐藏BUFF: 施放后定身：无法移动、跳跃、施放技能，且空中不下落",
+      "descriptionReviewStatus": "fixed"
     },
     "1354": {
       "attribute": "无",
+      "description": "免疫控制效果，且受到的伤害降低30%",
+      "descriptionReviewStatus": "fixed",
+      "properties": [
+        {
+          "type": "减伤",
+          "value": 30,
+          "noOverride": true
+        }
+      ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "1355": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -234,10 +391,12 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2001": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -246,35 +405,58 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2003": {
       "attribute": "无",
+      "description": "免疫一切控制效果",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2004": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "每次受到攻击将受到额外伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
     },
     "2005": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2006": {
-      "attribute": "毒性"
+      "attribute": "毒性",
+      "description": "每3秒受到伤害，可叠加2层",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2201": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "减速20%，封轻功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2202": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2301": {
       "attribute": "阳性",
-      "name": "韦陀献杵·减防"
+      "name": "韦陀献杵·减防",
+      "description": "内功外功防御降低30%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2302": {
       "attribute": "无",
       "name": "韦陀献杵·增防",
+      "description": "内功外功防御提高30%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -283,14 +465,19 @@
         }
       ],
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2303": {
-      "attribute": "无"
+      "attribute": "无",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2304": {
       "attribute": "无",
       "name": "转乾坤·减伤",
+      "description": "不受无法施展内功招式效果的影响，并且自身受到的伤害降低60%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -299,57 +486,92 @@
         }
       ],
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2305": {
       "attribute": "无",
       "name": "转乾坤·免控",
+      "description": "免疫所有控制（击退和被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2306": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "受到的伤害提高30%，招式伤害提高30%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2307": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2308": {
       "attribute": "混元",
-      "manualCancelable": true
+      "description": "每秒恢复气血最大值的6%",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2309": {
       "attribute": "阴性",
-      "manualCancelable": true
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2310": {
       "attribute": "无",
+      "description": "免疫控制效果（被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2311": {
       "attribute": "无",
+      "description": "不受招式控制(击退和被拉除外)",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2312": {
       "attribute": "无",
+      "description": "不受控制及沉默招式影响",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2313": {
       "attribute": "混元",
-      "manualCancelable": true
+      "description": "化解自身气血最大值5%的伤害",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2314": {
       "attribute": "毒性",
-      "manualCancelable": true
+      "description": "化解最大生命值50%的伤害，并在10秒内恢复自身30%气血最大值",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2315": {
       "attribute": "蛊",
-      "manualCancelable": true
+      "description": "不受控制招式影响（击退和被拉除外）",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2316": {
       "attribute": "混元",
+      "description": "受到的所有伤害降低40%，运功不会被伤害击退，被攻击则消耗一层，每消耗一层恢复自身3%气血最大值",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -357,71 +579,116 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2317": {
       "attribute": "阴性",
-      "manualCancelable": true
+      "name": "圣明佑·闪避",
+      "description": "被命中几率降低20%",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2318": {
       "attribute": "无",
+      "description": "不会被招式命中",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2319": {
-      "attribute": "无"
+      "attribute": "无",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2320": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "被疗伤成效降低10%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2321": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2322": {
       "attribute": "无",
+      "description": "听雷伤害提升10%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": false
     },
     "2323": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "若施展轻功则无法运功2秒，并受到一次伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2324": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "无法运功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2325": {
       "attribute": "外功",
-      "name": "鹤归孤山"
+      "name": "鹤归孤山",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2326": {
       "attribute": "阴性",
+      "description": "化解受到的伤害55%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
-          "value": 40,
+          "value": 55,
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2327": {
       "attribute": "无",
+      "description": "不受招式控制效果影响",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2401": {
       "attribute": "无",
-      "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "description": "闪躲几率提高60%",
+      "descriptionReviewStatus": "fixed",
+      "qinYinGongMingStealable": true,
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2402": {
       "attribute": "外功",
-      "manualCancelable": true
+      "description": "每秒回复1%气血最大值",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2403": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "封轻功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2404": {
       "attribute": "无",
+      "description": "受到的伤害降低80%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -430,84 +697,155 @@
       ],
       "durationMs": 8000,
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2500": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2501": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2502": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2503": {
-      "attribute": "毒性"
+      "attribute": "毒性",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2504": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身，受到伤害增加10%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2506": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕，不受任何增益和伤害效果影响",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2507": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2508": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "受到的疗伤成效降低50%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2509": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2510": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏BUFF: 前半段：锁足不因受击解除",
+      "descriptionReviewStatus": "fixed"
     },
     "2511": {
-      "attribute": "阴性"
+      "attribute": "阴性",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2512": {
-      "attribute": "阳性"
+      "attribute": "阳性",
+      "description": "防御降低15%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2513": {
-      "attribute": "阳性"
+      "attribute": "阳性",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2600": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身，气血回复速度提高，定身期间若受到伤害，将触发“北斗”效果，眩晕5秒",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2601": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕。",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2602": {
       "attribute": "无",
+      "description": "招式伤害提高30%，不受任何控制影响，持续时间内受到攻击不会重伤",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": true
     },
     "2603": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "移动速度降低65%，无法被解除",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2604": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2605": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "蹑云逐月速度降低70%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2606": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "为释放者承受55%伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2607": {
       "attribute": "无",
+      "description": "携带玄水蛊术的目标为自身承担55%受到的伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2608": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2609": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2610": {
       "attribute": "无",
+      "description": "躲闪几率提高65%，受到伤害降低45%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -516,131 +854,231 @@
         }
       ],
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2611": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "施展3次招式后，将无法运功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2612": {
-      "attribute": "点穴"
+      "attribute": "点穴",
+      "description": "不能运功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2613": {
-      "attribute": "无",
+      "attribute": "未选择",
+      "hidden": true,
+      "description": "隐藏BUFF：隐身，免疫伤害（第二段冲刺期间）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
       "manualCancelExcluded": true
     },
     "2614": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "每3秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2615": {
-      "attribute": "外功"
+      "attribute": "外功",
+      "description": "防御降低5%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2616": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "每2秒受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2620": {
       "attribute": "无",
+      "description": "海雕承担受到的伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2625": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "恐惧。",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2630": {
       "attribute": "无",
+      "description": "免疫控制（被拉和击退除外）和无法运功效果。",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": true
     },
     "2631": {
       "attribute": "无",
+      "description": "受到伤害降低15%, 免疫控制(击退和被拉除外)",
+      "descriptionReviewStatus": "fixed",
+      "properties": [
+        {
+          "type": "减伤",
+          "value": 15,
+          "noOverride": false
+        }
+      ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2632": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2633": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2634": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2635": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "倒地",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2636": {
       "attribute": "无",
       "name": "灵辉",
+      "description": "免疫所有控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2637": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "2638": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "锁足",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2639": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2640": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2641": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "倒地",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2642": {
       "attribute": "无",
+      "description": "免疫任何伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2643": {
       "attribute": "无",
+      "description": "不受控制进入癫狂状态，移动速度提高50%，受到的伤害降低50%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
           "value": 50,
           "noOverride": true
         }
-      ]
+      ],
+      "timerVisible": true
     },
     "2644": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "受到“蚀心蛊”混乱效果的持续时间减半",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2645": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "处于“天禁空间”之中，不会受到伤害且召唤物失效",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2646": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "不会受到“鸿蒙天禁”禁锢效果",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2647": {
       "attribute": "无",
+      "description": "自身不受伤害，反弹敌方对自身释放的所有招式的伤害及效果",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": true
     },
     "2648": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "无法施展轻功招式，运功不会被打退、打断，不受缴械和无法运功效果的影响，持续12秒",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2649": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "移动速度降低90%，招式施展距离提高12尺，持续12秒",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2650": {
       "attribute": "无",
+      "description": "施展《一阳指》套路招式时会闪现至一个对自身有利的位置",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2652": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏：守缺式伤害提高30%，并击退目标2尺（0.2秒）",
+      "descriptionReviewStatus": "fixed"
     },
     "2654": {
       "attribute": "无",
+      "description": "凌空而起，跳跃获得强化，免疫控制（击退和被拉除外），技能施展距离提高5尺",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2701": {
       "attribute": "无",
+      "description": "受内功伤害降低30%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -649,10 +1087,13 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": true
     },
     "2702": {
       "attribute": "无",
+      "description": "受外功伤害降低30%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -661,36 +1102,56 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2703": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "无法施展轻功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
     },
     "2704": {
       "attribute": "无",
+      "description": "外功会心率提高10%，外功会心效果提高15%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2705": {
       "attribute": "无",
+      "description": "内功会心率提高10%，内功会心效果提高15%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2706": {
       "attribute": "无",
+      "description": "自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2707": {
       "attribute": "无",
+      "description": "会心提高10%，会心效果提高20%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2708": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "无法进入隐身状态",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2710": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -698,15 +1159,21 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2711": {
       "attribute": "无",
+      "description": "受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间每次受到攻击回复6%已损生命值",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2712": {
       "attribute": "无",
+      "description": "免疫控制效果，格挡远程弹道技能，受到伤害降低50%",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -715,79 +1182,132 @@
         }
       ],
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2713": {
       "attribute": "无",
+      "name": "不灭",
+      "description": "不会重伤",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2714": {
       "attribute": "无",
-      "qinYinGongMingUnstealable": true
+      "description": "效果期间可再次施展技能返回自身部分状态效果",
+      "descriptionReviewStatus": "fixed",
+      "qinYinGongMingUnstealable": true,
+      "timerVisible": true
     },
     "2715": {
       "attribute": "无",
+      "description": "免疫控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": true
     },
     "2716": {
       "attribute": "无",
-      "name": "逐云寒蕊·藏匿",
+      "name": "逐云寒蕊·隐匿",
+      "description": "隐匿，身形莫测无法被选中",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2717": {
       "attribute": "未选择",
       "hidden": true,
-      "name": "逐云寒蕊本体免疫"
+      "name": "逐云寒蕊本体免疫",
+      "description": "隐藏：逐云寒蕊本体免疫所有控制与锁定（眩晕/定身/锁足/击倒/击退/拉拽/沉默/封招）",
+      "descriptionReviewStatus": "fixed"
     },
     "2718": {
       "attribute": "无",
+      "description": "击退6尺内攻击自身的目标，免疫控制（击退和被拉除外）",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2719": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "无法运功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2720": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "移动速度降低60%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2721": {
-      "attribute": "混元"
+      "attribute": "混元",
+      "description": "不能运功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2722": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "缴械",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2723": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "缴械",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2724": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "缴械",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2725": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "不能施展轻功以外的招式",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2726": {
       "attribute": "无",
+      "description": "免疫任何伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelExcluded": true
+      "manualCancelExcluded": true,
+      "timerVisible": false
     },
     "2727": {
       "attribute": "无",
+      "description": "可施展特殊招式迅速离开战场",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2728": {
       "attribute": "无",
+      "description": "移动速度提高100%，免疫控制效果",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2730": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2731": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -795,10 +1315,12 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2732": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -806,10 +1328,12 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2733": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -817,10 +1341,12 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2734": {
       "attribute": "阳性",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -828,10 +1354,14 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2735": {
-      "attribute": "点穴"
+      "attribute": "点穴",
+      "description": "定身",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2736": {
       "attribute": "未选择",
@@ -847,6 +1377,8 @@
     },
     "2737": {
       "attribute": "阳性",
+      "description": "受到伤害降低30%，转移受到的伤害",
+      "descriptionReviewStatus": "fixed",
       "properties": [
         {
           "type": "减伤",
@@ -854,95 +1386,190 @@
           "noOverride": false
         }
       ],
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2738": {
       "attribute": "无",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2739": {
       "attribute": "无",
+      "description": "转移100%伤害",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2740": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "承担100%伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2741": {
       "attribute": "无",
+      "name": "骑御",
+      "description": "策马驰骋",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": false
     },
     "2742": {
       "attribute": "无",
+      "name": "驰骋",
+      "description": "外功基础攻击提高15%",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2743": {
       "attribute": "无",
+      "description": "自身免疫控制",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "2744": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "施展招式失去控制，将会命中随机其他目标",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "2745": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "不会再受“迷云”效果影响",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "3001": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "叠加至3层后会额外受到一次伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "9001": {
       "attribute": "外功",
       "description": "下一次跳跃将跳得更高",
-      "manualCancelable": true
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "9002": {
       "attribute": "无",
+      "description": "可以在空中多次跳跃",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingStealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "9003": {
       "attribute": "混元",
-      "manualCancelable": true
+      "description": "跳得更高",
+      "descriptionReviewStatus": "fixed",
+      "manualCancelable": true,
+      "timerVisible": true
+    },
+    "9004": {
+      "attribute": "未选择",
+      "descriptionReviewStatus": "fixed",
+      "qinYinGongMingStealable": true,
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "9101": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏DEBUFF：被击退中，行动受限（查询哪个技能调用）",
+      "descriptionReviewStatus": "fixed"
     },
     "9202": {
-      "attribute": "无"
+      "attribute": "无",
+      "description": "眩晕",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
     },
     "980001": {
       "attribute": "无",
+      "name": "藏匿",
+      "description": "取消该状态可恢复移动",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "980002": {
       "attribute": "无",
+      "description": "隐身并提高移动速度",
+      "descriptionReviewStatus": "fixed",
       "qinYinGongMingUnstealable": true,
-      "manualCancelable": true
+      "manualCancelable": true,
+      "timerVisible": true
     },
     "990100": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "990101": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "990102": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "descriptionReviewStatus": "fixed"
     },
     "990103": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏BUFF：10秒内定身递减。每次定身成功后层数+1并刷新计时，下一次定身持续时间按0.5^层数递减。",
+      "descriptionReviewStatus": "fixed"
+    },
+    "990200": {
+      "attribute": "无",
+      "description": "处于沙暴范围内，视野受阻，同时会持续受到伤害",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
+    },
+    "990201": {
+      "attribute": "无",
+      "description": "每层使受到狂沙、毒雾、风雪或水龙卷的伤害增加20%",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": true
+    },
+    "990202": {
+      "attribute": "无",
+      "description": "已重伤离场，观战中。",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
+    },
+    "990203": {
+      "attribute": "无",
+      "description": "你击伤了敌人。\\n每秒回复气血值，不可叠加。",
+      "descriptionReviewStatus": "fixed",
+      "qinYinGongMingUnstealable": true,
+      "manualCancelable": true,
+      "timerVisible": true
+    },
+    "990204": {
+      "attribute": "无",
+      "description": "比赛尚未开始，请大侠做好准备。\\n事成于和睦，力生于团结。多多沟通方可取得佳绩。\\n准备期间暂不可用技能、轻功",
+      "descriptionReviewStatus": "fixed",
+      "timerVisible": false
     },
     "999900": {
       "attribute": "未选择",
-      "hidden": true
+      "hidden": true,
+      "description": "隐藏BUFF：冲刺期间无法转向、无法施放技能或轻功，并免疫控制与击退。所有 dash 共用这一运行态。",
+      "descriptionReviewStatus": "fixed"
     }
   }
 }

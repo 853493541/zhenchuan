@@ -3,31 +3,1115 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
-## Jump intent lock and correction diagnostics (2026-05-26)
+## adControl 列表改为按系数表逐行驱动 (2026-05-31)
+
+## 首页下拉样式二次修复：去阴影、抗底部裁切、固定最小宽度 + 登录标题文案 (2026-05-31)
 
 **Implemented / checked**:
-- Backend jump takeoff now freezes the original movement/facing intent attached to the one-shot jump pulse, so a later face-turn packet cannot rewrite the already-queued jump direction before the tick consumes it.
-- `movement.ts` uses that frozen jump intent only for takeoff direction/backpedal validation, while live `facing` input still updates server-facing during airtime for ability logic.
-- Added frontend `[JUMP-CORRECTION]` console diagnostics when server reconciliation changes local airborne jump prediction, including XY/Z error, local/server positions, jump count, and local vertical velocity.
-- Follow-up: `[JUMP-CORRECTION]` warnings during 扶摇/second-jump sequences exposed delayed authoritative samples arriving behind the frontend's local jump phase. BattleArena now ignores airborne server samples that are still inside a velocity-based lag envelope, while keeping warnings/corrections for discrepancies beyond that envelope.
-- Follow-up: real integrated-browser Playwright testing showed quick 扶摇 second jumps can advance the frontend to local jump phase 2 while the latest server sample still reports an earlier `jumpCount`. BattleArena now also waits briefly for server jump phase to catch up before warning or correcting airborne prediction.
-- Follow-up: the same live browser test exposed the opposite timing failure under heavy scene load: the browser rendered near 9 FPS, so the fixed-per-tick local jump loop advanced slower than the 30 Hz backend. BattleArena now catches up fixed 30 Hz prediction ticks when the browser callback is delayed.
-- Follow-up: after fixed-step catch-up, only small server-landed/local-nearly-landed `soft-z` / `soft-xy` residuals remained. BattleArena now gives that narrow landing phase a grace window so local prediction can finish the final descent and drift without a false correction warning.
-- Follow-up: fresh live browser testing still showed server-landed samples racing ahead of a delayed local physics callback. BattleArena now advances local prediction immediately before reconciliation compares the server sample, and allows a larger catch-up window for delayed browser timers.
-- Follow-up: later live runs produced grounded/post-landing corrections with jump counts already zero or the server already landed while the client was in final descent/drift. `[JUMP-CORRECTION]` diagnostics now only classify active local jump-count prediction as a jump correction, with enough final-descent landing grace to cover normal 扶摇 tails while still leaving larger gaps visible.
-- Follow-up: live browser testing at 30 FPS still showed local jump phase 2 while the backend had already landed. The cause was async movement POST reordering: a later non-jump packet could advance `seq` before the quick second-jump packet arrived. `GameLoop.setPlayerInput` now accepts a wider short-window of out-of-order jump pulses and latches their frozen jump intent without rolling newer movement state backward.
-- Built backend and frontend after point 1, then rebuilt both after point 2 and restarted only the Zhenchuan `frontend` and `backend` PM2 apps.
+- `frontend/app/page.module.css`
+  - 移除模式下拉面板阴影（`box-shadow: none`）。
+  - 模式下拉按钮宽度改为固定最小宽度策略（`168px`），避免随选项文案频繁变化。
+  - 下拉面板层级提高（`z-index: 3000`）并支持向上展开样式（`.modeMenuListUp`），缓解底部被截断。
+  - “暂无可加入的房间”空态改为居中显示：跨列 + 最小高度 + flex 居中。
+- `frontend/app/page.tsx`
+  - `ModeDropdown` 增加可视区检测逻辑：打开时动态判断向下/向上展开（空间不足时自动上翻），减少底部裁切。
+- `frontend/app/login/page.tsx`
+  - 登录页 Logo 文案从“真传卡牌”改为“真传”。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，前后端均 `online`。
 
 **Lesson**:
-- One-shot jump input must preserve the full takeoff intent, not just the `jump` boolean. If the backend latches `jump: true` onto a newer facing/movement packet, local prediction can be right while the authoritative jump silently turns.
-- Jump correction warnings belong at the client/server reconciliation boundary, where they can show whether a visible snap/blend came from stale local prediction, delayed authoritative state, or a real backend rule mismatch.
-- For jump/fuyao correction logs, compare the position gap against expected local/server velocity over several ticks before treating it as a real desync. Otherwise normal movement POST + backend tick + broadcast latency can make the correct frontend prediction look ahead of the latest server sample and trigger false correction warnings.
-- If local `jumpCount` is ahead of the authoritative sample shortly after jump input, treat that sample as phase-stale before correcting. Velocity envelopes alone do not cover every quick second-jump case because phase mismatch can create a large Z gap even when both sides are individually following valid jump rules.
-- Client prediction that uses per-tick physics constants must catch up missed ticks when the browser frame/timer rate drops. Otherwise a low-FPS scene makes local jump airtime too long while the backend keeps simulating at 30 Hz, producing real correction warnings even with identical jump constants.
-- After the server has landed and the client is only slightly above it or drifting into the same landing, prefer a narrow landing grace over immediate soft correction. This avoids treating the last local descent/drift ticks as a desync while still allowing large gaps to warn/snap.
-- Before warning/correcting against a new authoritative sample, first advance local prediction to the current browser time. Otherwise React/WebSocket updates can compare fresh server state against stale local refs when the physics interval is delayed.
-- A grounded reconciliation after local `jumpCount` has reset is not a during-jump correction warning; keep the normal snap/blend behavior, but do not report it under `[JUMP-CORRECTION]`.
-- One-shot jump pulses need special handling in sequence filtering. Rejecting every lower `seq` can drop valid jumps when movement POSTs arrive out of order; accept nearby late jump pulses while keeping the latest non-jump movement/facing state authoritative.
+- 下拉面板在列表页场景应具备“动态翻转方向 + 高层级”能力，否则在不同窗口高度下容易出现底部裁切回归。
+
+## 首页模式下拉回归修复：非管理员无法展开 + 管理员选项裁切 (2026-05-31)
+
+**Implemented / checked**:
+- 修复 `frontend/app/page.tsx` 回归：之前 `useEffect` 在非管理员场景下会在每次 `openModeMenu=true` 时立即强制关闭，导致“点不开下拉”。
+- 现改为仅处理“非管理员且当前选中 legacy 模式”的回退逻辑，不再在打开菜单时自动收起。
+- 调整 `frontend/app/page.module.css` 模式下拉尺寸策略为内容自适应：
+  - `.modeMenuWrap` 改为 `width: max-content; max-width: 100%`；
+  - `.modeMenuButton` 改为 `width: max-content; max-width: 100%; white-space: nowrap`；
+  - `.modeMenuList` 改为 `width: max-content; min-width: 100%; max-width: min(90vw, 420px)`；
+  - `.modeMenuItem` 增加 `white-space: nowrap`。
+- 结果：非管理员可正常展开；管理员长选项不再半截裁切。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，前后端均 `online`。
+
+**Lesson**:
+- 权限校验 effect 应只处理“非法选中值修正”，不要耦合菜单开闭状态，否则容易引入“可见但不可操作”的交互回归。
+
+## 测试模式默认缩短CD + 首页模式下拉合并与缩窄 (2026-05-31)
+
+**Point 1 — 测试模式默认缩短CD开启 / Implemented**:
+- 在 `backend/game/services/battle/battleService.ts` 的 `initializeBattleState` 中新增默认值：`testShortCooldown: isTestMode`。
+- 结果：进入 `test` 模式开局即默认开启 3 秒冷却上限；其他模式默认不受此项影响。
+
+**Point 2 — 首页 legacy 模式并入主模式下拉，且仅管理员可见 / Implemented**:
+- 在 `frontend/app/page.tsx` 将主模式与 legacy 模式选择器合并为单一 `ModeDropdown`。
+- legacy 选项仍仅在 `me?.isAdmin === true` 时出现在合并后的下拉中。
+- 非管理员若本地缓存了 legacy 模式，会自动回退到默认主模式（玉门关基础）。
+
+**Point 3 — 模式下拉宽度缩小 30% / Implemented**:
+- 在 `frontend/app/page.module.css` 将 `.modeMenuWrap` 的 `min-width` 从 `210px` 调整为 `147px`（减少 30%）。
+
+**Verification (each point followed protocol build/restart)**:
+- 后端构建：`cd backend && npm run build` 通过（每个点后均执行）。
+- 前端构建：`cd frontend && npm run build` 通过（每个点后均执行）。
+- 进程重启：`pm2 restart frontend backend` 成功（每个点后均执行）。
+
+**Observed (existing, not introduced by this change)**:
+- frontend 仍有历史 `MaxListenersExceededWarning`。
+- backend error log 仍以 lag probe / ws 断连为主，启动路径正常。
+
+**Lesson**:
+- 模式入口应保持“单入口 + 权限过滤”而非多入口分裂，可降低选择复杂度并避免非管理员误触 legacy 路径。
+
+## 驭羽骋风双 Buff 合并为单 Buff (2026-05-31)
+
+**Implemented / checked**:
+- 在 `backend/game/abilities/abilities.ts` 中将 `yu_yu_cheng_feng` 的 Buff 从 2 个合并为 1 个：
+  - 保留 `buffId: 1354`（名称 `驭羽骋风`，持续 3 秒）；
+  - 移除 `buffId: 1355`（`驭羽骋风·减伤`）；
+  - 将 `DAMAGE_REDUCTION 0.3` 并入 `1354`，使单 Buff 同时包含控制免疫与 30% 减伤。
+- 同步更新该招式说明文案，改为仅显示一个 `驭羽骋风` Buff，效果包含“免疫控制 + 受到伤害降低30%”。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，`frontend/backend` 均为 `online`。
+
+**Observed (existing, not introduced by this change)**:
+- `frontend` 日志仍有历史 `MaxListenersExceededWarning`。
+- `backend` error log 主要为 lag probe / websocket 断开日志，启动流程正常。
+
+**Lesson**:
+- 当技能语义要求“一个状态承载多个效果”时，应优先在同一 Buff 上聚合效果，避免 UI 状态栏重复展示造成误读。
+
+## 测试模式新增“测试缩短CD(3秒)”按钮，对齐玉门关行为 (2026-05-31)
+
+**Implemented / checked**:
+- 在 `frontend/app/game/screens/in-game/components/BattleArena/BattleArena.tsx` 将“测试缩短cd”开关从“仅玉门关可见”调整为测试面板通用可见。
+- 开关调用按模式分流：
+  - 玉门关继续走 `/api/game/cheat/yumen/test-short-cooldown`。
+  - 非玉门关测试模式走新接口 `/api/game/cheat/test-short-cooldown`。
+- 前端冷却显示逻辑改为统一判定：`safeZone.testShortCooldown || state.testShortCooldown`，保证非玉门关下也按 3 秒上限显示与结算。
+- 后端新增通用接口 `/cheat/test-short-cooldown`（`backend/game/routes/draft.routes.ts`），写入 `state.testShortCooldown` 并立即裁剪运行中冷却（含充能恢复队列）到 90 tick（3 秒）。
+- `playService` 运行时冷却判定扩展为读取顶层 `state.testShortCooldown`（同时兼容玉门关的 `safeZone.testShortCooldown`）。
+- 同步补充前后端 `GameState` 类型字段 `testShortCooldown?: boolean`。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，两个进程 `online`。
+
+**Observed (existing, not introduced by this change)**:
+- `frontend` 进程日志存在历史 `MaxListenersExceededWarning`。
+- `backend` 错误日志主要为历史 lag probe/deprecation 输出，本次启动阶段未见新的阻断性报错。
+
+**Lesson**:
+- “测试开关”若仅挂在 `safeZone` 上会把能力限制在特定模式；通用测试能力应有顶层状态位，并允许模式专属状态并存以保持兼容。
+
+### adControl 4列布局 + 状态置顶 + 数值近实时自动保存 (2026-05-31)
+
+**Textbox readability polish / checked**:
+- 用户反馈“输入框看不到数字”，定位到 `adSettingRow` 右侧控件列过窄（历史 `104px` 设计与新 `文本系数 > 输入框` 组合冲突）。
+- 调整 `frontend/app/ability-editor/page.module.css`：
+  - `adSettingRow` 右侧列改为 `minmax(220px, 42%)`；
+  - `adSettingControl` 设置最小宽度，输入框最小宽度增大；
+  - 输入框字号/对比度提升，确保数字可读；
+  - 文本系数区域加可视化容器，避免和输入框挤压重叠。
+
+**Lesson**:
+- 新增快捷操作控件后必须同步回算“最小可读输入宽度”，否则会出现功能增强但主输入可用性退化。
+
+**Follow-up UI efficiency update / checked**:
+- 将 `adControl` 桌面布局改为固定 4 列同屏（`repeat(4, minmax(0, 1fr))`），避免第 4 列掉到第二行。
+- 在每条可编辑加成行增加“文本系数一键覆盖”控件，顺序为：`文本系数值  >  [当前输入框]`。
+- `>` 点击后会把输入框值直接覆盖成文本系数首个数字并立即保存，满足快速批量对齐需求。
+
+**Lesson**:
+- 审核/录入密集型页面应提供“来源值一键覆盖当前值”的短路径，显著减少键盘输入与焦点切换成本。
+
+**Implemented / checked**:
+- `frontend/app/ability-editor/AdControlTab.tsx` 改为 4 列：`无加成 / 需要补充 / 未修正 / 已修正`，并将 `无加成` 技能从 `已修正` 列中拆出到最左列。
+- 对“状态切换为 `需要补充` 或 `已修正`”的技能增加置顶逻辑：切换成功后会在目标列顶端显示，减少来回滚动查找。
+- 数值输入增强为“接近自动处理”：
+  - 保留 `onBlur` 立即保存；
+  - 新增短延迟自动保存（输入后约 450ms 自动提交）；
+  - 避免依赖点击 `已修正` 才触发保存。
+
+**Lesson**:
+- 评审流 UI 里，“状态驱动的快速回看”很关键；状态更新后把目标条目置顶，能显著降低大列表操作成本。
+
+### no_damage_output_coeff_check.csv 批量入表（无加成 + 已修正）(2026-05-31)
+
+**Follow-up fix / checked**:
+- 发现 `AdControlTab` 的行匹配逻辑会把 `无加成` 行通过 fallback 绑定到任意可用 `damageSettings`，导致这类行出现可编辑输入框（看起来像在改某个真实数值）。
+- 已在 `frontend/app/ability-editor/AdControlTab.tsx` 将 `outputType === "无加成"` 的行从“打分匹配”和“fallback 匹配”中都排除，强制保持 `setting = null`，仅显示灰态不可编辑。
+
+**Lesson**:
+- 审查用途的“展示行”如果业务语义是“无系数”，必须在匹配层做硬约束（不可被 fallback 绑定），不能只靠标签文本区分。
+
+**Implemented / checked**:
+- 使用 `reports/no_damage_output_coeff_check.csv` 作为来源，把其中 94 个技能批量加入 `adControl` 行数据源。
+- 在 `frontend/app/ability-editor/adControlCoeffRows.ts` 为每个技能新增一行：
+  - `outputType: "无加成"`
+  - `textCoeff: ""`
+  - `currentCoeff: ""`
+- 在 `backend/game/abilities/ability-property-overrides.json` 将这 94 个技能对应的 `adControlStatus` 全部设为 `fixed`（已修正）。
+- 复核脚本确认：`missingNoBonusRows=0`、`notFixedStatus=0`。
+
+**Lesson**:
+- 对“无伤害/无系数”技能，前端应显式建模为 `无加成` 行并配合 `fixed` 状态，否则这类技能会在审查列表中缺席，导致审查覆盖面不完整。
+
+### 继续收敛剩余未匹配行（18 → 0）(2026-05-31)
+
+**Implemented / checked**:
+- 继续按“定义字段 + 提取字段 + 运行时读取同字段”的方法，把剩余未匹配行全部补齐，涉及能力：`银月斩 / 玉石俱焚 / 跃潮斩波 / 鹤归孤山 / 剑主天地 / 绛唇珠袖 / 连环弩 / 龙战于野 / 绿野蔓生 / 灭 / 人剑合一 / 万剑归宗 / 五方行尽 / 引窍 / 狂龙乱舞`。
+- 在 `abilityPropertySystem.ts` 扩展伤害提取：
+  - 新增类型标签与提取类型：`WUFANG_XINGJIN_AOE`、`YIN_YUE_ZHAN`、`PLACE_GROUND_ZONE`。
+  - 增加非标准路径字段提取：`landingDamage / landDamage / closeBonusDamage / strikeDamage / explodeDamage / extraDamageValue / settleMultiplier / retaliateDamage / tickDamage1~3 / extraPerStackDamage`。
+- 在 `immediateEffects.ts`、`GameLoop.ts`、`playService.ts` 将原硬编码伤害改为读取上述字段（包括 dash 落地、dot 结算、叠层附加伤害、反击伤害、触发伤害等）。
+- `绛唇珠袖` 过程中验证到“自定义 effect type 在归一化/编辑器提取链路中可能丢失”的问题，最终改为使用标准 `DAMAGE` effect 作为系数载体，保证 `damageSettings` 稳定生成。
+- 用与前端 `AdControlTab` 同逻辑的脚本复核，最终 `unmatchedCount = 0`。
+
+**Lesson**:
+- 对编辑器可调系数，优先复用标准 effect type 作为载体；临时自定义 type 若未同时接入完整类型链路，容易在快照/提取阶段被忽略，导致“代码有值但 UI 无匹配”。
+
+**Implemented / checked**:
+- 用户要求不是只重置状态，而是按 `reports/damage_output_coeff_check.md` 逐行重建 `adControl` 列表。
+- 新增 `frontend/app/ability-editor/adControlCoeffRows.ts`，由系数表解析出的行数据驱动 UI（当前 90 行）。
+- `frontend/app/ability-editor/AdControlTab.tsx` 改为 row-entry 模式：按系数表每一行绑定技能与对应第 N 个加成项，不再仅按技能去重。
+- 进一步修正匹配策略：不再用“第 N 项”硬匹配，改为结合 `输出方式`（持续/额外/引爆）与系数字面值（`当前系数` + `文本系数` 数字候选）对 `damageSettings` 做打分分配，显著减少“未找到与系数表行匹配的加成项”。
+- 额外修复 `棒打狗头` 无法匹配根因：其伤害来自自定义效果 `BANG_DA_GOU_TOU`，此前不在 `abilityPropertySystem.ts` 的伤害提取集合里，导致 `damageSettings` 为空。已把该效果加入 `DAMAGE_VALUE_EFFECT_TYPES` 与标签映射，UI 可正常显示并编辑该伤害系数。
+- 继续修复 3 个“只有 1 个系数却无法匹配”的技能：`沧月 / 帝骖龙翔 / 撼地`。根因是这三者的伤害不在标准 `effect.value` 路径（两者为运行时硬编码，另一个只有群体加 buff），导致 `damageSettings` 为空。已把伤害参数改为可配置字段并接入提取：
+  - `沧月`: `CANG_YUE_AOE.damageValue`
+  - `帝骖龙翔`: `AOE_APPLY_BUFFS.damageValue`
+  - `撼地`: `GROUND_TARGET_DASH.aoeDamage`
+  同步把运行时结算改为读取这些字段，确保编辑器改值后对战结算也生效。
+- adControl 展示结构调整：同一技能的多条系数行合并在同一技能卡片内展示，不再按“每行一张卡”拆散；技能图标在该页缩小；若 `md` 有行但代码侧未匹配到 setting，仍展示该行 `输出方式`，并将输入框灰态禁用（占位“未匹配”）。
+- 按“手动逐条对齐”先修前 5 条未匹配：`横扫六合(造成伤害) / 九转归一(造成伤害) / 烈日斩(额外造成伤害) / 破风(造成伤害) / 潜龙勿用(造成伤害)`：
+  - `横扫六合`: 将 `HENG_SAO_LIU_HE_AOE` 纳入伤害提取类型，直伤行可独立匹配。
+  - `九转归一`: 为 `KNOCKBACK_DASH` 增加 `wallHitDamage` 并在撞墙结束时结算该伤害，新增可编辑项。
+  - `烈日斩`: 增加 `extraDamageValue`，把“银月斩存在时的额外伤害”从倍率翻倍改为可独立系数字段。
+  - `破风`: `PO_FENG_STRIKE` 增加 `strikeDamage`，不再只有流血 DoT 可编辑。
+  - `潜龙勿用`: `QIAN_LONG_WU_YONG` 增加 `damageValue`，将伤害与范围参数拆开。
+  校验脚本确认以上 5 条现在均可匹配到对应 setting。
+- 每条加成标签改为显示系数表“输出方式”（如 `造成持续伤害`），替换原内部技术标签（如 `读条完成 · 延时范围伤害倍率`）。
+- 删除中间版本 `frontend/app/ability-editor/adControlCoeffWhitelist.ts`，避免与逐行数据源冲突。
+
+**Lesson**:
+- 当业务数据源是“逐行对照表”时，前端必须按行建模；若按技能去重，会丢失同名技能的多输出方式审查维度。
+
+## 离线包下载入口迁移与管理员限制 (2026-05-31)
+
+**Implemented / checked**:
+- 将 `下载离线包` 从资源管理器页面工具栏移除（`frontend/app/resource-pack/page.tsx`）。
+- 在顶部账户图标菜单（`frontend/app/components/auth/UserMenu.tsx`）新增 `下载离线包` 条目，并放在管理员工具区，仅 `isAdmin === true` 可见。
+- 对下载接口 `frontend/app/resource-pack/package/route.ts` 增加服务端管理员鉴权：转发 cookie 到后端 `/api/auth/me`，非管理员返回 `403`，避免非管理员通过直链下载。
+
+**Lesson**:
+- 管理员能力限制不能只做前端隐藏；高价值下载入口应同时做接口层鉴权，避免直链绕过 UI。
+
+## 主页与资源管理器细化：未通过隐藏房间 + 常驻进度条 + 通过提示 (2026-05-31)
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 调整为“校验未通过时不显示房间列表”，通过后才渲染房间卡片区域。
+- 资源管理器 `frontend/app/resource-pack/page.tsx` 去除下载区域重复百分比，仅保留一处百分比展示。
+- 资源管理器进度条改为常驻显示（只要有资源清单就显示），下载完成或暂停后不再隐藏。
+- 首页新增通过提示：资源 gate 从未通过切换为通过时，弹出系统 toast `资源已验证完整`。
+
+**Lesson**:
+- 资源流程提示应避免重复数值和状态跳变，常驻进度条与通过瞬时提示组合更利于用户判断当前可加入状态。
+
+## 首页通过态入口整理：新增资源管理器并移除100%文案 (2026-05-31)
+
+## 资源管理器收口：校验通过自动关闭 + 进度条回归 + 文案裁剪 (2026-05-31)
+
+## 通过态资源管理器行为回调：禁用自动校验与自动关闭 (2026-05-31)
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 移除 `resource-pack-verify-pass` 自动关闭逻辑，资源管理器不再因“校验通过”被自动关闭。
+- 资源管理器页 `frontend/app/resource-pack/page.tsx` 调整 query-action 自动触发策略：当 `action=check` 且本地通过标记已是 true 时，不再自动执行校验。
+- 首页去掉通过流程中残留的 `资源包校验中…` 提示行，避免进入实际游戏流程仍出现“校验xxx”提示。
+
+**Lesson**:
+- 通过态下资源管理器应是“手动工具窗口”而非自动流程步骤；避免自动触发与自动关闭可减少误判和打断测试。
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 新增对 `resource-pack-verify-pass` 消息处理：资源管理器内执行校验并通过后，主页会自动关闭资源管理器浮层并立即置为通过态。
+- 资源管理器页 `frontend/app/resource-pack/page.tsx` 恢复主面板进度条显示：在 `downloading/importing` 状态显示百分比与进度条。
+- 资源管理器页移除 `浏览器缓存` 统计卡片与 `缓存服务已启用/不可用` 文案，保留关键下载/校验信息。
+- 首页移除未通过时提示文案 `资源包未完整：请先 下载 / 上传 / 校验`，仅在检查进行中显示 `资源包校验中…`。
+
+**Lesson**:
+- 资源管理器作为操作面板应优先呈现“当前动作进度”，而非暴露实现细节（缓存服务、配额）文案；通过态联动应以显式事件收口，避免用户额外手动关闭。
+
+**Implemented / checked**:
+- 在首页通过态操作行新增 `资源管理器` 按钮（`frontend/app/page.tsx`），点击后直接打开嵌入式 `校验资源包` 窗口，便于在通过态直接做清除/校验测试。
+- 调整首页 gate 文案渲染：通过态不再显示 `资源包校验：100%（可加入房间 / 可自动加入）`，仅在“校验中”或“未完整”时显示提示。
+- Live 页面确认：通过态可见 `资源管理器`，点击后出现 `校验资源包` 对话框；通过态顶部不再出现原 100% 提示文案。
+
+**Lesson**:
+- 通过态首页应突出可操作入口（资源管理）而不是重复状态描述，减少视觉噪音并方便回归测试。
+
+## 资源包反复缺文件最终修复：移除 _next/static + 显式动作同步 (2026-05-31)
+
+**Implemented / checked**:
+- 根因确认：资源包清单包含了构建产物目录 `_next/static`，会引入部署期 hash 文件与陈旧 chunk，导致下载阶段出现 404，进而“手动校验也不通过”。
+- 在 `frontend/app/resource-pack/resourcePackFiles.ts` 中彻底移除 `_next/static` 目录采集，只保留 public 下稳定资源（icons/fonts/js/lib/tools/game/maps）。
+- 在主页与嵌入资源包页之间补上显式状态同步：
+  - 资源包页 `done/ready/failed` 向父页 `postMessage`。
+  - 主页监听该消息即时更新 gate（无需依赖切 tab/重进才刷新）。
+  - 关闭资源包面板时额外做一次显式 gate 刷新。
+- Live Playwright 复核：
+  - 资源包页总量稳定为 `1624`，下载到 `1624/1624` 后可通过。
+  - 主页“下载到100%后”可自动切换为通过态。
+  - 主页“上传离线包后”可自动触发校验并切换为通过态。
+
+**Lesson**:
+- 离线资源包不能依赖 Next 构建输出目录作为稳定内容来源；这会把部署时序问题直接暴露给终端用户。
+
+## 资源包通过后主页不解锁：显式动作同步修复 (2026-05-31)
+
+**Implemented / checked**:
+- 修复“下载到100%后主页仍不通过 / 手动校验也不解锁”的状态同步断点：
+  - 在嵌入资源包页（`frontend/app/resource-pack/page.tsx`）对 `done/ready/failed` 状态发送 `postMessage`（`type: resource-pack-gate`，含 `ready` 布尔值）。
+  - 在主页（`frontend/app/page.tsx`）监听该消息并即时更新 gate 状态，不再依赖 focus/re-enter 才反映结果。
+  - 关闭资源包面板时再执行一次显式 gate 刷新，确保下载/校验后的最终状态落地。
+- 保持“仅进入页面自动检查一次”的策略不变；新增同步仅发生在用户显式下载/校验操作路径。
+
+**Lesson**:
+- 当主页与嵌入页共享同一状态门禁时，必须有显式跨 frame 状态同步；否则会出现“子页已100%，父页仍锁定”的假失败。
+
+## 资源包两段式主页 + 缺失反复问题修复 (2026-05-31)
+
+**Implemented / checked**:
+- 主页改为两段式显示（`frontend/app/page.tsx`）：
+  - 未通过资源包 gate 时，只显示 `下载资源包 / 上传离线包 / 校验`，隐藏 `模式选择 / 开始 / 创建 / 自动加入`。
+  - 通过 gate 后，隐藏资源包三按钮，显示 `模式选择 / 开始 / 创建 / 自动加入`。
+- 按要求移除“切出切回就重检”行为：删除 `focus` 触发重检与关闭面板后自动重检，改为“进入页面时检查一次”，其余仅由显式操作（如上传离线包后的自动校验）更新状态。
+- 修复“总是差几个文件、反复掉到 1672/1677”根因（`frontend/app/resource-pack/resourcePackFiles.ts`）：
+  - 从资源包清单中排除 Next 构建易变运行时文件（如 `webpack-*.js`、`_buildManifest.js`、`_ssgManifest.js` 及若干 manifest）。
+  - 避免每次前端重新构建后，旧包被新 hash 文件拉低完整度而反复缺失。
+
+**Lesson**:
+- 资源包清单必须避免把部署期易变的前端运行时文件作为硬性资源，否则会在每次发布后造成“用户包看似又缺几个”的体验。
+
+## 加载离线包移到主页 + 导入完成自动校验 (2026-05-31)
+
+**Implemented / checked**:
+- 将 `加载离线包` 从资源包面板中移出，新增到主页操作行（`frontend/app/page.tsx`）作为独立按钮。
+- 主页新增离线包导入实现：选择 `.tgz/.tar.gz` 后直接写入 `CacheStorage`，不再要求用户进入资源包面板执行导入。
+- 离线包导入完成后自动调用主页 gate 校验（`checkResourcePackGate.current()`），无需用户再手点一次 `校验`。
+- 资源包面板（`frontend/app/resource-pack/page.tsx`）移除 `导入离线包` 按钮与对应导入逻辑，仅保留下载离线包/下载资源包/校验/清除。
+
+**Lesson**:
+- 当用户流程要求“主页一步完成导入并可加入”，应把离线包入口前移到首页并把校验串到导入成功回调里，避免跨面板二次操作。
+
+## 资源包自动补齐（免点击）+ 去除缓存完整度条 (2026-05-31)
+
+**Implemented / checked**:
+- 首页 `frontend/app/page.tsx` 增加资源包自动补齐：
+  - gate 检测到未满 100% 时，后台自动下载缺失文件到 CacheStorage（并发 4），无需用户手动点 `继续下载/校验`。
+  - 补齐完成后自动复检 gate，房间自动解锁。
+  - 增加提示文案：`资源包自动补齐中…完成后将自动解锁房间`。
+- 资源包页 `frontend/app/resource-pack/page.tsx` 去除“缓存完整度”进度条显示（主视图 + 弹窗中的缓存完整度条），避免用户被条形图误导。
+- 资源包页首次进入自动触发缺失文件下载（若未满），不要求用户手动点击下载按钮。
+
+**Lesson**:
+- 对外发给用户的资源包流程应以“自动收敛到可加入”优先，减少手动操作入口和状态分叉。
+
+## 资源包策略回调：取消隐式补齐，仅保留显式下载到100% (2026-05-31)
+
+**Implemented / checked**:
+- 按最新需求回调方案：不再在首页后台自动补齐缺失资源，避免出现“未操作也在偷偷下载 extras”的行为。
+- 移除 `frontend/app/page.tsx` 中自动补齐逻辑与对应提示文案，恢复为显式校验/下载驱动的 gate。
+- 移除 `frontend/app/resource-pack/page.tsx` 的页面加载后自动触发下载，恢复为用户显式点击下载。
+- 保留“去掉缓存完整度条”改动，避免误读百分比条。
+
+**Lesson**:
+- 资源包策略需要严格区分“显式下载包内容”和“隐式后台补齐”；当用户要求只信任下载包本身时，应避免任何后台兜底下载。
+
+## 资源包“显示100%但大厅仍锁”定位与修复 (2026-05-31)
+
+**Implemented / checked**:
+- 定位到资源包页缓存完整度百分比使用 `Math.round`，在 `1674/1677` 这类接近值时会显示 `100%`，但实际上并未全量缓存。
+- 大厅 gate 用的是严格判定（必须 `readyCount === assets.length`），因此会继续锁房，形成“资源页看起来100%但不能加入”的表象冲突。
+- 在 `frontend/app/resource-pack/page.tsx` 增加 `toPercent()`：仅当 `value >= total` 才显示 `100`，否则使用向下保留 1 位小数，避免误报 100%。
+- Live Playwright 复核：不完整缓存显示 `99.8% (1674/1677)` 且大厅保持锁定；补齐到 `1677/1677` 后主页状态切换为 `资源包校验：100%（可加入房间 / 可自动加入）`，房间状态变为 `🟢 等待加入`。
+
+**Lesson**:
+- gate 与展示口径必须一致；任何会把“未完成”四舍五入成“100%”的 UI 都会制造假通过反馈。
+
+## 资源包按钮行为更新：先校验再继续下载 + 下载中仅主按钮切换 (2026-05-31)
+
+**Implemented / checked**:
+- 在 `frontend/app/resource-pack/page.tsx` 调整首按钮文案逻辑：
+  - 部分缓存（`cachedCount > 0 && < assets.length`）显示 `继续下载`。
+  - 下载进行中显示 `暂停下载`，再次点击会暂停当前下载。
+  - 全量完成后显示 `重新下载资源包`。
+- 修复“进入页面后再次全量重下”问题：移除下载前强制 `caches.delete(CACHE_NAME)`，改为先扫描缓存，仅下载缺失文件（missing-only resume）。
+- 校验/下载的 cache 命中统一为双路径匹配（绝对 URL + 相对 URL），减少误判导致的重复下载。
+- 下载中的顶部栏不再整体灰掉：`busy` 仅包含 `checking/importing`，下载时其它按钮保持可用；主绿色按钮独立切换为 `暂停下载`。
+
+**Live check (Playwright, production URL)**:
+- 在嵌入资源包窗口看到部分缓存状态时，主按钮显示 `继续下载`。
+- 点击后主按钮切换为 `暂停下载`，其余按钮（下载离线包/导入离线包/校验/清除）保持可点击（未 disabled）。
+
+**Lesson**:
+- 对大资源包流程应优先做“增量恢复下载”，并把“暂停/继续”集中在主按钮，避免把辅助操作一并禁用造成交互阻塞。
+
+## Live Playwright验收：资源包100%后首页解锁/自动加入 (2026-05-31)
+
+**Implemented / checked**:
+- 按项目要求在 `https://zhenchuan.renstoolbox.com/` 做了真实 Playwright 流程验证（非 localhost）。
+- 复现起始状态：主页提示 `资源包校验未达100%，房间已锁定。请先完成“校验”。`，房间为灰锁状态。
+- 在主页嵌入的资源包窗口执行 `下载资源包`，进度从 `0/1677` 到 `1677/1677`，状态 `已完成`，完整度 `100%`。
+- 关闭资源包窗口后，首页出现短暂 `资源包校验中…`，随后自动触发加入房间并跳转到 `/game/room?...`（说明 gate 已通过，auto-join 生效）。
+- 再次回到首页后，仍会在校验完成后自动进入房间，行为与“通过后可加入”预期一致。
+
+**Lesson**:
+- 线上验证应以“是否能从锁定态切换到可加入态（或自动加入）”为判定标准，而不只看资源包页单点 100% 文案。
+
+## Homepage 校验假阴性（资源页100%但大厅仍锁）修复 (2026-05-31)
+
+**Implemented / checked**:
+- 复盘首页 gate 与资源包页校验结果不一致：资源包页已显示 100%，首页仍长期灰房锁定。
+- 在 `frontend/app/page.tsx` 中对 gate 逻辑做对齐修复：
+  - 优先读取资源包页写入的本地通过标记 `zhenchuan.resourcePack.ready.v1`（同源同键），避免 UI 结果分叉。
+  - 严格校验时对 CacheStorage 查询改为“双路径匹配”：先绝对 URL，再原始相对 URL，降低键形态差异导致的误判。
+  - 严格校验完成后同步回写/清理同一 ready 键，确保两页状态收敛。
+
+**Lesson**:
+- 前端多入口 gate 场景必须共享同一通过信号并保持回写一致；仅做各自独立重算很容易出现“一个页面通过、另一个页面不通过”的假阴性体验。
+
+## Homepage auto-join toggle + 100% 校验 join gate (2026-05-31)
+
+**Implemented / checked**:
+- In `frontend/app/page.tsx`, replaced implicit auto-join behavior with a user-facing toggle button (`自动加入：开启/关闭`) and persisted it to localStorage.
+- Added a frontend resource-pack gate check on homepage:
+  - Fetches `/resource-pack/manifest`.
+  - Verifies every manifest asset exists in Cache Storage under the pack cache name.
+  - Only when cached coverage is 100% is room joining enabled and auto-join allowed.
+- Added UI lock behavior for unverified users:
+  - Waiting rooms become gray and non-clickable.
+  - Status text shows `需先完成校验（100%）`.
+  - Auto-join is blocked while gate is not ready.
+- Added focus/overlay-close re-check so users who finish 校验 in the resource-pack iframe get gate status refreshed on homepage.
+
+**Lesson**:
+- Auto-join should be opt-in and should share the same eligibility gate as manual join. Otherwise users can bypass client readiness constraints through background polling side effects.
+
+## Resource pack freshness + coverage expansion (2026-05-31)
+
+**Implemented / checked**:
+- Audited the resource-pack pipeline (`/resource-pack/manifest`, `/resource-pack/package`, downloader/importer, service worker path filter).
+- Fixed freshness bug in `frontend/app/resource-pack/page.tsx`: `下载资源包` no longer skips already-cached files. It now recreates cache content and re-fetches all manifest assets with `cache: "reload"`, so clicking download gets the newest version.
+- Expanded collector coverage in `frontend/app/resource-pack/resourcePackFiles.ts`:
+  - Added extensions: `.wem`, `.js`, `.html`, `.txt`.
+  - Added tool/static paths: `/js/**`, `/lib/**`, and root files `export-reader.html`, `full-validator.html`, `mesh-inspector.html`, `resource-pack-sw.js`.
+  - Added MIME mappings for the new file types.
+- Updated `frontend/public/resource-pack-sw.js` to serve cached `/js/**` and `/lib/**` requests.
+- Live verification against running app manifest (`http://127.0.0.1:3000/resource-pack/manifest`) confirmed inclusion of previously missing assets:
+  - `hasWem: true`
+  - `hasJsTool: true`
+  - `hasLibTool: true`
+  - `hasExportReader/full-validator/mesh-inspector: true`
+
+**Lesson**:
+- Offline-pack freshness cannot rely on “if cached then skip” logic; when URLs stay stable, explicit re-fetch is required to avoid stale assets. Coverage should be driven by actual runtime tool/static paths, not only core game folders.
+
+## Homepage legacy dropdown admin-only + create label update (2026-05-31)
+
+**Implemented / checked**:
+- In `frontend/app/page.tsx`, restricted `legacy modes` dropdown visibility to admins only (`me?.isAdmin === true`).
+- Added a non-admin safety fallback: if a legacy mode was previously saved in localStorage, homepage auto-resets selection to default mode and closes legacy dropdown state.
+- Updated the middle large start button text from `开始 XXX` to `创建 XXX` while keeping loading text unchanged (`创建中…`).
+
+**Lesson**:
+- Role-gating homepage controls should also sanitize persisted selections; hiding the UI alone is insufficient when prior localStorage state can still point to restricted options.
+
+## Yumenguan testing UI admin gating + add-skill default off (2026-05-31)
+
+**Implemented / checked**:
+- Wired authenticated `isAdmin` from server-side in-game pages into `InGameClient`, then into `BattleArena` as a prop.
+- Added a Yumenguan gate in `BattleArena`: only admins can access test-only surfaces there (ESC `测试` tab, on-screen `控制面板`, and test-only `打开测试添加技能面板` toggle).
+- Set `showCheatAbilityPanelEntry` default to off when entering Yumenguan mode, so `添加技能` does not appear by default even for admins.
+- Added a defensive cleanup effect for non-admin Yumenguan sessions to auto-close/hide any testing panels that might remain from prior state.
+
+**Lesson**:
+- Mode-specific production-like UX should enforce role-based visibility at render time and also actively clean stale UI state; gating render alone is not enough when panels can persist across mode transitions.
+
+## Ability description source audit and backup (2026-05-30)
+
+**Implemented / checked**:
+- Audited the ability description pipeline and confirmed the usual base/original text lives inline in `BASE_ABILITIES` inside `backend/game/abilities/abilities.ts`.
+- Confirmed the live edited descriptions are persisted in `backend/game/abilities/ability-property-overrides.json` and merged into runtime abilities during rebuild.
+- Confirmed there is no separate persisted backup store for original ability descriptions; the typed `originalDescription` field exists, but in the ability table it is only populated for `fenglai_wushan`.
+- Wrote a timestamped JSON backup of the current effective ability descriptions to `backend/game/abilities/backups/ability-descriptions-backup-2026-05-30T05-32-00.404Z.json`.
+
+**Lesson**:
+- For ability descriptions, treat `BASE_ABILITIES` as the canonical source-of-truth for the original text and `ability-property-overrides.json` as the mutable live layer. If a reversible history is needed, create an explicit snapshot file before further edits because the current editor save path does not preserve prior descriptions automatically.
+
+## 五项技能平衡调整（天地低昂/春泥护花/狂龙乱舞/疾/太阴指）(2026-05-30)
+
+**Implemented / checked**:
+- 将天地低昂运行时减伤从 40% 提升到 55%：同步修改描述、Buff 描述和 `DAMAGE_REDUCTION.value`（`0.4 -> 0.55`）。
+- 将春泥护花 Buff 持续时间从 15 秒提升到 20 秒（`durationMs: 15000 -> 20000`）。
+- 将狂龙乱舞地面区域伤害频率从默认 0.5 秒改为每 1 秒：在 `PLACE_GROUND_ZONE` 效果中显式设置 `zoneIntervalMs: 1000`，并同步描述文案。
+- 将疾冲刺距离改为 30 尺，并通过 `durationTicks: 24` 维持接近原冲刺速度（原为 37/30 tick，现为 30/24 tick）。
+- 将太阴指后撤距离改为 20 尺，并将调息模型改为 4 层充能：`cooldownTicks: 0`、`maxCharges: 4`、`chargeRecoveryTicks: 750`，同时更新描述文案。
+
+**Lesson**:
+- 地面区域类技能如果不显式设置 `zoneIntervalMs`，会走 `GameLoop` 默认 `500ms` 频率。涉及“每秒/每0.5秒”调优时，必须同时改效果字段和描述文本。
+
+## 天地低昂减伤覆盖回退与烈日斩/破风降防语义修复 (2026-05-30)
+
+**Implemented / checked**:
+- 复盘发现天地低昂（buffId 2326）在 `buff-attribute-overrides.json` 中仍有 `properties: [{ type: "减伤", value: 40 }]`，会覆盖技能定义中的 `0.55`，导致实战仍是 40%。
+- 将 buffId 2326 覆盖值从 `40` 修正为 `55`，使实战减伤与技能定义/文案一致。
+- 将烈日斩 Debuff（buffId 2512）从 `DAMAGE_TAKEN_INCREASE 0.15` 改为 `DEFENSE_MULTIPLIER 0.85`，实现“防御降低15%”而非“易伤+15%”。
+- 将破风 Debuff（buffId 2615）从 `DAMAGE_TAKEN_INCREASE 0.05` 改为 `DEFENSE_MULTIPLIER 0.95`，实现“防御降低5%”。
+- 同步了 `abilities.ts`、`ability-property-overrides.json`、`buff-attribute-overrides.json` 的对应描述，避免编辑器描述与运行时效果分叉。
+
+**Lesson**:
+- 若 Buff 在 `buff-attribute-overrides.json` 配置了 `properties.减伤`，其值会覆盖技能表中的 `DAMAGE_REDUCTION`；出现“文案已改但实战未变”时，必须先核查该覆盖层。
+
+## 百足/五方行尽区域圈显示时长下调为0.5秒 (2026-05-30)
+
+**Implemented / checked**:
+- 将百足首次命中时的地面圈 marker 时长由 `1000ms` 下调为 `500ms`（`immediateEffects.ts` 中 `BAIZU_AOE`）。
+- 将百足18秒结束二次爆炸时的地面圈 marker 时长由 `1000ms` 下调为 `500ms`（`GameLoop.ts` 中 `baizu_marker` 生成点）。
+- 将五方行尽命中时区域 marker 时长由 `1000ms` 下调为 `500ms`（`immediateEffects.ts` 中 `WUFANG_XINGJIN_AOE`）。
+
+**Lesson**:
+- 这两类“紫色圈圈”属于 `groundZones` 可视标记，显示时长由 `expiresAt` 决定；若只改技能描述或 buff 时长不会影响该可视圈持续时间。
+
+## 千蝶吐瑞无减伤语义与啸如虎Buff类别调整 (2026-05-30)
+
+**Implemented / checked**:
+- `啸如虎`（buffId 2602）在技能定义中的附带 Buff `category` 从 `BUFF` 调整为 `DEBUFF`，其余效果（`MIN_HP_1`、`DAMAGE_MULTIPLIER`、`CONTROL_ONLY_IMMUNE`）保持不变。
+- `千蝶吐瑞`（buffId 2003）覆盖描述中删除“受到范围类伤害降低20%”语义，改为仅“免疫一切控制效果”，避免描述层误导为带减伤。
+
+**Lesson**:
+- Buff 语义变更应同时检查“运行时效果字段”和“覆盖描述层”；即使数值层没有减伤，旧描述也会造成错误认知与验收偏差。
+
+## Yumen duplicate shrink-start guard (2026-05-29)
+
+## Camera dash collision-aware prediction (2026-05-29)
+
+**Implemented / checked**:
+- Traced dash camera wall-entry jitter to frontend render prediction, not `CameraRig`: the camera follows `localRenderPosRef`, and active dash rendering used a linear predictor that ignored exported-map collision.
+- Added collision-aware dash render prediction in `BattleArena.tsx`, using the same exported collision system readiness and play-area clamping path as movement prediction so the camera target stops with the visual/player body.
+- Added a real `ESC -> 测试 -> 镜头测试` panel with live prediction/collision metrics and a browser probe for Playwright.
+- Added a deterministic exported-map test positioning route and a live Playwright regression. The live test must cast through the in-page frontend path and refresh the browser state after cheat positioning; using `page.request` alone updates the server but can miss short active-dash states in React.
+
+**Lesson**:
+- Camera follow bugs can originate in render-target prediction rather than camera math. For short server-authoritative dashes, live browser tests should exercise the in-page state update path; request-context API calls can bypass frontend diff application and create false missed observations.
+
+## Camera ground-clamp sky-look split (2026-05-30)
+
+**Implemented / checked**:
+- Extended collision-test camera pitch to near straight-up and split ground-clamp handling by movement intent.
+- Stationary upward dragging now keeps a safe boom distance and aims into the sky instead of collapsing the camera into the avatar.
+- Forward walking keeps the staged old behavior: the camera can close in at the ground clamp first, then aim upward once close enough.
+- Added live Playwright probe coverage for 10 stationary expected-behavior passes across house / 城墙 / mountain labels, plus forward-walking checks for all three categories.
+
+**Lesson**:
+- Camera tests must drag far enough to reach the actual pitch clamp; partial upward drags can produce misleading halfway samples. For live WebGL checks, use a camera-specific probe and poll for a fresh frame after synthetic input instead of relying on a single immediate read.
+
+## Camera smooth sky-look blend and W preserve (2026-05-30)
+
+**Implemented / checked**:
+- Replaced the fixed ground-clamp sky target with a pitch-derived look direction so dragging farther upward maps continuously to a higher viewing angle.
+- Blended from the normal avatar look target into the pitch-derived sky target with a continuous look-up ratio, removing the mode-switch feel when entering or leaving sky view.
+- Preserved the sky-facing pitch when pressing or releasing forward movement from sky view; forward movement changes camera position but does not force the angle back toward the avatar.
+- Added probe fields and deterministic live Playwright sampling for smooth up/down transitions and W-preserve behavior across repeated house / 城墙 / mountain-labeled cases.
+
+**Lesson**:
+- Camera feel should avoid binary target swaps around collision clamps. Live WebGL proof is more reliable when synthetic mouse movement is backed by deterministic pitch stepping, explicit endpoint samples, and aggregate smoothness checks because headless rendering can drop individual frames.
+
+## Yumen mountain spawn anti-stuck lift (2026-05-29)
+
+## Yumen spectator ghost cooldown zeroing (2026-05-29)
+
+## Yumen sandstorm defeat announcement real-name fix (2026-05-29)
+
+## Yumen spectator frontend GCD/cooldown sync fix (2026-05-29)
+
+## GCD bar flashing stabilization (2026-05-29)
+
+## Yumen auto-settle shared-state sync fix (2026-05-29)
+
+**Implemented / checked**:
+- Diagnosed intermittent "自动结算不生效" as client preference contention: each player had a local auto-settle preference that could keep forcing different values to the server.
+- Removed per-client auto-settle localStorage preference/sync loop in BattleArena.
+- Bound the 自动结算 checkbox directly to shared server state (`safeZone.autoSettle`), so all players now see the same checked status and a single authoritative value.
+
+**Lesson**:
+- Match-wide rule toggles must be represented as shared server state only. Per-client remembered preferences create hidden state fights and intermittent behavior.
+
+**Implemented / checked**:
+- Investigated repeated GCD bar flash/restart behavior after spectator cooldown changes.
+- Switched frontend GCD fallback source from raw `me.globalGcdTicks` to runtime-decayed ticks via `getRuntimeCountdownTicks(...)` so stale server values do not keep re-triggering the bar.
+- Added a one-tick guard to suppress micro-fallback blips (`<= 1` tick), which removes brief flash artifacts near countdown boundaries.
+
+**Lesson**:
+- Cooldown bar fallback should use time-decayed runtime values, not raw synced snapshots; snapshot jitter near zero creates visual flicker and fake re-triggers.
+
+**Implemented / checked**:
+- Investigated ghost-form reports where frontend showed ongoing GCD and blocked 轻功 casts even though backend spectator rules allow continuous mobility.
+- In BattleArena frontend logic, bypassed cooldown/GCD gating for spectator 轻功 checks so local readiness matches backend validation.
+- Hidden the player GCD visual bar while `观战中` is active to avoid misleading "still cooling down" UI.
+
+**Lesson**:
+- Spectator-mode exceptions must be mirrored in frontend readiness checks and visual cooldown widgets; backend-only fixes still feel broken when UI/state prediction disagrees.
+
+**Implemented / checked**:
+- Found server chat fallback for unattributed defeats (such as 狂沙) was hardcoded to `【游客】黯然离去。`.
+- Updated system defeat broadcast fallback to use the actual defeated player display name when attacker attribution is missing.
+
+**Lesson**:
+- For kill/death announcements, fallback text must still resolve identity from the defeated user record; placeholder labels like "游客" create false attribution and confuse players.
+
+**Implemented / checked**:
+- Added spectator-mode cooldown bypass in ability validation so `观战中` players are not blocked by GCD or per-skill cooldown checks when casting movement skills.
+- Added runtime cooldown normalization in `GameLoop` so while `观战中` is active, ability cooldown, GCD, and charge lock/regen are continuously forced to ready state.
+- Kept existing spectator lock on non-轻功 abilities unchanged; this update only removes cooldown friction for allowed ghost-form mobility.
+
+**Lesson**:
+- For spectator/ghost traversal, cooldown-state consistency must be enforced both at validation time and tick-time state maintenance; patching only one path leaves intermittent lockouts.
+
+**Implemented / checked**:
+- Investigated reports of players spawning slightly inside mountain geometry and getting stuck due to low initial Z.
+- Increased Yumen battle-start/random-spawn lift height from `+5` to `+10` units to create a clearer drop-in at match start.
+- Hardened lifted spawn baseline Z to `max(spawn.z override, support-ground Z, top-down-hit Z)` so bad per-point Z data cannot place players below valid terrain support.
+
+**Lesson**:
+- Spawn-point Z should be treated as a hint, not authority, in complex 3D terrain. Using the maximum valid terrain-derived floor plus a short initial lift avoids embed-on-spawn while preserving the intended "drop-in" feel.
+
+**Implemented / checked**:
+- Investigated reports of broken poison-zone behavior in multi-player Yumen games and traced a plausible cause to duplicate start requests from multiple clients joining at different times.
+- The frontend auto-full-shrink effect can run on each client with the preference enabled while the zone is still `idle`.
+- Added backend guards to reject `start-shrink` and `start-full-shrink` when the safe zone is already in `waiting`, `countdown`, or `shrinking`.
+- Suppressed the expected `alreadyStarted` conflict in the frontend auto-full-shrink path so late joiners do not produce false error toasts.
+
+**Lesson**:
+- Join-time client automation must be backed by idempotent server routes. A per-client preference is not a safe uniqueness guarantee for match-wide state transitions like poison-zone start.
+
+## Yumen settlement exit footer layout update (2026-05-29)
+
+**Implemented / checked**:
+- Moved the settlement auto-leave text and `离开战场` button from a right-aligned row into a centered vertical stack.
+- Updated the countdown number in `将在 X 秒后离开战场` to display in yellow.
+
+**Lesson**:
+- For end-of-match dialogs, the primary exit countdown and action read more clearly when centered as a stacked call-to-action instead of competing with table content at the edge.
+
+## Consumable gray-out softening (2026-05-29)
+
+**Implemented / checked**:
+- Reduced the consumable bar gray-out severity for empty, unavailable, and depleted states by about 30%.
+- Softened the mute effect by raising icon opacity and easing grayscale/saturation/brightness suppression instead of changing cooldown overlays.
+
+**Lesson**:
+- Inventory-state mute effects should communicate missing items without making the bar feel visually disabled; reducing desaturation and opacity together keeps the state readable but calmer.
+
+## Chat input channel color tint (2026-05-29)
+
+**Implemented / checked**:
+- Changed the chat input text color to inherit the active composer channel color instead of using a fixed near-white color.
+- The map composer now visually matches the outgoing map-channel tint while typing.
+
+**Lesson**:
+- When the send channel is visually encoded, the typed text should share that channel color so the composer feels like part of the same message pipeline.
+
+## Chat slash command handling (2026-05-29)
+
+**Implemented / checked**:
+- Updated the chat submit path so messages starting with `/` are treated as commands instead of being sent to chat.
+- Added `/upz` as a command that triggers the same current-player Z rescue action as the control-panel button.
+- Unknown slash commands are blocked from chat and reported as commands rather than normal messages.
+
+**Lesson**:
+- Slash-prefixed chat input should short-circuit before network send, so command-like text cannot leak into public chat.
+
+## React error-boundary startup crash fix (2026-05-29)
+
+**Implemented / checked**:
+- Investigated a startup crash reported as `ReferenceError: Cannot access 'vh' before initialization` on the in-game client.
+- Root cause was a render-time TDZ dependency in the chat command callbacks: `runChatCommand` and `submitChatMessage` were defined before `runCheatAction`, so the component tried to read the later `const` during initial render.
+- Moved the chat command callbacks below `runCheatAction` so all dependencies are initialized before they are referenced.
+
+**Lesson**:
+- In React components, a callback can still crash at render time if its dependency array reads a later `const`; moving the callback below the dependency or switching to a ref avoids TDZ failures.
+
+## Ctrl+left-click ability mention insertion in chat (2026-05-29)
+
+**Implemented / checked**:
+- Added a new shortcut on ability slots: `Ctrl + 左键点击` appends `[技能名]` into the chat input box.
+- Applied the behavior to both draft ability slots and common ability slots.
+- Follow-up: applied the same `Ctrl + 左键点击` mention behavior to consumable slots, appending `[物品名]` into the chat input.
+- Follow-up: enabled the same `Ctrl + 左键点击` mention behavior for P-panel ability tiles, appending `[技能名]` to chat.
+- P-panel safeguard: when `Ctrl + 左键点击` is used on a tile, drag/add/remove/favorite tile actions are all suppressed so only the chat-token insertion runs.
+- Follow-up: added status-bar support. `Ctrl + 左键点击` on a status/buff icon now appends `[状态名]` into chat.
+- Status-bar safeguard: ctrl-click on status icons suppresses cancel/other icon click side effects so only name copy runs.
+- Each click appends one token, so repeated clicks produce repeated tokens (for example `[技能A][技能A]`).
+- Kept normal left-click cast behavior unchanged when `Ctrl` is not held.
+- Follow-up: bracketed ability tokens can now be removed as a group from chat input. `Backspace` at token end or `Delete` at token start removes the whole `[技能名]` block in one action.
+
+**Lesson**:
+- Chat mention shortcuts should append to existing input (not replace it) and preserve deterministic one-click-one-token behavior so players can compose repeated callouts quickly.
+
+## Tab auto-target range/facing refinement (2026-05-29)
+
+**Implemented / checked**:
+- Updated `Tab/F1` auto-target selection to keep existing rules but additionally require targets to be within 60 units.
+- Kept facing-direction filtering and current-target exclusion behavior unchanged.
+- Removed the no-candidate warning output; when no target matches, selection now stays unchanged without showing an error message.
+
+**Lesson**:
+- Auto-target hotkeys should be deterministic and quiet: strict eligibility filters (facing + range) improve target quality, and no-match paths should fail silently to avoid UI noise.
+
+## Ability tooltip cast text wording update (2026-05-29)
+
+**Implemented / checked**:
+- Updated channeled-ability tooltip cast text from `3秒` style to `释放: 3秒` style.
+- Kept instant-cast tooltip text unchanged as `瞬间释放`.
+
+**Lesson**:
+- Tooltip cast wording should clearly distinguish cast type semantics; explicit `释放:` prefix makes channel duration read faster without affecting instant-cast readability.
+
+## Ability tooltip zero-cooldown wording update (2026-05-30)
+
+**Implemented / checked**:
+- Updated ability hover tooltip cooldown formatting in `BattleArena.tsx` so skills with no cooldown now show `无调息时间` instead of `0秒`.
+- Kept existing cooldown display behavior for positive cooldowns and multi-charge recovery unchanged.
+
+**Lesson**:
+- For tooltips, zero values that represent "no mechanic" should use explicit wording instead of numeric `0秒`, which reads like an active but empty cooldown.
+
+## Ability editor charge cooldown review fix (2026-05-30)
+
+**Implemented / checked**:
+- Traced the cooldown review page and confirmed it only read and wrote `cooldownTicks`, which is the wrong field for charged abilities.
+- Updated the cooldown review snapshot/save path so abilities with `maxCharges > 1` now review `chargeRecoveryTicks` instead.
+- Updated the cooldown review UI so charged abilities show `充能时间` rather than generic `CD` / `冷却时间` wording.
+- Kept non-charge abilities on the existing `cooldownTicks` review path.
+
+**Lesson**:
+- Charge skills need a separate review surface from standard cooldown skills. Reusing a generic cooldown field hides the real runtime source of truth and makes editor changes look broken.
+
+## Charge cast lock and 生死劫月劫 timing adjustment (2026-05-30)
+
+**Implemented / checked**:
+- Reduced charge-cast lock from 1.0s to 0.5s for charge skills that previously used `chargeCastLockTicks: 30`:
+  - 鹊踏枝
+  - 游风飘踪
+  - 盾立
+- Updated these skill descriptions to match the new 0.5s cast interval.
+- Kept 楚河汉界 unchanged because it already used 0.5s (`chargeCastLockTicks: 15`).
+- Reduced 生死劫's 月劫 (`buffId: 1221`) duration from 15s to 12s.
+
+**Lesson**:
+- When changing runtime timing fields (like cast lock), update player-facing descriptions in the same edit pass so gameplay behavior and tooltip text remain aligned.
+
+## 七星拱瑞 / 疾如风 / 魂压怒涛数值校准 (2026-05-30)
+
+**Implemented / checked**:
+- 将七星拱瑞（buffId 2600）持续时间从 15 秒下调至 10 秒，并同步技能描述文案。
+- 将疾如风（buffId 1033）持续时间从 5 秒上调至 6 秒，并同步技能描述文案。
+- 将魂压怒涛的击退判定半径从 10 尺下调至 6 尺：
+  - 描述文案 `击退10尺内敌方目标10尺` -> `击退6尺内敌方目标10尺`
+  - 运行时效果字段 `HUN_YA_NU_TAO.range` 从 `10` 改为 `6`
+
+**Lesson**:
+- 涉及技能范围/时长修改时，应同时改动描述和 effect 数值字段，避免前后端表现与说明不一致。
+
+## 七星拱瑞加速缩时修正 (2026-05-30)
+
+**Implemented / checked**:
+- 复盘确认七星拱瑞（buffId 2600）属于 `CHANNEL + periodic buff` 路径，`addBuff()` 会经过 `getHasteAdjustedBuffTiming()`，在 `hasteUnaffected=false` 时会按加速缩短持续时间。
+- 在 `ability-property-overrides.json` 中将 `qixing_gongrui.properties.hasteUnaffected` 从 `false` 改为 `true`，使其持续时间固定按配置值执行。
+- 保持技能定义中的七星拱瑞持续时间为 `durationMs: 10_000` 不变，修复后不再被加速缩到约 8 秒。
+
+**Lesson**:
+- 对带 periodic 的 CHANNEL 技能，如果设计要求“固定时长”，必须显式开启 `hasteUnaffected`，否则运行时会自动按加速缩时。
+
+## Ability tooltip cooldown should use real CD, not 3s test cap (2026-05-29)
+
+**Implemented / checked**:
+- Traced ability tooltip cooldown rendering to `formatAbilityCooldownLabel()`.
+- Fixed charge-skill tooltip cooldown source to use uncapped recovery ticks for display (`tooltipChargeRecoveryTicks`) instead of runtime-capped `chargeRecoveryTicks` used by test-short-cooldown mode.
+- Applied the uncapped tooltip recovery value to draft/common/special bars and martial ability info so tooltip cooldown text reflects real configured cooldown values.
+- Root-cause correction: `buildAbilityPreload()` had a global 3-second clamp on `cooldownTicks` and `chargeRecoveryTicks`; removed this clamp so preload metadata now carries real cooldown values for all skills.
+
+**Lesson**:
+- Tooltip metadata and runtime cooldown state can have different intents. Keep tooltip cooldown sourced from canonical config values, while runtime state can still be test-capped for gameplay experiments.
+
+## Yumen remaining-count label style tweak (2026-05-29)
+
+**Implemented / checked**:
+- Updated the right-side `剩余人数` label style to remove the white border/outline effect by clearing `-webkit-text-stroke` and removing the white glow shadow layer.
+- Increased the `剩余人数` label font size by 20% (from height ratio `0.228` to `0.274`).
+- Follow-up tweak: restored a very small white border (`-webkit-text-stroke: 0.08px rgba(255,255,255,0.52)`) per visual preference.
+- Follow-up tweak: reduced the `剩余人数` number stroke from `0.6px` to `0.3px` (half strength).
+
+**Lesson**:
+- For large HUD typography, white stroke plus white glow can feel too harsh; a clean solid color with only subtle dark shadow gives better readability and less visual strain.
+
+## Ability/consumable hover intensity softened by 30% (2026-05-29)
+
+**Implemented / checked**:
+- Reduced ability-slot and consumable-slot hover glow intensity to about 70% of previous strength.
+- Lowered hover shadow from `0 0 8px rgba(255, 255, 245, 0.18)` to `0 0 6px rgba(255, 255, 245, 0.126)` for the relevant slot hover paths.
+- Reduced hover highlight-overlay opacity to `0.7` while keeping active/pressed feedback at full opacity.
+
+**Lesson**:
+- For HUD hover feedback tuning, reduce both shadow intensity and overlay opacity together; changing only one can still feel overly strong.
+
+## GCD-only cooldown overlay should keep arc, hide number (2026-05-29)
+
+**Implemented / checked**:
+- Restored per-skill cooldown arc rendering for shared basic GCD lockouts by mapping shared GCD ticks into HUD cooldown display data with `cooldownDisplayKind: 'gcd'`.
+- Kept the prior UX change that hides the numeric cooldown label for GCD-only lockouts.
+- Follow-up correction: removed the separate GCD arc color branch and reused the normal cooldown arc visual, so GCD-only lockout now uses the same arc style as all other cooldowns.
+- Applied this for both single-charge and multi-charge abilities when they are locked by shared GCD but not by their own cooldown/charge lock.
+
+**Lesson**:
+- For GCD-only lockouts, treat the arc and number as separate UI concerns: hide the number text but keep the exact same cooldown arc visual instead of introducing a second arc style.
+
+## Ability cooldown spinner regression fix for >1s cooldowns (2026-05-29)
+
+**Implemented / checked**:
+- Restored cooldown arc progression by stabilizing `maxCooldown` against raw runtime instance values (`instance.cooldown` / `instance.chargeLockTicks`) instead of relying only on definition cooldown fields.
+- This prevents cases where `maxCooldown` collapsed to the live remaining ticks, which made the conic cooldown overlay stay near 100% and feel like it stopped spinning.
+
+**Lesson**:
+- For HUD radial cooldown percentage, use a stable max baseline from runtime instance data when ability definition cooldown fields can be absent, or the arc can appear frozen even while numeric cooldown keeps ticking.
+
+## Yumen spawn-facing alignment legacy-mode compatibility (2026-05-29)
+
+**Implemented / checked**:
+- Updated frontend `isYumen1v1BasicMode()` detection to accept both `yumenguan-classic` and legacy `yumen-1v1-basic`.
+- This restores Yumen-only startup camera alignment behavior for older live sessions that still carry the legacy mode code.
+
+**Lesson**:
+- After renaming mode codes, frontend mode predicates must keep legacy compatibility wherever mode-gated runtime behavior (like spawn camera alignment) is expected on already-running sessions.
+
+## Mode code rename: yumenguan-classic and test (2026-05-29)
+
+**Implemented / checked**:
+- Renamed canonical backend/frontend mode codes to `yumenguan-classic` and `test`.
+- Updated frontend labels to `玉门关：经典` and `测试`.
+- Updated mode selectors, diagnostics mode labels, room-size checks, in-game test-mode conditionals, and live test create payloads to the new codes.
+- Kept legacy compatibility handling for `yumen-1v1-basic` and `collision-test` in mode normalization/predicates and labels so existing sessions still resolve correctly.
+
+**Lesson**:
+- Renaming gameplay mode ids should include a compatibility window for legacy persisted values, or older sessions/routes can silently fall into wrong mode branches.
+
+## Chat bracket color parity for class-highlighted names (2026-05-29)
+
+**Implemented / checked**:
+- Updated battle-chat name rendering so `[` and `]` brackets use the same class color as the player name.
+- Applied the same rule to both actor and target bracketed names in battle narration lines.
+
+**Lesson**:
+- If player tags are visually bracketed, color semantics should apply to the whole token (`[name]`), not only the inner text, or class highlighting looks inconsistent.
+
+## Yumen minimap two-style ring rule (2026-05-29)
+
+**Implemented / checked**:
+- Simplified current safe-zone ring visuals to only two styles: blue or yellow dotted.
+- In countdown/shrinking (non-waiting) phases, current ring now consistently renders as yellow dotted; no solid yellow fallback remains.
+
+**Lesson**:
+- When visual semantics are player-facing rules, remove fallback color variants that can reintroduce ambiguity across nearby phases.
+
+## Yumen minimap waiting-phase blue-circle correction (2026-05-29)
+
+**Implemented / checked**:
+- Updated minimap current-circle styling so `waiting` phase always renders blue only.
+- Kept yellow dotted styling only for active `shrinking` current circles, preserving the phase visual contract.
+
+**Lesson**:
+- Safe-zone phase coloring should be explicit per phase (`waiting`, `countdown`, `shrinking`) rather than inferred from fallback current-circle styling.
+
+## Yumen minimap merged-ring blue-priority adjustment (2026-05-29)
+
+**Implemented / checked**:
+- Added overlap detection for current-zone and future-zone minimap circles.
+- When yellow current ring and blue future ring are effectively merged, the yellow ring is suppressed so the minimap displays a clean blue circle.
+
+**Lesson**:
+- For layered circle overlays, merged-state rendering needs explicit priority rules, otherwise two valid styles combine into an unintended third color cue.
+
+## Yumen minimap future-zone visual regression fix (2026-05-29)
+
+**Implemented / checked**:
+- Restored minimap zone semantics so the future safe zone is rendered in blue during countdown/shrinking phases.
+- Shrinking current zone now renders as a yellow dotted circle, while non-shrinking current zone keeps a softer yellow solid outline.
+- Distance text now measures against the future (blue) target zone when that future circle is visible, matching minimap visual intent.
+
+**Lesson**:
+- For staged shrinking circles, minimap visual coding and distance-reference logic must use the same phase-aware target/current selection, or players see contradictory guidance.
+
+## Yumen auto-settle immediate trigger correction (2026-05-29)
+
+**Implemented / checked**:
+- Fixed `/cheat/yumen/auto-settle` so enabling the checkbox performs an immediate settle evaluation against current alive count.
+- When `autoSettle` is enabled and alive count is already `<= 1`, the route now sets `gameOver`, writes `winnerUserId` + `yumenResults`, appends `YUMEN_GAME_END`, and broadcasts those patches in the same update.
+
+**Lesson**:
+- Toggle routes that enable automatic behavior should evaluate the terminal condition immediately, not only rely on a future loop tick or unrelated state nudge.
+
+## Battle-start consumable stock correction (2026-05-29)
+
+**Implemented / checked**:
+- Updated the authoritative backend starting consumable stock to: 绷带 12, 金疮药 2, 月影沙 1, 砂石伪装 4.
+- Synced the frontend BattleArena fallback consumable list to the same counts so local HUD defaults match backend truth before live state arrives.
+- Updated the HUD coverage test assertions for `STARTING_CONSUMABLE_COUNTS` so regression checks enforce the new values.
+
+**Lesson**:
+- Starting consumable counts are duplicated between backend runtime defaults, frontend fallback display config, and string-based HUD checks. Keep all three in sync in the same change to avoid UI/runtime drift.
+
+## Yumen prep restart and multiplayer follow-up (2026-05-29)
+
+**Implemented / checked**:
+- Fixed Yumen presence chat so initial WebSocket subscribe emits `【玩家】加入了战场。`, while `重新连接` only emits after a recorded disconnect; Yumen disconnect chat now ignores stale generic leave notices.
+- Disabled the generic `/game/end` leave-notice and delayed no-winner game-over finalizer for Yumen, and guarded the frontend no-winner redirect in this mode.
+- Made existing-loop `/battle/start`, next-battle start, and the new `重新开始游戏` route apply the same `准备时间` prep through `addBuff()`, while resetting the Yumen safe zone to idle so auto poison waits for prep exit.
+- Fixed multiplayer damage floats to use target-user screen bounds instead of the primary opponent fallback, and made every enemy avatar use the red enemy palette.
+- Matched cooldown numbers to the system-chat yellow and reduced cooldown number size/weight.
+- Follow-up live verification caught auto-full-shrink racing before the prep buff reached the client; shrink-start routes now reject active `准备时间`, and the frontend only marks auto-start complete after a successful start.
+
+**Lesson**:
+- Suppressing a disconnect modal is not enough if the backend still creates `leaveNotice` and delayed no-winner game-over state; mode-specific lifecycle behavior must be disabled at the source.
+- Runtime prep buffs should be applied in every battle-start path, including idempotent existing-loop paths, or live reload/second-client starts can skip the official status-bar buff channel.
+- Multiplayer UI anchors must key by target id. Primary-opponent fallbacks are acceptable only as a last resort in 1v1 views.
+- Client-side auto-start gates are not enough for prep timing, because persisted local preferences can race initial state hydration. Server shrink-start routes must reject active prep and let the client retry after prep ends.
+
+## Yumen prep phase, presence chat, and cooldown HUD (2026-05-29)
+
+**Implemented / checked**:
+- Added the `准备时间` runtime debuff for Yumen battle start through `addBuff()`, with ROOT, SILENCE, and STEALTH effects, and preloaded its metadata so the status bar can display it.
+- Randomized Yumen players onto exported-map spawn points at `/battle/start`, then applied the 60-second prep buff before the game loop starts.
+- Replaced spectator-only ability-bar mutation checks with a Yumen prep-window lock: spectators stay locked, and non-spectators can add/reorder/discard/open skill choices only while `准备时间` is active.
+- Added server-persisted system chat for Yumen disconnect/reconnect presence and suppressed the old leave/disconnect modal in this mode.
+- Added one-time server countdown announcements for `30/20/10/5/4/3/2/1` and `绝境开启!祝各位洪福齐天。`, deduped through match state.
+- Split hotbar cooldown display between real cooldown and GCD-only overlays so GCD shows a gray wedge without numbers, while real ability and consumable cooldown numbers are larger, yellow, and flash red below 3 seconds.
+
+**Lesson**:
+- Prep-phase UI locks must have backend route enforcement; frontend P-panel gating alone can be bypassed by direct mutation endpoints.
+- Presence announcements are best emitted by the WebSocket subscription manager in Yumen mode, but reconnect chat needs a prior-disconnect key to avoid initial subscribe noise.
+- Runtime-only buffs must be included in preload metadata before relying on the official status bar or frontend buff-name gates.
+- For hotbars, GCD is a shared timing overlay, not an ability cooldown. Track it separately so the user sees motion feedback without misleading cooldown numbers.
+
+## Dash identity, diagnostics stalls, and live regression proof (2026-05-29)
+
+**Implemented / checked**:
+- Added stable `startedAt` identity to directional `activeDash` payloads and included it in backend broadcast signatures plus frontend duplicate filtering/observation keys, so repeated identical 蹑云逐月 casts are not mistaken for the previous dash.
+- Removed sync timestamp from the frontend dash observation key; server resends of the same dash no longer count as new frontend dash starts.
+- Changed recent-dash reconciliation so server position still updates authoritative local state, but the render position does not hard-snap during the dash settle window.
+- Reduced diagnostic self-pressure by keeping frontend crash breadcrumbs in memory instead of JSON-parsing/stringifying localStorage on each wrapped console call, and by not uploading latency samples directly from the main-thread stall callback.
+- Completed a live Playwright proof against `https://zhenchuan.renstoolbox.com`: 10 distinct frontend-observed 蹑云逐月 dashes, no `recent-dash-snap` or `hard-snap-xy` snapback correction probes.
+
+**Lesson**:
+- Repeated server-owned movement with identical velocity/direction needs an explicit per-cast identity. Do not use countdown sync time as dash identity; it changes on resyncs and can create duplicate frontend starts.
+- A performance diagnostic can become the lag source if warning/stall logging performs synchronous storage or upload work. Keep hot-path diagnostics memory-first and flush outside the stall callback.
+- Playwright trace/screenshot/video can add WebGL readback pressure during movement regressions. Disable them for live gameplay performance proofs.
+- Test cooldown reset must clear all cooldown runtime fields, including `_cooldownProgress` and `globalGcdTicks`, or API-driven repeated casts can fail for the wrong reason.
+
+## Lobby visibility and dash snapback regression (2026-05-28)
+
+**Implemented / checked**:
+- Changed lobby waiting-room visibility to depend on `started: false` instead of a one-player size filter, so full unstarted rooms still show in the lobby.
+- Added mode-aware lobby counts/status and stopped auto-joining rooms that are already full.
+- Added a live Playwright dash regression that creates one Yumen battle, enables test-short cooldown, performs at least ten frontend 蹑云逐月 dashes, and fails on `recent-dash-snap` or `hard-snap-xy` frontend correction probes.
+- Reworked post-dash frontend reconciliation so local authoritative position still syncs to the server, but the render ref no longer hard-snaps during the recent-dash settle window.
+
+**Lesson**:
+- Lobby availability and lobby visibility are separate concerns: full rooms should be visible until started, while join/auto-join paths enforce capacity.
+- Post-dash reconciliation should not use the same hard render snap as teleport/forced displacement. After a server-owned dash ends, sync local gameplay position to the server and let the render position settle to avoid visible snapback.
+
+## Yumen cooldown toggle, Z rescue, and dash HUD correction (2026-05-28)
+
+**Implemented / checked**:
+- Added the missing `/cheat/yumen/test-short-cooldown` route and changed runtime cooldown clamping so real cooldowns are used unless `safeZone.testShortCooldown` is enabled.
+- Split Yumen rescue into the old support-ground helper (`虚空救援`) and a new current-player `Z救援` route using a top-down first-hit height helper that also considers exported AABB tops.
+- Replaced Yumen spawn slots with the copied eight XYZ coordinates and preserved spawn Z during battle initialization/random spawn assignment.
+- Moved coordinate copying out of the ESC panel into a lightweight HUD widget, and removed the BattleArena-level minimap pose interval that could force parent re-renders during local dashes.
+
+**Lesson**:
+- A testing checkbox needs both a backend toggle route and runtime logic gated by that state; a frontend checkbox alone just produces generic 操作失败.
+- For exported-map rescue, support-ground height and top-down first-hit height are different tools. Houses/roofs need a top-down query plus AABB fallback, while void recovery can keep the support-ground path.
+- Avoid parent-level intervals for fast HUD pose updates in `BattleArena`; during dash they can make only the local player feel laggy even when the server and opponent view are fine.
+
+## Target mark SVG refinements (2026-05-28)
+
+**Implemented / checked**:
+- Refined the custom target-mark SVGs for `云`, `斧`, and `剑` under `frontend/public/icons/marks`.
+- Changed `云` to strict black/white only, broadened `斧` into a clearer axe-head silhouette, and rebuilt `剑` as a more balanced centered sword.
+- Corrected the follow-up pass by returning closer to the first version's silhouettes and making only small targeted changes.
+- Added transparent SVG target marks for `钩子` and `红鼓` from the supplied references.
+
+**Lessons**:
+- Small target marks need strong silhouettes before surface detail; a weapon mark that reads as a throwable object at icon size should be simplified into the canonical weapon shape.
+- When the user prefers an earlier art direction, preserve that base and make minimal shape/color edits instead of fully redrawing the asset.
+
+## Cooldown import and six-player Yumen controls (2026-05-28)
+
+**Implemented / checked**:
+- Restored the ability-editor `CD纠正` tab after it had been removed from source, including backend snapshot/status routes and frontend seconds-based editing.
+- Parsed `frontend/真传技能细节.xlsx` with standard-library XLSX XML parsing because `openpyxl` was not installed. The correct repeated-table columns are skill name/CD at B/C and I/J, not A/B and H/I.
+- Corrected the cooldown import to cover all 151 spreadsheet rows, convert seconds to 30Hz ticks, and mark each matched cooldown row as fixed. Sixteen current in-game abilities are absent from the sheet.
+- Expanded the Yumen room cap to six players, added six exported-map spawn slots, and added Yumen test controls for random spawn assignment, gathering to middle, and Z-only top-down ground rescue.
+- Removed future safe-zone display controls and target-ring rendering from the control panel, minimap, and 3D safe-zone overlay.
+- Added a default-off ESC testing coordinate display with a copy button.
+
+**Lesson**:
+- The live app can still show a removed ability-editor tab if old build artifacts are running; verify source and git history before assuming the route still exists.
+- For spreadsheet imports, inspect the actual XML cell columns before importing. In this sheet, IDs occupy A/H while skill names occupy B/I.
+- Keep cooldown overrides in `ability-property-overrides.json` rather than editing base definitions by hand, so the review page status and runtime overrides stay synchronized.
+- Yumen teleport/rescue controls should update the live `GameLoop` state first and broadcast precise position/velocity patches; waiting for Mongo would make test controls feel stale.
+- Removing future-zone UI also requires removing minimap and 3D target-ring rendering, not only deleting the toggle button.
+
+## 玉门关 KILL / 观战 death state (2026-05-28)
+
+**Implemented / checked**:
+- Replaced the Yumen-only `测试重置` death reset with a `观战中` spectator state: HP stays at 0, buffs/debuffs are cleared, ability hand is saved then emptied, owned zones/entities are removed, combat links/targets are cleared, and the spectator buff grants stealth, untargetable/invulnerable/damage immunity, +100% speed, and high multi-jump count.
+- Added last-hit defeat attribution for Yumen using only the current damage event window. Player final hits broadcast `【被击败者】被【击败者】重伤，黯然离去。`; poison/no-player final hits broadcast `【被击败者】黯然离去。` and do not grant kill credit.
+- Added `战意` as the Yumen kill reward: 30 seconds, refreshes on reapply, heals 16130 HP each second through the normal periodic-heal path, so heal reduction and 狂沙 healing penalty apply.
+- Added `复活全部玩家` to the Yumen control panel and a Yumen-only backend route that restores full HP, removes `观战中`, and restores saved ability hands.
+- Follow-up tightened the spectator state: death now clears consumable counts/cooldowns in the same broadcast as the emptied hand, `观战中` is registered as a debuff in preload so the official status bar shows it without normal cancel affordance, and runtime `战意` metadata is also preloaded so the buff appears on the official bar.
+- Added a Yumen-only `自动满血` test toggle, default off. When off, fatal HP enters spectator death; when on, it restores HP through the old testing heal branch.
+- Added Yumen spectator ability-bar locks in backend cheat/pickup mutation paths and frontend bar/preset mutation handlers, so a ghost cannot add, reorder, discard, or claim new skills.
+- Added `YUMEN_DEFEAT` events for the frontend red-brush kill notice, plus draggable/resizeable kill-notice and alive-count HUD controls under ESC → 测试 → 击杀.
+- Follow-up split Yumen ghost nameplate visibility from health-meter visibility, so ghosts can hide HP bars without hiding player names.
+- Follow-up Yumen death cleanup now removes combat links for the defeated player and for opponents linked to that player, emits combat-exit events, and broadcasts the combat state patches so `战斗中` does not stick forever after death.
+- Follow-up polished Yumen kill UI: softened and lowered the full-screen kill broadcast, removed the white backing, added custom placement plus width/height controls for the personal kill confirmation, redesigned `剩余人数`, and added a dark sandy screen veil for `狂沙`.
+- Added a manual Yumen end-game route and result overlay. When alive count is at most one, the test control can store `yumenResults`, show rank/stat/reward rows, auto-leave countdown, and a `离开战场` action while skipping the old tournament-complete flow.
+- Live-verification correction: the result overlay must sit above movable chat/map/HUD panels, or the ranking table can be covered at match end.
+- Corrective pass: Yumen death chat is no longer rebroadcast from the generic post-cast defeat announcer. Live Playwright verified one real `观战中` death, then two follow-up casts kept the `重伤，黯然离去。` system-chat count at one.
+- Corrective pass: ghost opponent names render gray, the 狂沙 veil is lighter and sand-colored, kill-broadcast/kill-confirm visuals were softened, and ESC test controls gained preview buttons plus a single true `剩余人数缩放` control.
+- Corrective pass: Yumen settlement now uses rank-by-attendee scoring. In a two-player live verification, rank 1 scored 2 for 40 display stars and rank 2 scored 1 for 20 display stars.
+- Added an `自动结算` test checkbox next to `结束战场`, default off, with live verification that enabling it at one alive player stores `yumenResults` and shows the result overlay.
+- Corrective pass: `战意` now keeps its written 16130-per-tick heal as a raw flat number instead of passing through the normal flat-heal scale. It still cannot crit and still receives the 狂沙 heal penalty.
+- Added a `测试缩短cd` Yumen control. Default off uses real cooldowns; when enabled, ability cooldowns and charge recovery are capped at 3 seconds for testing.
+- Added the ability-editor `CD纠正` tab for entering cooldown seconds and marking each ability as 未修正 / 需要补充 / 已修正.
+- Corrective pass: Yumen settlement header needs explicit CSS anchors for the small `队伍排名 x/x` label. Without `yumenResultTop` + `yumenResultTeamRank`, the label drifts from the modal's top-right.
+- Corrective pass: Yumen auto-settle alive counting now also honors unresolved `YUMEN_DEFEAT` events (unless a later `YUMEN_REVIVE` exists), not only HP/flag snapshots.
+
+**Lesson**:
+- Death attribution for poison-zone modes must use the fatal tick's newest positive damage event, not historical damage fallback. Otherwise old player damage can incorrectly steal poison deaths and grant kill rewards.
+- Clearing a player's hand inside the game loop needs an explicit full-hand broadcast patch; cooldown-only hand diffs do not tell the client that the whole bar was emptied.
+- Runtime-only buffs must be registered in the preload `buffMap`; otherwise the official `StatusBar` silently drops them even though they exist on the player state.
+- If a ghost/spectator state clears ability hands, it should also clear consumable runtime fields and explicitly broadcast those paths, or the client can keep stale item counts.
+- Correction pass: the generic `checkGameOver()` testing reset can still fire immediately after ability damage, before the Yumen loop handles death. Tag battle states with their mode and skip that reset for Yumen, or `[测试重置]` can appear even when the Yumen death branch no longer heals.
+- Correction pass: defeat attribution needs to accept `DAMAGE` events that carry actor/target but no numeric `value`; otherwise player kills become unattributed `大漠狂沙` deaths and `战意` is not granted.
+- Correction pass: fresh lobby-created battle states need `playerNames` copied into runtime state so `YUMEN_DEFEAT` events can broadcast real names instead of undefined/fallback labels.
+- Correction pass: Yumen alive-count and ghost visibility should also derive defeated users from `YUMEN_DEFEAT` events, because a client can receive the event before the corresponding spectator-buff patch is reflected in opponent state.
+- Correction pass: no-attacker Yumen system chat still needs the defeated player's real battle name (`【玩家名】黯然离去。`), not a generic `游客` fallback. Prefer the game state's `playerNames` map over account/default names for battle-end chat.
+- Correction pass: `战意` periodic heal should carry an explicit `noCrit` marker in the buff definition, and the periodic-heal runtime should honor that marker so future refactors cannot accidentally make it 会心 again.
+- Correction pass: raw-value periodic heals must opt out of `FLAT_HEAL_SCALE`; otherwise a written value like 16130 can display as an 80万-scale heal after stat scaling.
+- Correction pass: 狂沙 screen color should be a darker orange sand wash with only smooth radial color layers. Do not use repeating gradients or line textures for that overlay.
+- Correction pass: Yumen result rank totals should come from actual attendee rows, not a hardcoded lobby capacity such as 20.
+- Correction pass: test-only cooldown shortening should be an explicit match toggle, because always capping cooldowns hides real cooldown data while tuning CD values.
+- Correction pass: event-derived ghost state needs a matching `YUMEN_REVIVE` event, not an HP-patch heuristic. Otherwise alive count can be instant after death but stale after revive, or revive can unlock backend buffs while the frontend still says `观战中`.
+- Correction pass: mark Yumen deaths on the player state until revive. Relying only on an active spectator buff can let later casts rediscover the same 0-HP player and rebroadcast the same `重伤` chat.
+- Correction pass: clearing consumables to `{}` also needs frontend handling; missing keys inside an explicit count object mean zero, not the item's starting count.
+- Correction pass: `hideHpBar` was too broad for Yumen ghosts because it hid the whole billboard, including names. Use a separate `hideHealthMeter` flag when only HP/shield bars should disappear.
+- Correction pass: manual Yumen game-over needs persistent `yumenResults` in state and timestamp normalization on the client; otherwise reconnects or server/client clock drift can break the result countdown.
+- Correction pass: after adding Yumen HUD/runtime fields, keep the narrow `BattleArena` prop and helper union types in sync. Next production builds skip type validation in this repo, so use editor diagnostics or a focused type check on touched files to catch these issues.
+- Correction pass: mode-specific ghost deaths must bypass generic defeat-announcement fallback after every cast. The Yumen loop already has a one-time `yumenDefeated` guard, but `/play` can still inspect historical fatal events unless explicitly skipped for Yumen.
+- Correction pass: Yumen score/reward display is rank and attendee-count based, not damage/kills based. Keep this formula in a shared helper so manual settlement and auto-settlement cannot drift.
+- Correction pass: auto-settle is a test preference, not the default match rule. Store it on `safeZone`, preserve it through safe-zone resets, and only finish the match automatically when the flag is true and alive count reaches at most one.
+- Correction pass: keep the big center rank banner (`第x名`) and the small corner team rank (`队伍排名 x/x`) as separate layout rules so visual tweaks only affect the intended text.
+- Correction pass: for auto-settle and manual-end guards, rely on the same defeat/revive event truth as the UI when state snapshots can lag one tick behind event emission.
+
+## 临时飞爪 crash, minimap target zone, and diagnostics pressure (2026-05-28)
+
+**Implemented / checked**:
+- Fixed a `ReferenceError: Cannot access 's' before initialization` crash triggered after 临时飞爪 battle events. The root cause was battle chat rendering computing target color from `battleTargetName` before `battleTargetName` was initialized.
+- Removed the in-game crash diagnostics panel/download/upload controls. Fatal crash diagnostics now log a structured report object to the browser console and still upload automatically to backend logs.
+- Changed the yumen minimap distance text to measure against the blue target zone during countdown/shrinking phases, while non-shrink phases still use the current safe zone.
+- Flipped the yumen minimap player marker by 180 degrees so its baseline facing matches the game while preserving left/right turn direction.
+- Latest latency aggregation showed movement route backend processing remained low (usually 0-3ms, max under 30ms in the newest two-account run), but PM2 backend logs still had event-loop callback gaps and GC pressure. The likely self-inflicted source was diagnostics: each latency batch scheduled a full latency-log prune, while hidden-tab main-thread stalls uploaded repeatedly. Latency-log pruning is now debounced to at most one delayed prune window, and hidden-tab stall logging/upload is rate-limited.
+- Follow-up live logs showed debounced latency-log pruning was still too heavy for active gameplay: each delayed prune could take about 1.1-1.4s and align exactly with backend event-loop/game-loop callback gaps. Normal latency uploads no longer schedule pruning; pruning should stay out of the gameplay request path.
+- Follow-up minimap correction inverted the displayed Y axis for marker and safe-zone circles. The facing triangle already used the inverted screen-space basis, but the marker position did not, making the avatar walk backward or sideways relative to its facing.
+
+**Lesson**:
+- A minified TDZ error after an ability cast can be caused by secondary UI event rendering, not the ability execution path. Map the chunk offset before chasing the gameplay code.
+- Manual diagnostic collection UI should not appear in gameplay. Prefer F12 console output plus existing server-side logs unless the user explicitly asks for export controls.
+- Diagnostic tooling can become the lag source. Avoid running whole-log prune/parse work for every uploaded sample batch, and treat hidden-tab browser timer throttling as low-value noise.
+- Debouncing an expensive diagnostic prune only reduces frequency; it does not make it safe for active battles if the prune still runs on the Node event loop. Keep whole-log pruning manual/admin-side or otherwise outside active gameplay.
+- For SVG minimaps, remember screen Y increases downward. If the world/map convention is north-up, convert display Y with `mapHeight - worldY`; facing rotation must use the same inverted screen-space basis.
+
+## 玉门关 battle-log, arena line, ESC, and lag probes (2026-05-28)
+
+**Implemented / checked**:
+- Reverted the local-viewer 狂沙 self-log exception and filtered battle narration by self/same-side actors so the player only receives opponent-related battle messages.
+- Restored the 3D arena current safe-zone white line independently of minimap phase semantics; minimap code was not part of this correction.
+- Changed ESC handling so channel/target selection state no longer intercepts the key before the ESC panel can open.
+- Added thresholded `[LAG-PROBE]` timestamps for backend event-loop delay, game-loop callback gaps, slow ticks, DB saves, structuredClone cost, WebSocket broadcast cost, diagnostics batch writes, and frontend main-thread stalls.
+
+**Lesson**:
+- Minimap safe-zone semantics and 3D arena line visibility are separate surfaces. A minimap-only instruction should not gate or hide arena overlays.
+- Self-authored or same-side combat narration can create both privacy/noise bugs and target-color bugs; battle logs should be filtered from the viewer perspective before formatting.
+- Random lag diagnosis needs fresh correlated timestamps from both producer and consumer paths. Old PM2 logs or older latency-page samples should not be used as evidence for a new stall report.
+
+## 玉门关 safe-zone speed, PM2 cleanup, and movement lag correlation (2026-05-28)
+
+**Implemented / checked**:
+- Changed the final yumen full-poison shrink from 25 to 0 to complete in 1 second in the fast/test timeline, and kept the legacy generic phase table's final 25-to-0 collapse at 1 second.
+- Deleted the old `frontend`, `backend`, `rencipe-frontend`, and `rencipe-backend` PM2 apps, then re-added only this project's `frontend` and `backend` apps from `ecosystem.config.js`.
+- Found the ESC panel root cause: state toggled, but the panel render was still gated to `collision-test`; the panel now mounts in yumen and was verified by both the bottom-right button and Escape key.
+- Correlated two-window Playwright movement runs with fresh PM2 `[LAG-PROBE]` logs. The observed hard snap happened when frontend main-thread stalls (~700-800ms) overlapped backend game-loop callback gaps (~200-260ms); the tick body itself was usually only 1-5ms.
+- Removed the movement route's per-request `GameLoop.getState()` clone by adding a direct `setPlayerInputForUser()` path that returns a tiny movement ack, and added thresholded movement-route and backend GC probes.
+- Disproved a backend loop resync policy: skipping catch-up after large scheduler gaps avoided burst simulation but worsened movement ack latency in live two-window verification, so the policy was backed out.
+- Aligned frontend local-physics catch-up with the backend 6-tick cap and added stall-aware soft XY reconciliation. Final live verification still saw browser stalls under local two-window stress, but post-stall corrections became soft (`~1.9-2.4u`) instead of the previous `5-6u` hard snap.
+
+**Lesson**:
+- Backend lag and frontend prediction must be correlated by timestamp before choosing a fix. In this case movement/collision work was not slow; the visible failure was a frontend stall plus backend scheduler gap causing a hard reconciliation snap.
+- Do not call `GameLoop.getState()` from high-frequency movement POSTs just to find a player and return an ack. Full-state structured clones in the movement path add allocation pressure and latency; use a loop method that works on the authoritative state and returns only the required fields.
+- A delayed game loop catch-up is not automatically wrong, but client prediction must tolerate delayed server positions. After local main-thread stalls, normal movement should soften large reconciliation deltas unless a server-owned movement source like dash, knockback, pull, or airborne correction requires authority.
+- Validate loop scheduling policy changes with real movement metrics. A plausible resync/pause strategy can make authoritative input feel worse if it turns every server scheduler gap into gameplay time loss.
+
+## 玉门关 safe-zone corrective pass 3 (2026-05-28)
+
+**Implemented / checked**:
+- Corrected yumen minimap circle semantics: wait/no target shows a single blue current circle; countdown/shrink shows current as yellow dotted and future target as blue on top, so overlap reads as blue.
+- Flipped the minimap player marker left/right rotation and kept full-poison red styling only on the range/status row, not `已刷圈/总圈数`.
+- Changed `追命` to 30 seconds and stopped removing it when leaving 狂沙, while avoiding outside-zone time counting toward the next stack tick on re-entry.
+- Renamed yumen poison damage events to `狂沙`, allowed their self-hit battle log line, and added `暂停 / 继续 / 重置` controls with a resume endpoint that preserves paused shrink progress.
+- Added the buff timer-visibility editor tab and preload/status-bar support for hiding only an individual buff's timer text.
+- Mechanically reset 167 ability description `已修正` statuses back to `未修正`.
+
+**Lesson**:
+- Yumen minimap current/future layers must be phase-aware: current-only means blue, while current-plus-target means yellow dotted current under a blue future target.
+- Pause/resume of a shrink phase must preserve both remaining time and elapsed progress; otherwise the loop can resume from a later visual progress point.
+- Per-buff status display preferences belong in the shared buff override/preload path so editor choices and runtime status rendering cannot drift.
+
+## HP nameplate CJK text, jump intent latch, and speed-buff expiry (2026-05-26)
+
+**Implemented / checked**:
+- Replaced 3D player/entity HP-name text with canvas-backed sprite textures using a CJK-capable font stack, while preserving the existing billboard/world-size scaling so names like `一` do not render as boxes or become tiny.
+- Broadened the DOM icon-bar `.enemyName` fallback stack to include Linux CJK fonts without changing its 13.2px special size rule.
+- Added a queued jump-intent snapshot that captures direction/backpedal state at jump keypress time and reuses that same vector for both local prediction and the backend movement POST. Facing/camera payloads still update independently for RMB camera/ability logic, so turning after takeoff does not redirect the current jump while the next queued jump can capture a new direction.
+- Added a local next-buff-expiry timer so movement prediction, jump locks, channel refs, status/gates, and speed scale recompute immediately after a SPEED_BOOST/SLOW-style buff expires even if no fresh buff-array diff has arrived.
+- Frontend build initially exposed a corrupted `Character.tsx` HP-name JSX block; repaired it with the same canvas-text path. Backend build and frontend build passed, PM2 `frontend`/`backend` restarted online, and live browser verification showed the Chinese HP name renders at the intended size with no page errors.
+
+**Lesson**:
+- Drei text/font fallback can still miss CJK glyphs in WebGL text. For small in-world nameplates with strict size rules, browser canvas text converted to a sprite is more reliable and keeps the existing billboard scale math intact.
+- Jump direction is an input-time fact, not a render-time inference. Store the movement vector when the player queues jump; use it for both prediction and the server request, and keep facing/camera as a separate stream.
+- Client movement speed cannot wait for a state diff to notice wall-clock buff expiry. Schedule a wake-up at the nearest active buff `expiresAt` so prediction drops stale speed boosts before snapbacks accumulate.
 
 ## Knockback, jump carry, shield, and stealth sound parity (2026-05-26)
 
@@ -5085,6 +6169,15 @@ if (adjXxx > 0 && !hasDamageImmune(target)) {
 
 - Renamed buff 1340 沧月·击倒 → 沧月·倒地.
 - Reverted 沧月 knockback direction to caster-relative (safe now: entity dash uses velocity-free `resolveEntityHorizontalCollision` from prior round).
+
+## Ability Editor 加成修正批量重置为未修正 (2026-05-31)
+
+- 用户反馈 `ability-editor?tab=adControl` 列表状态过期，需要保留现有条目与系数，仅重置审查状态。
+- 在 `backend/game/abilities/ability-property-overrides.json` 批量将全部 167 个技能条目的 `adControlStatus` 统一改为 `"unfixed"`，不改动 `numeric`、`description`、`tags` 等字段。
+- 校验结果：`adControlStatus` 统计为 `unfixed: 167, fixed: 0, needs-more: 0`。
+
+**Lesson**:
+- 对加成修正页做“回炉重审”时，优先只重置 `adControlStatus`，避免误动系数与文案数据。
 - Made `lifestealPct` work for immediate DAMAGE effects (player→player in `Damage.ts`, player→entity in `immediateEffects.ts`). Previously only TIMED_AOE_DAMAGE/scheduled supported it.
 - Added EffectTypes `XU_RU_LIN_PROC` (parent self-buff marker) and `XU_RU_LIN_RESTORE` (child buff marker) — registered in `effects.ts` union and `categories.ts` map (both BUFF).
 - Added 5 new abilities: `qu_ye_duan_chou` (驱夜断愁, 50% lifesteal), `bu_feng_shi` (捕风式, 20% slow 3s), `you_yue_lun` (幽月轮, 1 damage), `xu_ru_lin` (徐如林, 50%-on-hit-proc → heal 5 on expire), `kang_long_you_hui` (亢龙有悔, 2×3 damage + self-CONTROL 1s + DOT 24s/2-stack/2s tick).
@@ -5153,3 +6246,29 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 ### 连环弩 used a fully custom tick path outside the shared damage helper
 - The `lian_huan_nu` tick branch in `GameLoop.ts` did all of its own work: raw `!hasDamageImmune()` gating, manual `resolveScheduledDamage()`, direct `applyDamageToTarget()`, and direct `activeDash` knockback. That bypassed 盾立 reflect entirely. It also applied no actual `KNOCKED_BACK` CC state, so reflected knockback did not reliably break the caster’s channel.
 - Fix: route damage through `applyDamageToHostileTarget()`, resolve the actual knockback victim through `getDunLiReflectVictim()`, add a short `KNOCKED_BACK` debuff when knockback lands, and explicitly clear `activeChannel` on the knockback victim so reflected self-knockback breaks 连环弩 immediately.
+
+## Ability description regex migration (41 -> 32 first batch) (2026-05-30)
+
+### What was changed
+- Applied a targeted text migration in `backend/game/abilities/ability-property-overrides.json` for full main-damage fragments only: `X...(+[coef*...攻击])...伤害` -> `（coef*攻击力）点伤害`.
+- Total replacements in batch 1: 32.
+- Applied requested explicit mapping for 剑主天地: `86-95点(+[2.0781*最终阴性内功攻击])伤害` -> `（3.8541*攻击力）点伤害`.
+
+### Why 41 became 32
+- The original 41-count search matched any `(+[...攻击...])` fragment.
+- 9 of those are not the same sentence shape as main-hit damage clauses (e.g., periodic damage suffixes, control-duration scaling, multi-clause projectile lines), so they were intentionally excluded from batch 1 to avoid over-replacement.
+
+### Lesson
+- For description cleanup, split passes by semantic shape first (main-hit clause vs periodic/control/auxiliary clause). This avoids changing non-damage or secondary formula text accidentally.
+
+## Ability description parenthesis normalization + remaining 9 conversion (2026-05-30)
+
+### What was changed
+- Normalized ability override descriptions to ASCII parentheses in `backend/game/abilities/ability-property-overrides.json` by replacing full-width `（ ）` with `()`.
+- Completed the previously excluded 9 formula fragments (periodic lines, multi-segment line, and one control-scaling suffix) to the simplified attack-power style.
+
+### Validation
+- Post-change scan result: full-width parentheses count `0` and legacy `(+[...攻击...])` fragments in descriptions count `0`.
+
+### Lesson
+- If style consistency requires ASCII punctuation, run punctuation normalization before formula migration to avoid mixed-width output and reduce cleanup passes.

@@ -386,8 +386,8 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(consumableService).toContain('ERR_CONSUMABLE_NOT_IMPLEMENTED');
   expect(consumableService).toContain('STARTING_CONSUMABLE_COUNTS');
   expect(consumableService).toContain('beng_dai: 12');
-  expect(consumableService).toContain('jin_chuang_yao: 8');
-  expect(consumableService).toContain('yue_ying_sha: 4');
+  expect(consumableService).toContain('jin_chuang_yao: 2');
+  expect(consumableService).toContain('yue_ying_sha: 1');
   expect(consumableService).toContain('sha_shi_wei_zhuang: 4');
   expect(consumableService).toContain('function getConsumableCounts(player: PlayerState)');
   expect(consumableService).toContain('throw new Error("ERR_CONSUMABLE_EMPTY")');

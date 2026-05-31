@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientCrashRecorder } from "@/app/game/diagnostics/clientCrashRecorder";
 import { getClientLatencyRecorder } from "@/app/game/diagnostics/clientLatencyRecorder";
+import { isYumen1v1BasicMode } from "../../../gameModes";
 import type { AbilityInstance, ChatChannel, ChatMessage, GameResponse, TargetSelection } from "../types";
 
 /* ================= DIFF APPLY ================= */
@@ -92,6 +93,8 @@ const ABSOLUTE_SERVER_TIME_KEYS = new Set([
   "startedAt",
   "lastTickAt",
   "timestamp",
+  "endedAt",
+  "autoLeaveAt",
 ]);
 
 function normalizeServerTimes<T>(value: T, offsetMs: number): T {
@@ -211,6 +214,7 @@ function activeDashSignature(activeDash: any): string | null {
   if (!activeDash || typeof activeDash !== "object") return null;
   return JSON.stringify({
     abilityId: activeDash.abilityId ?? null,
+    startedAt: activeDash.startedAt ?? null,
     vxPerTick: activeDash.vxPerTick ?? null,
     vyPerTick: activeDash.vyPerTick ?? null,
     vzPerTick: activeDash.vzPerTick ?? null,
@@ -313,6 +317,25 @@ function hasBattleStealth(target: GameResponse["state"]["players"][number] | und
   });
 }
 
+function getBattleSide(target: GameResponse["state"]["players"][number] | undefined): string | null {
+  const rawSide = (target as any)?.teamId ?? (target as any)?.team ?? (target as any)?.side ?? (target as any)?.camp ?? (target as any)?.partyId;
+  if (typeof rawSide !== "string" && typeof rawSide !== "number") return null;
+  const side = String(rawSide).trim();
+  return side ? side : null;
+}
+
+function isSameBattleSide(
+  viewer: GameResponse["state"]["players"][number] | undefined,
+  actor: GameResponse["state"]["players"][number] | undefined,
+  selfUserId: string,
+  actorUserId: string,
+): boolean {
+  if (actorUserId === selfUserId) return true;
+  const viewerSide = getBattleSide(viewer);
+  const actorSide = getBattleSide(actor);
+  return viewerSide !== null && actorSide !== null && viewerSide === actorSide;
+}
+
 function getEntityDisplayName(entity: NonNullable<GameResponse["state"]["entities"]>[number] | undefined, fallbackName: unknown): string {
   if (typeof fallbackName === "string" && fallbackName.trim()) return fallbackName.trim();
   if (typeof entity?.abilityName === "string" && entity.abilityName.trim()) return entity.abilityName.trim();
@@ -387,6 +410,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   const battleEventSeededGameIdRef = useRef<string | null>(null);
   const playerNamesRef = useRef<Record<string, string>>({});
   const playerSchoolsRef = useRef<Record<string, string>>({});
+  const gameModeRef = useRef<string | undefined>(undefined);
   const playersByUserIdRef = useRef<Record<string, GameResponse["state"]["players"][number]>>({});
   const entitiesByIdRef = useRef<Record<string, NonNullable<GameResponse["state"]["entities"]>[number]>>({});
   const crashRecorderRef = useRef(getClientCrashRecorder());
@@ -395,7 +419,8 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
   useEffect(() => {
     playerNamesRef.current = game?.playerNames ?? {};
     playerSchoolsRef.current = game?.playerSchools ?? {};
-  }, [game?.playerNames, game?.playerSchools]);
+    gameModeRef.current = game?.mode;
+  }, [game?.mode, game?.playerNames, game?.playerSchools]);
 
   useEffect(() => {
     const playersByUserId: Record<string, GameResponse["state"]["players"][number]> = {};
@@ -465,12 +490,12 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
       if (battleEventIdsRef.current.has(seenKey)) continue;
 
       const actorPlayer = playersByUserIdRef.current[actorUserId];
+      const viewerPlayer = playersByUserIdRef.current[selfUserId];
       const actorHidden = Boolean(actorUserId !== selfUserId && hasBattleStealth(actorPlayer));
-      if (actorUserId === selfUserId || actorHidden) {
+      if (isSameBattleSide(viewerPlayer, actorPlayer, selfUserId, actorUserId) || actorHidden) {
         battleEventIdsRef.current.add(seenKey);
         continue;
       }
-      const viewerPlayer = playersByUserIdRef.current[selfUserId];
       const actorDistance = getPlanarDistance(viewerPlayer, actorPlayer);
       if (actorDistance === null || actorDistance > BATTLE_LOG_VISIBLE_RANGE) {
         battleEventIdsRef.current.add(seenKey);
@@ -970,7 +995,7 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             username: message.username,
             endsAt: message.endsAt,
           });
-          if (message.userId && message.userId !== selfUserId) {
+          if (message.userId && message.userId !== selfUserId && !isYumen1v1BasicMode(gameModeRef.current)) {
             const promptEndsAt = Date.now() + 5_000;
             setDisconnectPrompt({
               userId: message.userId,

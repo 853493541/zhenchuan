@@ -7,6 +7,7 @@ type Props = {
   name: string;
   description?: string;
   remainingTurns: number;
+  showRemainingTime?: boolean;
   attribute?: string;
   anchorRect: DOMRect;
   arenaRect?: DOMRect;
@@ -31,6 +32,7 @@ export default function StatusHint({
   name,
   description,
   remainingTurns,
+  showRemainingTime = true,
   attribute,
   anchorRect,
   arenaRect,
@@ -109,9 +111,11 @@ export default function StatusHint({
         {attribute && <div className={styles.attributeBadge}>{attribute}气劲</div>}
       </div>
       <div className={styles.desc}>{description || "无"}</div>
-      <div className={styles.time}>
-        剩余时间：{remainingSeconds <= 0 ? "马上消亡" : formatRemainingTime(remainingSeconds)}
-      </div>
+      {showRemainingTime && (
+        <div className={styles.time}>
+          剩余时间：{remainingSeconds <= 0 ? "马上消亡" : formatRemainingTime(remainingSeconds)}
+        </div>
+      )}
     </div>
   );
 }
