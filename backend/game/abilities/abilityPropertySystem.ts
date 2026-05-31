@@ -199,6 +199,7 @@ const MS_PER_GAME_TICK = 1000 / 30;
 
 const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>> = {
   DAMAGE: "直接伤害倍率",
+  BANG_DA_GOU_TOU: "棒打狗头伤害倍率",
   BONUS_DAMAGE_IF_TARGET_HP_GT: "追加伤害倍率",
   PERIODIC_DAMAGE: "持续伤害倍率",
   CHANNEL_AOE_TICK: "引导范围伤害倍率",
@@ -224,6 +225,7 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
 
 const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "DAMAGE",
+  "BANG_DA_GOU_TOU",
   "BONUS_DAMAGE_IF_TARGET_HP_GT",
   "PERIODIC_DAMAGE",
   "CHANNEL_AOE_TICK",
@@ -514,6 +516,45 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 240 + effectIndex,
           path: ["effects", effectIndex, "routeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (effect.type === "CANG_YUE_AOE" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "沧月伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 245 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "dican_longxiang" && effect.type === "AOE_APPLY_BUFFS" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "帝骖龙翔伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 246 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.01,
+        })
+      );
+    }
+
+    if (baseAbility.id === "han_di" && effect.type === "GROUND_TARGET_DASH" && typeof (effect as any).aoeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.aoeDamage`,
+          label: "撼地伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 落地范围伤害倍率会乘以攻击力`,
+          order: 247 + effectIndex,
+          path: ["effects", effectIndex, "aoeDamage"],
           step: 0.1,
         })
       );

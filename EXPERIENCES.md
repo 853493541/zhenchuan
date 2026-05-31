@@ -3,6 +3,26 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## adControl 列表改为按系数表逐行驱动 (2026-05-31)
+
+**Implemented / checked**:
+- 用户要求不是只重置状态，而是按 `reports/damage_output_coeff_check.md` 逐行重建 `adControl` 列表。
+- 新增 `frontend/app/ability-editor/adControlCoeffRows.ts`，由系数表解析出的行数据驱动 UI（当前 90 行）。
+- `frontend/app/ability-editor/AdControlTab.tsx` 改为 row-entry 模式：按系数表每一行绑定技能与对应第 N 个加成项，不再仅按技能去重。
+- 进一步修正匹配策略：不再用“第 N 项”硬匹配，改为结合 `输出方式`（持续/额外/引爆）与系数字面值（`当前系数` + `文本系数` 数字候选）对 `damageSettings` 做打分分配，显著减少“未找到与系数表行匹配的加成项”。
+- 额外修复 `棒打狗头` 无法匹配根因：其伤害来自自定义效果 `BANG_DA_GOU_TOU`，此前不在 `abilityPropertySystem.ts` 的伤害提取集合里，导致 `damageSettings` 为空。已把该效果加入 `DAMAGE_VALUE_EFFECT_TYPES` 与标签映射，UI 可正常显示并编辑该伤害系数。
+- 继续修复 3 个“只有 1 个系数却无法匹配”的技能：`沧月 / 帝骖龙翔 / 撼地`。根因是这三者的伤害不在标准 `effect.value` 路径（两者为运行时硬编码，另一个只有群体加 buff），导致 `damageSettings` 为空。已把伤害参数改为可配置字段并接入提取：
+  - `沧月`: `CANG_YUE_AOE.damageValue`
+  - `帝骖龙翔`: `AOE_APPLY_BUFFS.damageValue`
+  - `撼地`: `GROUND_TARGET_DASH.aoeDamage`
+  同步把运行时结算改为读取这些字段，确保编辑器改值后对战结算也生效。
+- adControl 展示结构调整：同一技能的多条系数行合并在同一技能卡片内展示，不再按“每行一张卡”拆散；技能图标在该页缩小；若 `md` 有行但代码侧未匹配到 setting，仍展示该行 `输出方式`，并将输入框灰态禁用（占位“未匹配”）。
+- 每条加成标签改为显示系数表“输出方式”（如 `造成持续伤害`），替换原内部技术标签（如 `读条完成 · 延时范围伤害倍率`）。
+- 删除中间版本 `frontend/app/ability-editor/adControlCoeffWhitelist.ts`，避免与逐行数据源冲突。
+
+**Lesson**:
+- 当业务数据源是“逐行对照表”时，前端必须按行建模；若按技能去重，会丢失同名技能的多输出方式审查维度。
+
 ## 离线包下载入口迁移与管理员限制 (2026-05-31)
 
 **Implemented / checked**:
@@ -5963,6 +5983,15 @@ if (adjXxx > 0 && !hasDamageImmune(target)) {
 
 - Renamed buff 1340 沧月·击倒 → 沧月·倒地.
 - Reverted 沧月 knockback direction to caster-relative (safe now: entity dash uses velocity-free `resolveEntityHorizontalCollision` from prior round).
+
+## Ability Editor 加成修正批量重置为未修正 (2026-05-31)
+
+- 用户反馈 `ability-editor?tab=adControl` 列表状态过期，需要保留现有条目与系数，仅重置审查状态。
+- 在 `backend/game/abilities/ability-property-overrides.json` 批量将全部 167 个技能条目的 `adControlStatus` 统一改为 `"unfixed"`，不改动 `numeric`、`description`、`tags` 等字段。
+- 校验结果：`adControlStatus` 统计为 `unfixed: 167, fixed: 0, needs-more: 0`。
+
+**Lesson**:
+- 对加成修正页做“回炉重审”时，优先只重置 `adControlStatus`，避免误动系数与文案数据。
 - Made `lifestealPct` work for immediate DAMAGE effects (player→player in `Damage.ts`, player→entity in `immediateEffects.ts`). Previously only TIMED_AOE_DAMAGE/scheduled supported it.
 - Added EffectTypes `XU_RU_LIN_PROC` (parent self-buff marker) and `XU_RU_LIN_RESTORE` (child buff marker) — registered in `effects.ts` union and `categories.ts` map (both BUFF).
 - Added 5 new abilities: `qu_ye_duan_chou` (驱夜断愁, 50% lifesteal), `bu_feng_shi` (捕风式, 20% slow 3s), `you_yue_lun` (幽月轮, 1 damage), `xu_ru_lin` (徐如林, 50%-on-hit-proc → heal 5 on expire), `kang_long_you_hui` (亢龙有悔, 2×3 damage + self-CONTROL 1s + DOT 24s/2-stack/2s tick).

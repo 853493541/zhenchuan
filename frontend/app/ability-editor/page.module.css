@@ -704,6 +704,16 @@
   min-width: 0;
 }
 
+.adAbilityIconFrame {
+  flex: 0 0 34px;
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  background: linear-gradient(180deg, #f3efe7 0%, #e9e1d2 100%);
+  border: 1px solid #ddd6ca;
+  overflow: hidden;
+}
+
 .adAbilityTitleBlock {
   min-width: 0;
   flex: 1;
@@ -800,6 +810,12 @@
   border-radius: 8px;
   font-size: 13px;
   font-weight: 800;
+}
+
+.adNumericInputDisabled {
+  color: #9a9388;
+  background: #efebe4;
+  border-color: #ddd5c9;
 }
 
 .adNumericInput::-webkit-outer-spin-button,

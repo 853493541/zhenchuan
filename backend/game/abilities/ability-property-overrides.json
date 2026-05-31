@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-31T00:26:02.738Z",
+  "updatedAt": "2026-05-31T08:05:38.824Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -15,7 +15,7 @@
       },
       "description": "对指定区域施放风蜈之毒，使6尺半径区域内目标立即受到(3.8541*攻击力)点伤害，并使这些目标每3秒受到(1.05*攻击力)点伤害，持续18秒，风蜈之毒结束会再次爆炸，对6尺半径区域内的5个目标造成(3.8541*攻击力)点伤害",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -37,7 +37,7 @@
       },
       "description": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，每2秒造成（0.125攻击力)点伤害。若只命中单个目标则伤害提高100%",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -59,7 +59,7 @@
       },
       "description": "对目标造成（1.0攻击力）点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -83,7 +83,7 @@
       },
       "description": "对目标及其周围最多2个目标造成(7.98*攻击力)点伤害，使当前目标减速且无法施展轻功招式，持续2秒，并获得一层“急曲”效果，每3秒受到(0.125*攻击力)点伤害，持续18秒，最多叠加3层。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -107,7 +107,7 @@
       },
       "description": "对目标造成(6.26攻击力)点伤害，对目标添加3层无法卸除持续30秒的“绝脉”效果：招式调息速度降低1%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -132,7 +132,7 @@
       },
       "description": "冲刺并对12尺内的目标造成3次(1.1197*攻击力)点伤害，且每次卸除目标混元、阳性、阴性、毒性增益气劲各一个。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -154,7 +154,7 @@
       },
       "description": "对目标造成(1.7312*攻击力)点伤害，每施展一次则使该招式伤害提高10%，最多提高30%，该效果脱离战斗后消失。",
       "descriptionReviewStatus": "unfixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -184,7 +184,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "fengxiu_diang": {
       "properties": {
@@ -205,7 +206,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "fuyao_zhishang": {
       "properties": {
@@ -225,7 +227,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "fuguang_lueying": {
       "properties": {
@@ -246,7 +249,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "guchong_xianji": {
       "properties": {
@@ -258,7 +262,7 @@
       },
       "description": "血量高于35%方可施展，消耗自身30%气血值，获得50%气血最大值护盾，并在10秒内恢复30%气血值，该招式可以在被控制时施展。献祭将解除自身控制效果，并使自身免疫控制(击退和被拉除外)持续5秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -290,7 +294,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "nuwa_butian": {
       "properties": {
@@ -311,7 +316,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "sanliu_xia": {
       "properties": {
@@ -332,7 +338,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "fu_rong_bing_di": {
       "properties": {
@@ -344,7 +351,7 @@
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，并使其定身，受到伤害提高10%，持续1秒，若自身已经学习“商阳指”“兰摧玉折”“钟林毓秀”则会给目标添加对应持续伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -366,7 +373,7 @@
       },
       "description": "使目标每3秒受到(0.179*攻击力)点伤害，可叠加2层，持续24秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -388,7 +395,7 @@
       },
       "description": "卸除目标阴性、混元性、阳性、毒性内功增益气劲各一个。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -412,7 +419,7 @@
       },
       "description": "对目标及其周围3个目标造成(3.2375*攻击力)点伤害，并使其6秒内移动速度降低50%，同时目标受到的下8次攻击将受到额外（1.963攻击力)点伤害(每0.5秒最多触发一次)。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -435,7 +442,7 @@
       },
       "description": "对目标造成(3.2968*攻击力)点伤害，并使其内功防御等级降低15%，持续12秒，当目标拥有“银月斩”效果时将对其额外造成(1.6484攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -458,7 +465,7 @@
       },
       "description": "对目标造成(4.1000*攻击力)点伤害，并添加“三环套月”效果，当“三环套月”叠加至3层时会额外附带(4.1000*攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -481,7 +488,7 @@
       },
       "description": "使目标每3秒受到(0.074*攻击力)点伤害，持续18秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -504,7 +511,7 @@
       },
       "description": "使目标每2秒受到(0.125*攻击力)点伤害伤害，持续12秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -527,7 +534,7 @@
       },
       "description": "对目标造成(3.6000*攻击力)点伤害，并隐身3秒，施展任何招式都将提前解除隐身效果。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -550,7 +557,7 @@
       },
       "description": "对目标造成(4.4947*攻击力)点伤害，并使目标内外防等级降低30%，自身内外防提高30%，持续5秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -573,7 +580,7 @@
       },
       "description": "对目标造成(6.8875*攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -595,7 +602,7 @@
       },
       "description": "对目标造成(3.2968*攻击力)点伤害，并对其每2秒造成(0.074*攻击力)点伤害，持续12秒，当目标拥有“烈日斩”效果时将对其额外造成(1.6484攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -618,7 +625,7 @@
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效。每一个持续伤害效果被吞噬会额外造成(1.0攻击力）点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -640,7 +647,7 @@
       },
       "description": "立即冲向目标释放一道掌法并造成(7.54攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "蓬莱",
@@ -671,7 +678,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "chan_xiao": {
       "properties": {
@@ -685,7 +693,7 @@
       },
       "description": "使目标及其8尺周围内的最多8个目标每2秒受到(0.62攻击力)点伤害，持续16秒，同时目标2秒内无法施展招式。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -716,7 +724,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "dican_longxiang": {
       "properties": {
@@ -737,7 +746,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "han_di": {
       "properties": {
@@ -758,7 +768,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "he_gui_gu_shan": {
       "properties": {
@@ -779,7 +790,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "jiang_chun_zhu_xiu": {
       "properties": {
@@ -800,7 +812,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "jiu_zhuan_gui_yi": {
       "properties": {
@@ -821,7 +834,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "lei_ting_zhen_nu": {
       "properties": {
@@ -842,7 +856,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "leizhenzi": {
       "properties": {
@@ -863,7 +878,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zhenshen_xingsi": {
       "properties": {
@@ -876,7 +892,7 @@
       },
       "description": "冲向目标，对目标造成(9.5000*攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -899,7 +915,7 @@
       },
       "description": "对目标造成(4.4947*攻击力)点伤害，并击倒3秒，击倒自然结束时若目标血量低于30%则额外眩晕2秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -930,7 +946,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "shengsi_jie": {
       "properties": {
@@ -943,7 +960,7 @@
       },
       "description": "对目标造成(0.2604*攻击力)点伤害，眩晕目标4秒，使目标12秒内受到的疗伤成效降低50%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -966,7 +983,7 @@
       },
       "description": "对20尺内的敌方玩家施展造成(0.1攻击力)点伤害，使自身受到的55%伤害将由目标承担，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -989,7 +1006,7 @@
       },
       "description": "对目标及其周围4尺内总共5个敌对目标造成(0.7187*攻击力)点伤害，使目标移动速度降低65%，周围目标移动速度降低40%，持续12秒，该效果无法被解除。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1020,7 +1037,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "wufang_xingjin": {
       "properties": {
@@ -1041,7 +1059,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "wuyun_jiekong": {
       "properties": {
@@ -1053,7 +1072,7 @@
       },
       "description": "使目标眩晕5秒，并使其8秒内“蹑云逐月”招式移动速度降低70%。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1084,7 +1103,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "dienong_zu": {
       "properties": {
@@ -1105,7 +1125,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "duangu_jue": {
       "properties": {
@@ -1126,7 +1147,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "duoming_gu": {
       "properties": {
@@ -1147,7 +1169,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "gu_feng_sa_ta": {
       "properties": {
@@ -1168,7 +1191,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "houyao": {
       "properties": {
@@ -1185,7 +1209,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "huayu_suxin": {
       "properties": {
@@ -1206,7 +1231,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ji": {
       "properties": {
@@ -1219,7 +1245,7 @@
       },
       "description": "向前冲刺，并对处于冲刺路径上的最多5名敌人造成(3.3750*攻击力)点外功伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1250,7 +1276,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "lingxiao_lansheng": {
       "properties": {
@@ -1271,7 +1298,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "niao_xiang_bi_kong": {
       "properties": {
@@ -1292,7 +1320,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "nieyun_zhuyue": {
       "properties": {
@@ -1313,7 +1342,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "qionglong_huasheng": {
       "properties": {
@@ -1334,7 +1364,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "que_ta_zhi": {
       "properties": {
@@ -1356,7 +1387,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "sheng_ming_you": {
       "properties": {
@@ -1377,7 +1409,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "shou_ru_shan": {
       "properties": {
@@ -1398,7 +1431,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "taxingxing": {
       "properties": {
@@ -1419,7 +1453,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "tai_yin_zhi": {
       "properties": {
@@ -1440,7 +1475,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "tian_di_di_ang": {
       "properties": {
@@ -1461,7 +1497,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "wu_jianyu": {
       "properties": {
@@ -1477,7 +1514,7 @@
       },
       "description": "立即“修罗”附体，对10尺180°范围发起三段挥砍，对最多6个目标造成伤害，期间蓄力旋转一次链刃击退自身周围10尺最多6个目标造成伤害，持续10秒。修罗会汲取造成伤害的30%恢复自身气血值。\n第一次挥砍造成（4.18攻击力）点伤害\n第二次挥砍造成（5.91攻击力）点伤害\n第三次挥砍造成（7.57攻击力）点伤害，击退时造成（2.79攻击力）点伤害\n",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
@@ -1508,7 +1545,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "xinglou_yueying": {
       "properties": {
@@ -1529,7 +1567,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "yaotai_zhenhe": {
       "properties": {
@@ -1550,7 +1589,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "yingfeng_huilang": {
       "properties": {
@@ -1571,7 +1611,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "yuqi": {
       "properties": {
@@ -1589,7 +1630,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "yun_qi_song": {
       "properties": {
@@ -1610,7 +1652,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zhen_shan_he": {
       "properties": {
@@ -1631,7 +1674,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zhuan_qiankun": {
       "properties": {
@@ -1652,7 +1696,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zuowang_wuwo": {
       "properties": {
@@ -1673,7 +1718,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "chuan_xin_nu": {
       "properties": {
@@ -1688,7 +1734,7 @@
       },
       "description": "使目标受到的疗伤成效降低50%，并使目标每3秒受到(0.125*攻击力)点伤害，持续18秒，可在移动中施展。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -1712,7 +1758,7 @@
       },
       "description": "发动旋风般的重剑攻击，5秒内对周围10尺内的最多10个目标造成共计8次（3.61攻击力)点伤害。\n在此过程中你无法跳跃，不受控制招式(被拉除外)和沉默效果影响。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -1736,7 +1782,7 @@
       },
       "description": "使目标每3秒受到(0.104*攻击力)点伤害，持续18秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1767,7 +1813,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "qiandie_turui": {
       "properties": {
@@ -1789,7 +1836,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "xinzheng": {
       "properties": {
@@ -1802,7 +1850,7 @@
       },
       "description": "持续舞棍3秒，过程免疫全部控制效果。对6尺180度范围内最多5个目标造成（1.605攻击力）点伤害，每次造成伤害自身获得1层“讼言”，最多30层。每层“讼言”提高会心3%。舞棍结束后打出一次12尺范围终结扫击造成（9.63攻击力）点伤害并消耗全部“讼言”。",
       "descriptionReviewStatus": "unfixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1827,7 +1875,7 @@
       },
       "description": "对目标造成(10.2562*攻击力)点伤害，若目标处于自身4尺内则额外造成(8.5937攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -1859,7 +1907,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zhong_lin_yu_xiu": {
       "properties": {
@@ -1873,7 +1922,7 @@
       },
       "description": "使目标攻击降低5%，每3秒受到(0.099*攻击力)点伤害，持续18秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1896,7 +1945,7 @@
       },
       "description": "对目标造成(6.4937*攻击力)点伤害，若目标血量高于60%则追加50%额外伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -1928,7 +1977,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "yan_yu_xing": {
       "properties": {
@@ -1950,7 +2000,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "kuang_long_luan_wu": {
       "properties": {
@@ -1972,7 +2023,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "jian_zhu_tian_di": {
       "properties": {
@@ -1985,7 +2037,7 @@
       },
       "description": "对目标造成(3.8541*攻击力)点伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。\n急曲:每3秒造成(0.125*攻击力)点伤害，持续18秒，可以叠加3层。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -2008,7 +2060,7 @@
       },
       "description": "对目标造成(4.5260*攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2031,7 +2083,7 @@
       },
       "description": "击破目标护甲，使其防御等级降低5%，每2秒受到(0.15*攻击力)点伤害，持续12秒，若目标免疫击倒则额外添加“流血”效果，使其每2秒受到（0.125攻击力)点伤害，持续12秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -2062,7 +2114,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "hua_die": {
       "properties": {
@@ -2083,7 +2136,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "ji_le_yin": {
       "properties": {
@@ -2104,7 +2158,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "jing_hong_you_long": {
       "properties": {
@@ -2125,7 +2180,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "lin_shi_fei_zhua": {
       "properties": {
@@ -2146,7 +2202,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "bang_hua_sui_liu": {
       "properties": {
@@ -2168,7 +2225,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "shao_ming_zhi": {
       "properties": {
@@ -2182,7 +2240,7 @@
       },
       "description": "对目标造成(0.7239*攻击力)点伤害，并解除其身上的混元、阳性、阴性、毒性有益气劲各两个。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -2214,7 +2272,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "sheng_tai_ji": {
       "properties": {
@@ -2236,7 +2295,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "tun_ri_yue": {
       "properties": {
@@ -2258,7 +2318,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ren_jian_he_yi": {
       "properties": {
@@ -2279,7 +2340,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "chong_yin_yang": {
       "properties": {
@@ -2301,7 +2363,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zhan_wu_chang": {
       "properties": {
@@ -2315,7 +2378,7 @@
       },
       "description": "可移动释放，挥舞武器进行持续旋转，每0.5秒对自身周围6尺内最多6个敌对目标造成(0.9攻击力)点伤害，\n过程中自身受到伤害降低50%，免疫控制且可以格挡远程弹道技能的伤害，持续4秒。降低伤害和格挡远程弹道技能的效果可以对自身6尺范围内的小队成员生效。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
@@ -2346,7 +2409,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "wu_xiang_jue": {
       "properties": {
@@ -2367,7 +2431,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "mie": {
       "properties": {
@@ -2379,7 +2444,7 @@
       },
       "description": "当自身血量高于10%时对目标造成(2.6937*攻击力)点伤害，若自身气血低于10%，则对目标造成(11.2437*攻击力)点伤害，并使自身3秒内不会重伤。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -2410,7 +2475,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zhu_yun_han_rui": {
       "properties": {
@@ -2431,7 +2497,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "bao_can_shi": {
       "properties": {
@@ -2443,7 +2510,7 @@
       },
       "description": "使目标跳跃能力降低，移动速度降低48%，持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2466,7 +2533,7 @@
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，并使其移动速度降低20%，持续3秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2489,7 +2556,7 @@
       },
       "description": "向敌方挥出旋转的刀气，会自动追踪附近敌对目标，并每0.5秒造成(0.52攻击力)伤害，持续6秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2514,7 +2581,7 @@
       },
       "description": "对目标造成2次(3.4750*攻击力)点伤害，并使其每2秒受到(0.1攻击力)点伤害，持续24秒，可叠加2层。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2537,7 +2604,7 @@
       },
       "description": "目标血量低于30%方可施展，对其造成(6.7447*攻击力)点伤害外加最大生命值10%的真实伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2560,7 +2627,7 @@
       },
       "description": "对目标造成(4.2395*攻击力)点伤害，造成伤害的50%将治疗自身。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2583,7 +2650,7 @@
       },
       "description": "对目标造成(4.4937*攻击力)点伤害，若目标处于“锁足”“定身”“眩晕”状态则使其20秒内受到的伤害提高20%，该效果可叠加5层。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2605,7 +2672,7 @@
       },
       "description": "在目标位置投放“天绝地灭”9秒后将自动引爆造成将(11.05\n攻击力）点伤害，并将周围15尺范围内最多五个敌方目标拉到中心点。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2628,7 +2695,7 @@
       },
       "description": "对目标造成(1.4010*攻击力)点伤害，可以连续施展3次。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "内功",
@@ -2651,7 +2718,7 @@
       },
       "description": "命令海雕在指定位置扇出一道飓风，持续对周围造成12次(0.49\n攻击力)点伤害，持续6秒。飓风会自动跟随附近敌对目标(优先自身目标)。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2682,7 +2749,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "cheng_huang_zhi_wei": {
       "properties": {
@@ -2703,7 +2771,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ji_dian_chi_yu": {
       "properties": {
@@ -2724,7 +2793,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "long_xiao_jiu_tian": {
       "properties": {
@@ -2745,7 +2815,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "ti_yun_zong": {
       "properties": {
@@ -2766,7 +2837,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "xu_ru_lin": {
       "properties": {
@@ -2787,7 +2859,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "yu_yu_cheng_feng": {
       "properties": {
@@ -2808,7 +2881,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "lian_huan_nu": {
       "properties": {
@@ -2830,7 +2904,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "shi_xin_gu": {
       "properties": {
@@ -2851,7 +2926,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "hong_meng_tian_jin": {
       "properties": {
@@ -2871,7 +2947,8 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "shi_fang_xuan_ji": {
       "properties": {
@@ -2893,7 +2970,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "chu_he_han_jie": {
       "properties": {
@@ -2915,7 +2993,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "dun_li": {
       "properties": {
@@ -2936,7 +3015,8 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "lv_ye_man_sheng": {
       "properties": {
@@ -2957,7 +3037,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ru_yi_fa": {
       "properties": {
@@ -2978,7 +3059,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "you_feng_piao_zong": {
       "properties": {
@@ -3000,7 +3082,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "jian_fei_jing_tian": {
       "properties": {
@@ -3013,7 +3096,7 @@
       },
       "description": "对目标造成(0.7187*攻击力)点伤害，使目标下马并且移动速度降低60%，持续5秒。若你攻击的目标正在运功，则使该目标5秒内无法运功。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3035,7 +3118,7 @@
       },
       "description": "向前拍出掌法，可于冲刺中释放，释放对前方8尺矩形内最多5个目标造成(1.6187*攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -3057,7 +3140,7 @@
       },
       "description": "移除敌对目标身上2个增益效果，并添加给自身。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "长歌",
@@ -3081,7 +3164,7 @@
       },
       "description": "对目标造成(3.0000*攻击力)点伤害，3秒内连续施展时对目标额外造成30%伤害且小范围击退目标。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -3103,7 +3186,7 @@
       },
       "description": "凝气成雕，造成(0.5攻击力)点伤害，若其正在运功，则将运功打断并使其沉默4秒。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "蓬莱",
@@ -3134,7 +3217,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "qiang_zhu_shi": {
       "properties": {
@@ -3155,7 +3239,8 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "xi_bing_yu": {
       "properties": {
@@ -3176,7 +3261,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "xia_liu_bao_shi": {
       "properties": {
@@ -3188,7 +3274,7 @@
       },
       "description": "立即对周围6尺内的最多10个目标均造成(0.5攻击力）点伤害并清除其阳性、混元性、阴性、毒性气劲各一个，并使其4秒内无法使用武器。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -3219,7 +3305,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "feng_liu_yun_san": {
       "properties": {
@@ -3241,7 +3328,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ku_can_gu": {
       "properties": {
@@ -3262,7 +3350,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "long_zhan_yu_ye": {
       "properties": {
@@ -3283,7 +3372,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "mi_xin_gu": {
       "properties": {
@@ -3304,7 +3394,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "yin_qiao": {
       "properties": {
@@ -3317,7 +3408,7 @@
       },
       "description": "对目标造成(9.2攻击力)点伤害，引爆所有“绝脉”，每层额外造成（0.5攻击力）点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
@@ -3349,7 +3440,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "long_yin": {
       "properties": {
@@ -3362,7 +3454,7 @@
       },
       "description": "龙吟一击，对目标造成(0.6500*攻击力)点伤害。若招式会心则立刻重置调息时间。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3393,7 +3485,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ling_ran_tian_feng": {
       "properties": {
@@ -3414,7 +3507,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true
+      "noWeaponRequired": true,
+      "adControlStatus": "unfixed"
     },
     "she_shen_jue": {
       "properties": {
@@ -3435,7 +3529,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ting_feng_chui_xue": {
       "properties": {
@@ -3456,7 +3551,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "yuan": {
       "properties": {
@@ -3477,7 +3573,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "zi_qi_dong_lai": {
       "properties": {
@@ -3498,7 +3595,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "po_cang_qiong": {
       "properties": {
@@ -3520,7 +3618,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "ren_chi_cheng": {
       "properties": {
@@ -3539,7 +3638,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "sui_xing_chen": {
       "properties": {
@@ -3561,7 +3661,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "wu_an_mi_yun": {
       "properties": {
@@ -3583,7 +3684,8 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false
+      "noWeaponRequired": false,
+      "adControlStatus": "unfixed"
     },
     "dong_zhu_ji_wei": {
       "numeric": {
@@ -3591,7 +3693,8 @@
       },
       "description": "解除自身受控状态，使自身移动速度提高100%，免疫所有控制效果持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "cooldownReviewStatus": "fixed"
+      "cooldownReviewStatus": "fixed",
+      "adControlStatus": "unfixed"
     },
     "hun_ya_nu_tao": {
       "numeric": {
@@ -3599,12 +3702,14 @@
       },
       "description": "击退自身周围6尺敌对目标，使其眩晕4秒",
       "descriptionReviewStatus": "fixed",
-      "cooldownReviewStatus": "fixed"
+      "cooldownReviewStatus": "fixed",
+      "adControlStatus": "unfixed"
     },
     "zhen_xia_che": {
       "description": "什么都是假的，只有下车是真的。",
       "descriptionReviewStatus": "fixed",
-      "cooldownReviewStatus": "fixed"
+      "cooldownReviewStatus": "fixed",
+      "adControlStatus": "unfixed"
     }
   }
 }

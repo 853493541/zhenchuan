@@ -1665,7 +1665,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 8, damageValue: 0.01 } as any],
     buffs: [
       {
         buffId: 2307,
@@ -2102,7 +2102,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     faceDirection: false,
     allowGroundCastWithoutTarget: true,
     effects: [
-      { type: "GROUND_TARGET_DASH", value: 20, durationTicks: 15 },
+      { type: "GROUND_TARGET_DASH", value: 20, durationTicks: 15, aoeDamage: 1 } as any,
     ],
     buffs: [
       {
@@ -2923,7 +2923,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     effects: [
-      { type: "CANG_YUE_AOE", value: 30, range: 6, durationTicks: 30 } as any,
+      { type: "CANG_YUE_AOE", value: 30, range: 6, durationTicks: 30, damageValue: 1 } as any,
     ],
     buffs: [
       {

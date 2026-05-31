@@ -2100,7 +2100,20 @@ export function applyImmediateEffects(params: {
       case "AOE_APPLY_BUFFS": {
         if (!Array.isArray(ability.buffs) || ability.buffs.length === 0) break;
         const radius = gameplayUnitsToWorldUnits(effect.range ?? 10, state.unitScale);
+        const now = Date.now();
+        const damageValue = Number((effect as any).damageValue ?? 0);
         for (const victim of getImmediateEnemyBuffTargets(state, source.userId, source.position, radius)) {
+          if (damageValue > 0) {
+            applyImmediateDamageToEnemyTarget({
+              state,
+              source,
+              ability,
+              target: victim,
+              baseDamage: damageValue,
+              effectType: "DAMAGE",
+              now,
+            });
+          }
           for (const buffDef of ability.buffs) {
             addBuff({
               state,
@@ -2635,6 +2648,8 @@ export function applyImmediateEffects(params: {
         if (!primary || primary.userId === source.userId || (primary.hp ?? 0) <= 0) break;
         if (blocksEnemyTargeting(primary)) break;
 
+        const primaryDamage = Number((effect as any).damageValue ?? 1);
+
         // 1) Primary damage (1)
         applyImmediateDamageToEnemyTarget({
           state,
@@ -2643,7 +2658,7 @@ export function applyImmediateEffects(params: {
           target: isImmediateEntityTarget(primary)
             ? { kind: "entity", target: primary }
             : { kind: "player", target: primary },
-          baseDamage: 1,
+          baseDamage: primaryDamage,
           effectType: "DAMAGE",
           now,
         });

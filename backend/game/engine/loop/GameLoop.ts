@@ -2510,6 +2510,10 @@ export class GameLoop {
         const hanDiAbility = ABILITIES["han_di"] as any;
         if (hanDiAbility) {
           const stunBuff = hanDiAbility.buffs?.[0];
+          const dashEffect = Array.isArray(hanDiAbility.effects)
+            ? hanDiAbility.effects.find((candidate: any) => candidate?.type === "GROUND_TARGET_DASH")
+            : null;
+          const aoeDamage = Number(dashEffect?.aoeDamage ?? 1);
           if (stunBuff) {
             for (const opp of getMiYunAffectedHostileTargets({
               state: this.state,
@@ -2533,7 +2537,7 @@ export class GameLoop {
                 state: this.state,
                 source: player as any,
                 target: opp,
-                baseDamage: 1,
+                baseDamage: aoeDamage,
                 abilityId: "han_di",
                 abilityName: hanDiAbility.name,
                 effectType: "DAMAGE",
