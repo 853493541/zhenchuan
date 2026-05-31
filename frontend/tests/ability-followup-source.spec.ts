@@ -21,6 +21,8 @@ const playServicePath = path.join(repoRoot, 'backend/game/services/gameplay/play
 const battleArenaPath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/BattleArena.tsx');
 const arenaScenePath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/scene/ArenaScene.tsx');
 const characterPath = path.join(frontendRoot, 'app/game/screens/in-game/components/BattleArena/scene/Character.tsx');
+const statusBarPath = path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/index.tsx');
+const statusHintPath = path.join(frontendRoot, 'app/game/screens/in-game/components/GameBoard/components/StatusBar/Hint/index.tsx');
 
 function readFile(filePath: string) {
   return fs.readFileSync(filePath, 'utf8');
@@ -138,8 +140,11 @@ test('Fuguang can be cast while controlled but cannot keep stealth under non-slo
 
 test('temporary grappling hook refunds forty seconds outside combat', async () => {
   const playService = readFile(playServicePath);
+  const battleArena = readFile(battleArenaPath);
 
   expect(playService).toMatch(/ability\.id === "lin_shi_fei_zhua" && \(player as any\)\.inCombat !== true[\s\S]*played\.cooldown = Math\.max\(0, \(played\.cooldown \?\? 0\) - \(40 \* 30\)\)/);
+  expect(battleArena).toContain('const suppressDashPredictionWhileRooted = rootedByDebuff && ad?.ccStopsMe === true;');
+  expect(battleArena).toContain('const suppressDashPredictionWhileRooted = rootedByDebuff && activeDash?.ccStopsMe === true;');
 });
 
 test('Tiyun has separate combat and out-of-combat runtime paths', async () => {
@@ -176,4 +181,15 @@ test('C panel crit display applies buff stack counts for typed crit bonuses', as
 
   expect(battleArena).toContain('const stackCount = Math.max(1, Number(buff?.stacks ?? 1));');
   expect(battleArena).toContain('return sum + (buffContribution * stackCount);');
+});
+
+test('buff tooltip hides remaining time when status-bar timer is hidden', async () => {
+  const statusBar = readFile(statusBarPath);
+  const statusHint = readFile(statusHintPath);
+
+  expect(statusBar).toContain('const showRemainingTime = showTimers && !b.hideTimer;');
+  expect(statusBar).toContain('showRemainingTime={activeHint.showRemainingTime}');
+  expect(statusHint).toContain('showRemainingTime?: boolean;');
+  expect(statusHint).toContain('showRemainingTime = true');
+  expect(statusHint).toContain('{showRemainingTime && (');
 });

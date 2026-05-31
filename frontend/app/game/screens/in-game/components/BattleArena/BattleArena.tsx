@@ -7056,6 +7056,10 @@ export default function BattleArena({
     const ad = (me as any)?.activeDash;
     const activeDashTicksRemaining = getRuntimeCountdownTicks(ad, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
     const rawDashTicks = Math.max(0, Number(ad?.ticksRemaining ?? 0));
+    const rootedByDebuff = buffsHaveAnyEffect(me?.buffs, ['ROOT']);
+    // 临时飞爪 / ccStopsMe dashes are canceled by ROOT on backend movement tick.
+    // Skip local dash prediction while rooted to avoid one-frame surge + snap-back.
+    const suppressDashPredictionWhileRooted = rootedByDebuff && ad?.ccStopsMe === true;
     const dashObservationKey = ad
       ? JSON.stringify({
           abilityId: ad.abilityId ?? null,
@@ -7067,7 +7071,7 @@ export default function BattleArena({
         })
       : '';
     const firstRenderForDash = !!dashObservationKey && dashObservationKey !== observedDashKeyRef.current && rawDashTicks > 0;
-    const isDashing = !!ad && (activeDashTicksRemaining > 0 || firstRenderForDash);
+    const isDashing = !!ad && !suppressDashPredictionWhileRooted && (activeDashTicksRemaining > 0 || firstRenderForDash);
     const renderDashTicksRemaining = isDashing
       ? Math.max(1, activeDashTicksRemaining > 0 ? activeDashTicksRemaining : Math.ceil(rawDashTicks || 1))
       : 0;
@@ -9063,8 +9067,10 @@ export default function BattleArena({
     const dy = me.position.y - local.y;
     const activeDash = (me as any)?.activeDash;
     const activeDashTicksRemaining = getRuntimeCountdownTicks(activeDash, 'ticksRemaining', '_ticksRemainingSyncedAt', Date.now());
+    const rootedByDebuff = buffsHaveAnyEffect(me?.buffs, ['ROOT']);
+    const suppressDashPredictionWhileRooted = rootedByDebuff && activeDash?.ccStopsMe === true;
     const predictedActiveDash = activeDash && activeDashTicksRemaining > 0
-      ? { ...activeDash, ticksRemaining: activeDashTicksRemaining }
+      ? (suppressDashPredictionWhileRooted ? null : { ...activeDash, ticksRemaining: activeDashTicksRemaining })
       : null;
     const forcedDisplacement = buffsHaveAnyEffect(me?.buffs, ['KNOCKED_BACK', 'PULLED']);
     const serverZ = (me.position as any).z ?? 0;

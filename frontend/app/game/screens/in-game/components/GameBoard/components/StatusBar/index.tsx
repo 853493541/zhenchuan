@@ -50,6 +50,7 @@ type ResolvedBuff = {
 type ActiveHint = {
   buff: ResolvedBuff;
   anchorRect: DOMRect;
+  showRemainingTime: boolean;
 };
 
 const ALWAYS_SHOW_STACK_BADGE = new Set([990100, 990101, 990102]);
@@ -186,10 +187,11 @@ export default function StatusBar({
     : [buffsPos, buffsNeg];
   const singleRow = statusRows.length === 1;
 
-  function openHint(anchorRect: DOMRect, b: ResolvedBuff) {
+  function openHint(anchorRect: DOMRect, b: ResolvedBuff, showRemainingTime: boolean) {
     setActiveHint({
       buff:       b,
       anchorRect,
+      showRemainingTime,
     });
   }
 
@@ -200,7 +202,8 @@ export default function StatusBar({
   function renderBuff(b: ResolvedBuff) {
     const colorClass  = b.category === "BUFF" ? styles.buffText : styles.debuffText;
     const secsLeft    = getRemainingSeconds(b);
-    const timer       = showTimers && !b.hideTimer ? formatTimer(secsLeft) : null;
+    const showRemainingTime = showTimers && !b.hideTimer;
+    const timer       = showRemainingTime ? formatTimer(secsLeft) : null;
     const urgent      = timer?.urgent === true;
     const canManualCancel = !!onCancelBuff && (allowAnyCancel || (b.category === "BUFF" && b.manualCancelable === true));
     const cancelCursor = allowAnyCancel && canManualCancel ? "pointer" : canManualCancel ? "context-menu" : undefined;
@@ -223,7 +226,7 @@ export default function StatusBar({
               backgroundImage: getBuffIconBackgroundImage(b.name, b.iconPath),
               cursor: cancelCursor,
             }}
-            onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b)}
+            onMouseEnter={(e) => openHint(e.currentTarget.getBoundingClientRect(), b, showRemainingTime)}
             onMouseLeave={closeHint}
             onMouseDown={(e) => {
               if (!e.ctrlKey || e.button !== 0 || !onCopyBuffName) return;
@@ -286,6 +289,7 @@ export default function StatusBar({
           name={activeHint.buff.name}
           description={activeHint.buff.description}
           remainingTurns={getRemainingSeconds(activeHint.buff)}
+          showRemainingTime={activeHint.showRemainingTime}
           attribute={activeHint.buff.attribute}
           anchorRect={activeHint.anchorRect}
           arenaRect={arenaRect}

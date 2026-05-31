@@ -3,6 +3,41 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## Buff无计时显示时Tooltip同步隐藏时间 (2026-05-31)
+
+**Implemented / checked**:
+- 调整状态栏提示逻辑：`StatusBar` 新增 `showRemainingTime` 透传，沿用与图标下方倒计时一致的判定（`showTimers && !hideTimerInStatusBar`）。
+- 调整 `StatusHint`：当 `showRemainingTime=false` 时不渲染“剩余时间”行，避免“条目不显示时间但 tooltip 还显示时间”的不一致。
+- 新增并通过 Playwright source guard（`ability-followup-source.spec.ts`）覆盖该行为。
+- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
+
+**Lesson**:
+- 对同一 UI 语义（是否显示剩余时间），条目视图与 tooltip 必须共享同一布尔来源，避免双路径判定造成显示分叉。
+
+## 梯云纵·战斗图标补齐 (2026-05-31)
+
+**Implemented / checked**:
+- 在资源目录中确认存在源图标 `frontend/public/icons/梯云纵.png`。
+- 复制同一文件为 `frontend/public/icons/梯云纵·战斗.png`，用于战斗态 Buff `梯云纵·战斗` 的默认图标路径解析。
+- 复核 `abilities.ts` 中战斗态 Buff 名称为 `梯云纵·战斗`，与新图标文件名一致。
+- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，服务启动正常。
+
+**Lesson**:
+- 当前 Buff 图标默认按 `name -> /icons/${name}.png` 回退解析；新增/改名 Buff 时，优先保证图标文件名与 Buff 显示名逐字一致，通常无需额外代码改动。
+
+## 临时飞爪锁足下前端冲刺预测回弹修复 (2026-05-31)
+
+**Implemented / checked**:
+- 后端语义保持不变：临时飞爪允许施放，但属于 `ccStopsMe` 冲刺，带 `ROOT` 时会在 movement tick 被中断。
+- 前端 `BattleArena` 在两处 `predictedActiveDash` 推导中新增“锁足 + ccStopsMe”抑制分支：
+  - 若 `buffsHaveAnyEffect(me?.buffs, ['ROOT'])` 且 `activeDash.ccStopsMe === true`，则不进入本地 dash 预测路径。
+  - 避免了锁足状态下一帧冲刺可视位移后又被服务器拉回的 snap-back 体感。
+- 更新并通过 Playwright source guard（`ability-followup-source.spec.ts` 中临时飞爪用例）。
+- 完成 backend/frontend build，并在最新构建后执行 `pm2 restart frontend backend`，启动日志无新的启动失败。
+
+**Lesson**:
+- 对“允许施放但会被控制立即打断”的位移技能，前端预测不能只看 `activeDash` 是否存在；还要结合控制态与 dash 可中断标记，否则会出现短促假位移与回弹。
+
 ## 技能输出表误判修正：减伤文本不等于造成伤害 (2026-05-31)
 
 **Implemented / checked**:
