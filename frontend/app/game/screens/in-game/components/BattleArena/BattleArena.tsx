@@ -4648,6 +4648,8 @@ interface BattleArenaProps {
   pickups?: PickupItem[];
   /** Safe zone state for poison zone rendering */
   safeZone?: SafeZone;
+  /** Testing toggle: cap runtime cooldown and charge recovery to 3 seconds. */
+  testShortCooldownEnabled?: boolean;
   /** Hard movement boundary for yumen. */
   playArea?: PlayAreaBounds;
   /** Persistent ground damage zones */
@@ -4687,6 +4689,7 @@ export default function BattleArena({
   events = [],
   pickups = [],
   safeZone,
+  testShortCooldownEnabled = false,
   playArea,
   groundZones,
   entities,
@@ -9385,7 +9388,7 @@ export default function BattleArena({
 
   useEffect(() => {
     // ── Draft abilities: sourced from me.hand (only non-common abilities) ──
-    const yumenTestShortCooldown = safeZone?.testShortCooldown === true;
+    const testShortCooldownActive = safeZone?.testShortCooldown === true || testShortCooldownEnabled;
     const getAbilityRealCooldownTicks = (ab: any): number => {
       const base = Math.max(0, Math.round(Number(ab?.cooldownTicks ?? 0)));
       if (base > 0) return base;
@@ -9396,11 +9399,11 @@ export default function BattleArena({
     };
     const getAbilityRuntimeCooldownTicks = (ab: any): number => {
       const base = getAbilityRealCooldownTicks(ab);
-      return yumenTestShortCooldown && base > 0 ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+      return testShortCooldownActive && base > 0 ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
     };
     const getChargeRecoveryDisplayTicks = (ab: any): number => {
       const base = Math.max(1, Math.round(Number(ab?.chargeRecoveryTicks ?? ab?.cooldownTicks ?? 1)));
-      return yumenTestShortCooldown ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
+      return testShortCooldownActive ? Math.min(base, TEST_COOLDOWN_CAP_TICKS) : base;
     };
     const getDisplayMaxCooldown = (ab: any): number => {
       return getAbilityRuntimeCooldownTicks(ab);
@@ -9969,6 +9972,7 @@ export default function BattleArena({
     hasMovementIntent,
     isStandingCastBlocked,
     cooldownClockMs,
+    testShortCooldownEnabled,
     safeZone?.testShortCooldown,
   ]);
 
@@ -18147,40 +18151,40 @@ export default function BattleArena({
                 <span>自动满血</span>
               </label>
             )}
-            {isYumenMode && (
-              <label style={{
-                minHeight: 29,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                borderRadius: 4,
-                border: '1px solid rgba(180, 165, 255, 0.42)',
-                background: 'rgba(65, 58, 105, 0.22)',
-                color: '#ded8ff',
-                fontSize: 11,
-                fontWeight: 700,
-                padding: '5px 7px',
-                cursor: runningCheatAction ? 'not-allowed' : 'pointer',
-                opacity: runningCheatAction ? 0.55 : 1,
-              }}>
-                <input
-                  type="checkbox"
-                  checked={safeZone?.testShortCooldown === true}
-                  disabled={!!runningCheatAction}
-                  onChange={(event) => {
-                    const enabled = event.target.checked;
-                    void runCheatAction(
-                      'yumen-test-short-cooldown',
-                      '/api/game/cheat/yumen/test-short-cooldown',
-                      enabled ? '测试缩短CD已开启' : '测试缩短CD已关闭',
-                      { enabled },
-                    );
-                  }}
-                  style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
-                />
-                <span>测试缩短cd</span>
-              </label>
-            )}
+            <label style={{
+              minHeight: 29,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 5,
+              borderRadius: 4,
+              border: '1px solid rgba(180, 165, 255, 0.42)',
+              background: 'rgba(65, 58, 105, 0.22)',
+              color: '#ded8ff',
+              fontSize: 11,
+              fontWeight: 700,
+              padding: '5px 7px',
+              cursor: runningCheatAction ? 'not-allowed' : 'pointer',
+              opacity: runningCheatAction ? 0.55 : 1,
+            }}>
+              <input
+                type="checkbox"
+                checked={safeZone?.testShortCooldown === true || testShortCooldownEnabled}
+                disabled={!!runningCheatAction}
+                onChange={(event) => {
+                  const enabled = event.target.checked;
+                  const actionId = isYumenMode ? 'yumen-test-short-cooldown' : 'test-short-cooldown';
+                  const url = isYumenMode ? '/api/game/cheat/yumen/test-short-cooldown' : '/api/game/cheat/test-short-cooldown';
+                  void runCheatAction(
+                    actionId,
+                    url,
+                    enabled ? '测试缩短CD已开启' : '测试缩短CD已关闭',
+                    { enabled },
+                  );
+                }}
+                style={{ margin: 0, width: 13, height: 13, flexShrink: 0 }}
+              />
+              <span>测试缩短cd</span>
+            </label>
           </div>
 
           {isYumenMode && (

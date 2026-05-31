@@ -5,6 +5,51 @@ Each entry goes under its relevant section header.
 
 ## adControl 列表改为按系数表逐行驱动 (2026-05-31)
 
+## 驭羽骋风双 Buff 合并为单 Buff (2026-05-31)
+
+**Implemented / checked**:
+- 在 `backend/game/abilities/abilities.ts` 中将 `yu_yu_cheng_feng` 的 Buff 从 2 个合并为 1 个：
+  - 保留 `buffId: 1354`（名称 `驭羽骋风`，持续 3 秒）；
+  - 移除 `buffId: 1355`（`驭羽骋风·减伤`）；
+  - 将 `DAMAGE_REDUCTION 0.3` 并入 `1354`，使单 Buff 同时包含控制免疫与 30% 减伤。
+- 同步更新该招式说明文案，改为仅显示一个 `驭羽骋风` Buff，效果包含“免疫控制 + 受到伤害降低30%”。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，`frontend/backend` 均为 `online`。
+
+**Observed (existing, not introduced by this change)**:
+- `frontend` 日志仍有历史 `MaxListenersExceededWarning`。
+- `backend` error log 主要为 lag probe / websocket 断开日志，启动流程正常。
+
+**Lesson**:
+- 当技能语义要求“一个状态承载多个效果”时，应优先在同一 Buff 上聚合效果，避免 UI 状态栏重复展示造成误读。
+
+## 测试模式新增“测试缩短CD(3秒)”按钮，对齐玉门关行为 (2026-05-31)
+
+**Implemented / checked**:
+- 在 `frontend/app/game/screens/in-game/components/BattleArena/BattleArena.tsx` 将“测试缩短cd”开关从“仅玉门关可见”调整为测试面板通用可见。
+- 开关调用按模式分流：
+  - 玉门关继续走 `/api/game/cheat/yumen/test-short-cooldown`。
+  - 非玉门关测试模式走新接口 `/api/game/cheat/test-short-cooldown`。
+- 前端冷却显示逻辑改为统一判定：`safeZone.testShortCooldown || state.testShortCooldown`，保证非玉门关下也按 3 秒上限显示与结算。
+- 后端新增通用接口 `/cheat/test-short-cooldown`（`backend/game/routes/draft.routes.ts`），写入 `state.testShortCooldown` 并立即裁剪运行中冷却（含充能恢复队列）到 90 tick（3 秒）。
+- `playService` 运行时冷却判定扩展为读取顶层 `state.testShortCooldown`（同时兼容玉门关的 `safeZone.testShortCooldown`）。
+- 同步补充前后端 `GameState` 类型字段 `testShortCooldown?: boolean`。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，两个进程 `online`。
+
+**Observed (existing, not introduced by this change)**:
+- `frontend` 进程日志存在历史 `MaxListenersExceededWarning`。
+- `backend` 错误日志主要为历史 lag probe/deprecation 输出，本次启动阶段未见新的阻断性报错。
+
+**Lesson**:
+- “测试开关”若仅挂在 `safeZone` 上会把能力限制在特定模式；通用测试能力应有顶层状态位，并允许模式专属状态并存以保持兼容。
+
 ### adControl 4列布局 + 状态置顶 + 数值近实时自动保存 (2026-05-31)
 
 **Textbox readability polish / checked**:

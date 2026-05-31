@@ -2141,12 +2141,46 @@ router.post("/cheat/yumen/test-short-cooldown", async (req, res) => {
       updatedSafeZone = createYumenSafeZone(state);
       updatedSafeZone.testShortCooldown = enabled === true;
       state.safeZone = updatedSafeZone;
-      const diff: Array<{ path: string; value: any }> = [{ path: "/safeZone", value: updatedSafeZone }];
+      state.testShortCooldown = updatedSafeZone.testShortCooldown;
+      const diff: Array<{ path: string; value: any }> = [
+        { path: "/safeZone", value: updatedSafeZone },
+        { path: "/testShortCooldown", value: state.testShortCooldown },
+      ];
       if (updatedSafeZone.testShortCooldown) diff.push(...capYumenRuntimeCooldownsForTesting(state));
       return diff;
     });
 
     res.json({ ok: true, version: liveVersion, enabled: updatedSafeZone.testShortCooldown, safeZone: updatedSafeZone });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+/**
+ * POST /cheat/test-short-cooldown - Toggle 3-second testing cooldown cap for non-Yumen test mode.
+ * Body: { gameId, enabled }
+ */
+router.post("/cheat/test-short-cooldown", async (req, res) => {
+  try {
+    const userId = getUserIdFromCookie(req);
+    const { gameId, enabled } = req.body;
+
+    const game = await GameSession.findById(gameId);
+    if (!game) return res.status(404).json({ error: "Game not found" });
+    if (!game.players.includes(userId)) return res.status(403).json({ error: "Not in this game" });
+    if (!game.tournament) return res.status(400).json({ error: "Tournament not started" });
+    if (game.tournament.phase !== "BATTLE") return res.status(400).json({ error: "Not in battle phase" });
+
+    let enabledValue = false;
+    const { liveVersion } = applyYumenStateUpdate(String(gameId), game, (state) => {
+      enabledValue = enabled === true;
+      state.testShortCooldown = enabledValue;
+      const diff: Array<{ path: string; value: any }> = [{ path: "/testShortCooldown", value: enabledValue }];
+      if (enabledValue) diff.push(...capYumenRuntimeCooldownsForTesting(state));
+      return diff;
+    });
+
+    res.json({ ok: true, version: liveVersion, enabled: enabledValue, testShortCooldown: enabledValue });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

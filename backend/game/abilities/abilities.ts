@@ -3199,12 +3199,12 @@ export const BASE_ABILITIES: AbilityRecord = {
 
   // ──────────────────────────────────────────────────────────────────────────
   // 驭羽骋风 — instant SELF cast: cleanse all controls, dash up 12u in 1s,
-  // gain 驭羽骋风 (control/knockback/pull immunity 3s) + 驭羽骋风·减伤 (30% DR 3s)
+  // gain 驭羽骋风 (control/knockback/pull immunity + 30% DR for 3s)
   // ──────────────────────────────────────────────────────────────────────────
   yu_yu_cheng_feng: {
     id: "yu_yu_cheng_feng",
     name: "驭羽骋风",
-    description: "瞬发，自身施放\n解除自身所有控制\n向上冲刺12码（1秒）\n获得【驭羽骋风】3秒：免疫所有控制（含击退、拉拽）\n获得【驭羽骋风·减伤】3秒：受到伤害降低30%",
+    description: "瞬发，自身施放\n解除自身所有控制\n向上冲刺12码（1秒）\n获得【驭羽骋风】3秒：免疫所有控制（含击退、拉拽），受到伤害降低30%",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -3221,20 +3221,12 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "BUFF",
         applyTo: "SELF",
         durationMs: 3_000,
-        description: "免疫所有控制（含击退、拉拽）",
+        description: "免疫所有控制（含击退、拉拽），受到伤害降低30%",
         effects: [
           { type: "CONTROL_IMMUNE" },
           { type: "KNOCKBACK_IMMUNE" },
+          { type: "DAMAGE_REDUCTION", value: 0.3 },
         ],
-      },
-      {
-        buffId: 1355,
-        name: "驭羽骋风·减伤",
-        category: "BUFF",
-        applyTo: "SELF",
-        durationMs: 3_000,
-        description: "受到伤害降低30%",
-        effects: [{ type: "DAMAGE_REDUCTION", value: 0.3 }],
       },
     ],
   },

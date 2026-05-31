@@ -341,6 +341,7 @@ export interface GameState {
   turn: number;
   activePlayerIndex: number;
   unitScale?: number;
+  testShortCooldown?: boolean;
 
   gameOver: boolean;
   winnerUserId?: string;

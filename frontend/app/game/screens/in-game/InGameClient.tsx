@@ -624,6 +624,7 @@ export default function InGameClient({
             events={state?.events ?? []}
             pickups={state?.pickups ?? []}
             safeZone={state?.safeZone}
+            testShortCooldownEnabled={state?.testShortCooldown === true}
             playArea={state?.playArea}
             groundZones={state?.groundZones}
             entities={state?.entities}

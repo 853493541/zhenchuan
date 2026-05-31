@@ -66,7 +66,7 @@ function clampCooldownTicksForTesting(ticks: number | undefined, testShortCooldo
 }
 
 function isTestShortCooldownEnabled(state: GameState): boolean {
-  return state.safeZone?.testShortCooldown === true;
+  return state.testShortCooldown === true || state.safeZone?.testShortCooldown === true;
 }
 
 function hasChargeSystem(ability: any): boolean {

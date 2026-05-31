@@ -438,6 +438,9 @@ export interface GameState {
   /** index into players[] */
   activePlayerIndex: number;
 
+  /** Testing toggle: cap runtime cooldown and charge recovery to 3 seconds. */
+  testShortCooldown?: boolean;
+
   gameOver: boolean;
   winnerUserId?: PlayerID;
   yumenResults?: YumenResults;
