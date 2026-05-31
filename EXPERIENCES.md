@@ -5,6 +5,73 @@ Each entry goes under its relevant section header.
 
 ## adControl 列表改为按系数表逐行驱动 (2026-05-31)
 
+## 首页下拉样式二次修复：去阴影、抗底部裁切、固定最小宽度 + 登录标题文案 (2026-05-31)
+
+**Implemented / checked**:
+- `frontend/app/page.module.css`
+  - 移除模式下拉面板阴影（`box-shadow: none`）。
+  - 模式下拉按钮宽度改为固定最小宽度策略（`168px`），避免随选项文案频繁变化。
+  - 下拉面板层级提高（`z-index: 3000`）并支持向上展开样式（`.modeMenuListUp`），缓解底部被截断。
+  - “暂无可加入的房间”空态改为居中显示：跨列 + 最小高度 + flex 居中。
+- `frontend/app/page.tsx`
+  - `ModeDropdown` 增加可视区检测逻辑：打开时动态判断向下/向上展开（空间不足时自动上翻），减少底部裁切。
+- `frontend/app/login/page.tsx`
+  - 登录页 Logo 文案从“真传卡牌”改为“真传”。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，前后端均 `online`。
+
+**Lesson**:
+- 下拉面板在列表页场景应具备“动态翻转方向 + 高层级”能力，否则在不同窗口高度下容易出现底部裁切回归。
+
+## 首页模式下拉回归修复：非管理员无法展开 + 管理员选项裁切 (2026-05-31)
+
+**Implemented / checked**:
+- 修复 `frontend/app/page.tsx` 回归：之前 `useEffect` 在非管理员场景下会在每次 `openModeMenu=true` 时立即强制关闭，导致“点不开下拉”。
+- 现改为仅处理“非管理员且当前选中 legacy 模式”的回退逻辑，不再在打开菜单时自动收起。
+- 调整 `frontend/app/page.module.css` 模式下拉尺寸策略为内容自适应：
+  - `.modeMenuWrap` 改为 `width: max-content; max-width: 100%`；
+  - `.modeMenuButton` 改为 `width: max-content; max-width: 100%; white-space: nowrap`；
+  - `.modeMenuList` 改为 `width: max-content; min-width: 100%; max-width: min(90vw, 420px)`；
+  - `.modeMenuItem` 增加 `white-space: nowrap`。
+- 结果：非管理员可正常展开；管理员长选项不再半截裁切。
+
+**Verification**:
+- `cd backend && npm run build` 通过。
+- `cd frontend && npm run build` 通过。
+- `pm2 restart frontend backend` 成功，前后端均 `online`。
+
+**Lesson**:
+- 权限校验 effect 应只处理“非法选中值修正”，不要耦合菜单开闭状态，否则容易引入“可见但不可操作”的交互回归。
+
+## 测试模式默认缩短CD + 首页模式下拉合并与缩窄 (2026-05-31)
+
+**Point 1 — 测试模式默认缩短CD开启 / Implemented**:
+- 在 `backend/game/services/battle/battleService.ts` 的 `initializeBattleState` 中新增默认值：`testShortCooldown: isTestMode`。
+- 结果：进入 `test` 模式开局即默认开启 3 秒冷却上限；其他模式默认不受此项影响。
+
+**Point 2 — 首页 legacy 模式并入主模式下拉，且仅管理员可见 / Implemented**:
+- 在 `frontend/app/page.tsx` 将主模式与 legacy 模式选择器合并为单一 `ModeDropdown`。
+- legacy 选项仍仅在 `me?.isAdmin === true` 时出现在合并后的下拉中。
+- 非管理员若本地缓存了 legacy 模式，会自动回退到默认主模式（玉门关基础）。
+
+**Point 3 — 模式下拉宽度缩小 30% / Implemented**:
+- 在 `frontend/app/page.module.css` 将 `.modeMenuWrap` 的 `min-width` 从 `210px` 调整为 `147px`（减少 30%）。
+
+**Verification (each point followed protocol build/restart)**:
+- 后端构建：`cd backend && npm run build` 通过（每个点后均执行）。
+- 前端构建：`cd frontend && npm run build` 通过（每个点后均执行）。
+- 进程重启：`pm2 restart frontend backend` 成功（每个点后均执行）。
+
+**Observed (existing, not introduced by this change)**:
+- frontend 仍有历史 `MaxListenersExceededWarning`。
+- backend error log 仍以 lag probe / ws 断连为主，启动路径正常。
+
+**Lesson**:
+- 模式入口应保持“单入口 + 权限过滤”而非多入口分裂，可降低选择复杂度并避免非管理员误触 legacy 路径。
+
 ## 驭羽骋风双 Buff 合并为单 Buff (2026-05-31)
 
 **Implemented / checked**:

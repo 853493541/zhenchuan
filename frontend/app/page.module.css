@@ -30,15 +30,20 @@
   align-items: center;
   gap: 8px;
   width: 100%;
+  position: relative;
+  overflow: visible;
 }
 
 .modeMenuWrap {
   position: relative;
-  min-width: 210px;
+  min-width: 168px;
+  width: 168px;
+  max-width: 100%;
 }
 
 .modeMenuButton {
   width: 100%;
+  max-width: 100%;
   height: 40px;
   border: 1px solid #cbd5e1;
   border-radius: 6px;
@@ -52,19 +57,27 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .modeMenuList {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
-  z-index: 20;
-  width: 100%;
+  z-index: 3000;
+  width: max-content;
+  min-width: 100%;
+  max-width: min(90vw, 420px);
   padding: 5px;
   border: 1px solid #cbd5e1;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 16px 30px rgba(15, 23, 42, 0.16);
+  box-shadow: none;
+}
+
+.modeMenuListUp {
+  top: auto;
+  bottom: calc(100% + 6px);
 }
 
 .modeMenuItem {
@@ -81,6 +94,7 @@
   font-weight: 650;
   text-align: left;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .modeMenuItem:hover,
@@ -300,6 +314,12 @@
 ========================================================= */
 
 .empty {
+  grid-column: 1 / -1;
+  min-height: calc(100vh - 320px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   opacity: 0.6;
   font-style: italic;
 }

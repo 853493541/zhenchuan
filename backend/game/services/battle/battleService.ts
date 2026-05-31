@@ -340,6 +340,7 @@ export function initializeBattleState(
     unitScale,
     turn: 0,
     activePlayerIndex: 0,
+    testShortCooldown: isTestMode,
     gameOver: false,
     players,
     events: [],

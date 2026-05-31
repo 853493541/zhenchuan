@@ -128,9 +128,39 @@ function ModeDropdown({
   onSelect: (mode: StartMode) => void;
   ariaLabel: string;
 }) {
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [dropUp, setDropUp] = useState(false);
   const selectedOption = options.find((option) => option.value === selectedMode);
+
+  useEffect(() => {
+    if (!open) {
+      setDropUp(false);
+      return;
+    }
+    const updatePlacement = () => {
+      const wrapEl = wrapRef.current;
+      const listEl = listRef.current;
+      if (!wrapEl || !listEl) return;
+      const rect = wrapEl.getBoundingClientRect();
+      const listHeight = listEl.getBoundingClientRect().height;
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const shouldDropUp = listHeight > spaceBelow && spaceAbove > spaceBelow;
+      setDropUp(shouldDropUp);
+    };
+    const rafId = window.requestAnimationFrame(updatePlacement);
+    window.addEventListener("resize", updatePlacement);
+    window.addEventListener("scroll", updatePlacement, true);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener("resize", updatePlacement);
+      window.removeEventListener("scroll", updatePlacement, true);
+    };
+  }, [open, options.length]);
+
   return (
-    <div className={styles.modeMenuWrap} onBlur={(event) => {
+    <div ref={wrapRef} className={styles.modeMenuWrap} onBlur={(event) => {
       if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
         if (open) onToggle();
       }
@@ -146,7 +176,7 @@ function ModeDropdown({
         <ChevronDown size={16} aria-hidden="true" />
       </button>
       {open && (
-        <div className={styles.modeMenuList} role="menu">
+        <div ref={listRef} className={`${styles.modeMenuList} ${dropUp ? styles.modeMenuListUp : ""}`} role="menu">
           {options.map((option) => (
             <button
               key={option.value}
@@ -174,7 +204,7 @@ export default function HomePage() {
   const [resourcePackGateReady, setResourcePackGateReady] = useState(false);
   const [resourcePackGateChecking, setResourcePackGateChecking] = useState(true);
   const [selectedStartMode, setSelectedStartMode] = useState<StartMode>(YUMEN_1V1_BASIC_MODE);
-  const [openModeMenu, setOpenModeMenu] = useState<'primary' | 'legacy' | null>(null);
+  const [openModeMenu, setOpenModeMenu] = useState(false);
   const [resourcePackOverlay, setResourcePackOverlay] = useState<{ action: "download" | "check"; nonce: number } | null>(null);
   const [resourcePackImporting, setResourcePackImporting] = useState(false);
   const [resourcePackImportError, setResourcePackImportError] = useState<string | null>(null);
@@ -213,6 +243,7 @@ export default function HomePage() {
   };
 
   const canViewLegacyModes = me?.isAdmin === true;
+  const modeOptions = canViewLegacyModes ? [...PRIMARY_MODES, ...LEGACY_MODES] : PRIMARY_MODES;
 
   const checkResourcePackGate = useRef<() => Promise<void>>(async () => {});
 
@@ -290,10 +321,7 @@ export default function HomePage() {
     if (isLegacyMode(selectedStartMode)) {
       selectStartMode(YUMEN_1V1_BASIC_MODE);
     }
-    if (openModeMenu === 'legacy') {
-      setOpenModeMenu(null);
-    }
-  }, [canViewLegacyModes, openModeMenu, selectedStartMode]);
+  }, [canViewLegacyModes, selectedStartMode]);
 
   useEffect(() => {
     void checkResourcePackGate.current();
@@ -553,30 +581,16 @@ export default function HomePage() {
             <>
               <ModeDropdown
                 label={getGameModeLabel(YUMEN_1V1_BASIC_MODE)}
-                options={PRIMARY_MODES}
+                options={modeOptions}
                 selectedMode={selectedStartMode}
-                open={openModeMenu === 'primary'}
-                onToggle={() => setOpenModeMenu((current) => current === 'primary' ? null : 'primary')}
+                open={openModeMenu}
+                onToggle={() => setOpenModeMenu((current) => !current)}
                 onSelect={(mode) => {
                   selectStartMode(mode);
-                  setOpenModeMenu(null);
+                  setOpenModeMenu(false);
                 }}
                 ariaLabel="选择模式"
               />
-              {canViewLegacyModes && (
-                <ModeDropdown
-                  label="legacy modes"
-                  options={LEGACY_MODES}
-                  selectedMode={selectedStartMode}
-                  open={openModeMenu === 'legacy'}
-                  onToggle={() => setOpenModeMenu((current) => current === 'legacy' ? null : 'legacy')}
-                  onSelect={(mode) => {
-                    selectStartMode(mode);
-                    setOpenModeMenu(null);
-                  }}
-                  ariaLabel="legacy modes"
-                />
-              )}
               <button
                 className={`${styles.createBtn} ${styles.createBtnPrimary}`}
                 onClick={startSelectedMode}
