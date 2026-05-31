@@ -1,6 +1,6 @@
 import { gameplayUnitsToWorldUnits, type GameState, type PlayerState, type Position } from "../state/types";
 import type { MapObject } from "../state/types/map";
-import { getGroundHeightForMap, resolveMapCollisions, type MapContext } from "../loop/movement";
+import { resolveMapCollisions, type MapContext } from "../loop/movement";
 import { pushBuffExpired } from "../effects/buffRuntime";
 import {
   isLineBlockedByEnemyChuHeHanJieWall,
@@ -246,7 +246,8 @@ function buildCandidatePosition(params: {
     return null;
   }
 
-  const candidateZ = getGroundHeightForMap(candidateX, candidateY, sourceZ, mapCtx);
+  // 风流云散后续位移只改变 XY，不再尝试贴地修正 Z。
+  const candidateZ = sourceZ;
   const candidatePosition: Position = {
     x: candidateX,
     y: candidateY,

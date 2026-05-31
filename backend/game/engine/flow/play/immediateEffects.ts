@@ -1569,7 +1569,7 @@ export function applyImmediateEffects(params: {
         const cappedDurationTicks = Math.max(1, Math.round((cappedValue / 40) * 30));
         const gtdEffect = { ...effect, type: "DIRECTIONAL_DASH" as const, dirMode: "TOWARD" as const, value: cappedValue, durationTicks: cappedDurationTicks };
         handleDirectionalDash(state, source, { x: gTargetX, y: gTargetY }, ability, gtdEffect);
-        // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height
+        // Height targeting: if groundTarget has an explicit Z, force dash to climb/descend to that height.
         const gTargetZ = castContext?.groundTarget?.z;
         if (gTargetZ !== undefined && source.activeDash) {
           const heightDiff = gTargetZ - (source.position.z ?? 0);
