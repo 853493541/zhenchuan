@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-30T23:40:12.397Z",
+  "updatedAt": "2026-05-31T00:26:02.738Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -204,8 +204,8 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
-      "noWeaponRequired": false,
-      "ignoreDodge": true
+      "ignoreDodge": true,
+      "noWeaponRequired": false
     },
     "fuyao_zhishang": {
       "properties": {
@@ -747,7 +747,7 @@
       "numeric": {
         "cooldownTicks": 600
       },
-      "description": "使用轻功腾空跳向目标区域，对半径5尺范围内最多5个目标造成眩晕和伤害。持续3秒。",
+      "description": "使用轻功腾空跳向目标区域，对半径5尺范围内最多5个目标造成眩晕和(0.5*攻击力)点伤害。持续3秒。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -810,7 +810,7 @@
       "numeric": {
         "cooldownTicks": 450
       },
-      "description": "对目标造成伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
+      "description": "对目标造成（0.5攻击力）点伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
       "descriptionReviewStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
@@ -2167,8 +2167,8 @@
       },
       "isProjectile": true,
       "dunLiWhitelisted": false,
-      "noWeaponRequired": false,
-      "ignoreDodge": true
+      "ignoreDodge": true,
+      "noWeaponRequired": false
     },
     "shao_ming_zhi": {
       "properties": {
@@ -2892,8 +2892,8 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
-      "noWeaponRequired": true,
-      "ignoreDodge": true
+      "ignoreDodge": true,
+      "noWeaponRequired": true
     },
     "chu_he_han_jie": {
       "properties": {

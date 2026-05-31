@@ -128,7 +128,10 @@ test('Fuguang can be cast while controlled but cannot keep stealth under non-slo
 
   expect(fuguang).toContain('allowWhileControlled: true');
   expect(buffRuntime).toContain('const NON_SLOW_CONTROL_BREAK_TYPES = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"]');
+  expect(buffRuntime).toContain('const FUGUANG_MIN_VISIBLE_MS = 100;');
   expect(buffRuntime).not.toContain('NON_SLOW_CONTROL_BREAK_TYPES = ["SLOW"');
+  expect(buffRuntime).toContain('const shouldKeepFuguangBriefly = (buff: ActiveBuff) => {');
+  expect(buffRuntime).toContain('const minExpireAt = appliedAt + FUGUANG_MIN_VISIBLE_MS;');
   expect(buffRuntime).toContain('removeFuguangIfCurrentControl');
   expect(buffRuntime).toContain('active.buffId === FUGUANG_LUEYING_BUFF_ID || active.buffId === DUNYING_COMPANION_BUFF_ID');
 });

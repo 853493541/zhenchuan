@@ -63,6 +63,7 @@ const LEI_TING_ZHEN_NU_BUFF_ID = 2506;
 const FUGUANG_LUEYING_BUFF_ID = 1012;
 const DUNYING_COMPANION_BUFF_ID = 1021;
 const NON_SLOW_CONTROL_BREAK_TYPES = ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
+const FUGUANG_MIN_VISIBLE_MS = 100;
 const LING_RAN_TIAN_FENG_BUFF_ID = 2654;
 const LV_YE_MAN_SHENG_ABILITY_ID = "lv_ye_man_sheng";
 const LV_YE_MAN_SHENG_BUFF_ID = 2718;
@@ -683,17 +684,31 @@ function removeStealthOnIncomingControl(params: {
 }) {
   const { state, targetUserId, target, controlTypes } = params;
   if (controlTypes.length === 0) return;
+  const now = Date.now();
 
   const tiandiBreakTypes = ["CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"];
   const fuguangBreakTypes = NON_SLOW_CONTROL_BREAK_TYPES;
+
+  const shouldKeepFuguangBriefly = (buff: ActiveBuff) => {
+    const appliedAt = Number(buff?.appliedAt ?? now);
+    const minExpireAt = appliedAt + FUGUANG_MIN_VISIBLE_MS;
+    if (!Number.isFinite(minExpireAt) || now >= minExpireAt) return false;
+    const currentExpiresAt = Number(buff?.expiresAt ?? minExpireAt);
+    buff.expiresAt = Number.isFinite(currentExpiresAt)
+      ? Math.min(currentExpiresAt, minExpireAt)
+      : minExpireAt;
+    return true;
+  };
 
   const removed: ActiveBuff[] = [];
   target.buffs = target.buffs.filter((b) => {
     if (b.buffId === 1011) return true; // 暗尘: incoming control never breaks stealth
     if (b.buffId === 1012) {
       const shouldBreak = controlTypes.some((t) => fuguangBreakTypes.includes(t));
-      if (shouldBreak) removed.push(b);
-      return !shouldBreak;
+      if (!shouldBreak) return true;
+      if (shouldKeepFuguangBriefly(b)) return true;
+      removed.push(b);
+      return false;
     }
     if (b.buffId === 1013) {
       const shouldBreak = controlTypes.some((t) => tiandiBreakTypes.includes(t));
@@ -705,9 +720,14 @@ function removeStealthOnIncomingControl(params: {
 
   // 浮光掠影(1012) breaks early -> remove its companion 遁影(1021) immediately.
   if (removed.some((b) => b.buffId === 1012)) {
-    const companionRemoved = target.buffs.filter((b) => isDunyingCompanion(b));
+    const companionRemoved: ActiveBuff[] = [];
+    target.buffs = target.buffs.filter((b) => {
+      if (!isDunyingCompanion(b)) return true;
+      if (shouldKeepFuguangBriefly(b)) return true;
+      companionRemoved.push(b);
+      return false;
+    });
     if (companionRemoved.length > 0) {
-      target.buffs = target.buffs.filter((b) => !isDunyingCompanion(b));
       removed.push(...companionRemoved);
     }
   }

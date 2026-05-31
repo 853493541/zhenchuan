@@ -3,6 +3,29 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 技能输出表误判修正：减伤文本不等于造成伤害 (2026-05-31)
+
+**Implemented / checked**:
+- 修正“有伤害/无伤害”拆分规则：不再用包含“伤害”字样做宽匹配，改为只接受“造成/每X秒受到/额外造成/引爆造成/反弹”等明确输出伤害语义。
+- 新增减伤排除规则：`受到的伤害降低/减少/化解/结算` 等语句一律不视作输出伤害。
+- 重新生成两张表：`reports/table_damage_output_mode.md`、`reports/table_no_damage_output_mode.md`。
+- 争议条目复核通过：女娲补天、舍身诀、守如山、笑醉狂、逐云寒蕊、转乾坤、游风飘踪全部归入无伤害表。
+
+**Lesson**:
+- 技能描述中“伤害”一词同时覆盖“造成伤害”和“承受/减免伤害”，分类时必须区分施加方与承受方语义。
+
+## 浮光掠影非减速控制破隐最短显示窗口修复 (2026-05-31)
+
+**Implemented / checked**:
+- 保留“非减速控制会破浮光”的规则，但在 `buffRuntime.removeStealthOnIncomingControl` 中新增最短显示窗口：浮光(1012)与遁影(1021)若生效不足 `100ms`，不会立即移除，而是把 `expiresAt` 截到 `appliedAt + 100ms`。
+- 超过 100ms 的浮光/遁影仍按原逻辑立刻破除并发出 `BUFF_EXPIRED` 事件。
+- 这样实现了“控制命中即触发破隐判定”，同时视觉/状态至少保留 0.1 秒。
+- 新增并通过 Playwright source guard，验证 `FUGUANG_MIN_VISIBLE_MS = 100` 与最短窗口分支存在。
+- 完成 backend/frontend build，并在最新成功构建后执行 `pm2 restart frontend backend`。
+
+**Lesson**:
+- 对“要立即判定破除，但又要短暂可见”的隐身类 Buff，最佳做法是缩短 `expiresAt` 到最小窗口而非直接硬删，既保持判定时序，又避免同 tick 闪烁/不可见体验。
+
 ## 心法面板会心显示未按层数累计修复 (2026-05-31)
 
 **Implemented / checked**:
@@ -5971,3 +5994,21 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 
 ### Lesson
 - If style consistency requires ASCII punctuation, run punctuation normalization before formula migration to avoid mixed-width output and reduce cleanup passes.
+
+## 全颜色技能CSV导出与缺失倍率筛选 (2026-05-31)
+
+### What was changed
+- 新增全量导出文件 `reports/all_colors_full_list.csv`，覆盖 `精巧/卓越/珍奇/稀世` 四个稀有度（颜色）并统一字段：`color, rarity, id, name, hasDamage, damageMode, scaleNumbers, clause, originalDescription, missingScale`。
+- 新增缺失倍率文件 `reports/all_colors_missing_scale.csv`，仅保留“应当造成伤害但描述未给出倍率数字”的子集，用于后续文案修正。
+- 倍率列按需求只保留纯数字（例如 `3.2968|0.074|1.6484`），不保留 `*攻击力` 与“每X秒”文案。
+
+### Pitfall / fix
+- 首版脚本把“受到伤害降低/免疫伤害”等防御语句误判进缺失倍率集合。
+- 修正为双层判断：先命中伤害信号（造成/点伤害/反弹/引爆/爆炸/持续伤害），再排除纯防御语义（减伤、免伤、护盾、治疗等），只保留真实输出语句。
+
+### Validation
+- 导出统计：`all_colors_full_list.csv` 共 `169` 行；`all_colors_missing_scale.csv` 共 `10` 行。
+- 本轮结束前完成 `backend` 与 `frontend` 构建，并执行 `pm2 restart frontend backend`，两进程均 `online`。
+
+### Lesson
+- “缺失倍率”检测必须区分“造成伤害”与“承受/减免伤害”两类语义；仅靠 `伤害` 关键词会产生大量误报。
