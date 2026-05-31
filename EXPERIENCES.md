@@ -5660,6 +5660,8 @@ When the old imports block was replaced (only the top few lines), the rest of th
 - **Fix**: Added an opt-in `preferMomentumDirection` flag on `DIRECTIONAL_DASH`. The shared dash setup now seeds the dash from current planar momentum (`velocity` / active air nudge) before falling back to facing, and `movement.ts` steering now prefers live movement intent over plain facing for that opt-in path while still falling back to facing when there is no directional intent.
 - **Scope**: Enabled only for `踏星行` so other facing-locked dashes keep their previous behavior.
 - **Files**: `backend/game/engine/effects/definitions/DirectionalDash.ts`, `backend/game/engine/loop/movement.ts`, `backend/game/engine/state/types/effects.ts`, `backend/game/engine/state/types/state.ts`, `backend/game/abilities/abilities.ts`
+- **Buff duration sync**: `傍花随柳` and `啸如虎` already had override/editor text reflecting `8s` and `20s`, but the canonical runtime `ABILITIES` definitions still used `30_000` and `12_000`. Fix the runtime source in `abilities.ts`; editor/override text alone does not change combat behavior.
+- **Area/range sync**: `雾暗迷云` `迷云` duration plus `镇山河` area and `大狮子吼` range were already reflected in override/editor descriptions (`7s`, `10尺`, `6尺`), but runtime `abilities.ts` and legacy `cards.ts` still carried the old values (`8_000`, `8`, `8`). Update both runtime sources together; the override text is not authoritative for gameplay.
 - `properties: []` is now a valid override sentinel meaning "user explicitly cleared all code-defined properties". This required changing `normalizeProperties` to return `[]` instead of `undefined` for empty arrays.
 
 ### Buff detail page pattern

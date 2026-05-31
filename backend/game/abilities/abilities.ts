@@ -693,10 +693,10 @@ export const BASE_ABILITIES: AbilityRecord = {
     description: "怒吼震慑周围敌人，眩晕5秒并降低其技能冷却回复50%",
     type: "CONTROL",
     target: "SELF",
-    range: 8,
+    range: 6,
     cooldownTicks: 300,
     gcd: true,
-    effects: [{ type: "AOE_APPLY_BUFFS", range: 8 }],
+    effects: [{ type: "AOE_APPLY_BUFFS", range: 6 }],
     buffs: [
       {
         buffId: 1005,
@@ -1403,7 +1403,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         type: "PLACE_GROUND_ZONE",
         value: 0,
-        range: 8,
+        range: 10,
         zoneDurationMs: 8_000,
         zoneIntervalMs: 100,
         zoneOffsetUnits: 0,
@@ -2748,11 +2748,11 @@ export const BASE_ABILITIES: AbilityRecord = {
     applyBuffsOnComplete: true,
   } as any,
 
-  // ─── 啸如虎: instant self, 12s: cannot die + 30% dmg boost ───
+  // ─── 啸如虎: instant self, 20s: cannot die + 30% dmg boost ───
   xiao_ru_hu: {
     id: "xiao_ru_hu",
     name: "啸如虎",
-    description: "瞬发，触发GCD\n获得【啸如虎】12秒：气血不会降至1以下（无法被击杀）；造成伤害提高30%；不受控制，但仍受锁招影响",
+    description: "瞬发，触发GCD\n获得【啸如虎】20秒：气血不会降至1以下（无法被击杀）；造成伤害提高30%；不受控制，但仍受锁招影响",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 300,
@@ -2763,7 +2763,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 2602,
         name: "啸如虎",
         category: "DEBUFF",
-        durationMs: 12_000,
+        durationMs: 20_000,
         description: "气血不会降至1以下；伤害提高30%；不受控制，但仍受锁招影响",
         effects: [
           { type: "MIN_HP_1" },
@@ -3341,7 +3341,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   bang_hua_sui_liu: {
     id: "bang_hua_sui_liu",
     name: "傍花随柳",
-    description: "运功1秒（可移动、可在空中施放）。读条完成后对目标附加【傍花随柳】3层（30秒）：目标每次出招消耗1层并受到2点伤害；消耗第3层时额外施加【束发】沉默4秒",
+    description: "运功1秒（可移动、可在空中施放）。读条完成后对目标附加【傍花随柳】3层（8秒）：目标每次出招消耗1层并受到2点伤害；消耗第3层时额外施加【束发】沉默4秒",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
@@ -3353,7 +3353,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         buffId: 2611,
         name: "傍花随柳",
         category: "DEBUFF",
-        durationMs: 30_000,
+        durationMs: 8_000,
         initialStacks: 3,
         maxStacks: 3,
         breakOnPlay: false,
@@ -3947,7 +3947,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   wu_an_mi_yun: {
     id: "wu_an_mi_yun",
     name: "雾暗迷云",
-    description: "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】8秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
+    description: "运功1.5秒，期间必须站立不动；完成后使目标获得【迷云】7秒：陷入混乱，释放技能时重新随机目标且不分敌我；【迷云】消失后获得【雾释】20秒：不会受到迷云影响",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
@@ -3967,7 +3967,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "迷云",
         category: "DEBUFF",
         applyTo: "OPPONENT",
-        durationMs: 8_000,
+        durationMs: 7_000,
         description: "陷入混乱，释放技能时重新随机目标且不分敌我；消失后获得【雾释】20秒",
         effects: [{ type: "MIYUN_CONFUSION" }],
       },
