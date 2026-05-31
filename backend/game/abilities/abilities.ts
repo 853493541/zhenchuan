@@ -2418,14 +2418,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   zhong_lin_yu_xiu: {
     id: "zhong_lin_yu_xiu",
     name: "钟林毓秀",
-    description: "正读条1秒，必须站立施放，移动或跳跃会中断读条\n读条完成后附加【钟林毓秀】18秒：攻击力降低5%，每3秒受到1点伤害\n射程20",
+    description: "正读条1秒，仅可地面施放；可在移动中施放和读条（跳跃会中断）\n读条完成后附加【钟林毓秀】18秒：攻击力降低5%，每3秒受到1点伤害\n射程20",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
     cooldownTicks: 300,
     gcd: true,
     requiresGrounded: true,
-    requiresStanding: true,
+    requiresStanding: false,
     effects: [],
     buffs: [
       {
@@ -2442,7 +2442,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       },
     ],
     channelDurationMs: 1_000,
-    channelCancelOnMove: true,
+    channelCancelOnMove: false,
     channelCancelOnJump: true,
     channelCancelOnOutOfRange: 20,
     channelForward: true,
@@ -3417,12 +3417,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   shao_ming_zhi: {
     id: "shao_ming_zhi",
     name: "少明指",
-    description: "运功1秒（可移动，不可跳跃），射程20。造成1点伤害，驱散目标身上的混元、阳性、阴性、毒性有益气劲各两个",
+    description: "运功1秒（仅可地面施放，可移动，不可跳跃），射程20。造成1点伤害，驱散目标身上的混元、阳性、阴性、毒性有益气劲各两个",
     type: "CHANNEL",
     target: "OPPONENT",
     range: 20,
     cooldownTicks: 300,
     gcd: true,
+    requiresGrounded: true,
     effects: [],
     buffs: [],
     channelDurationMs: 1_000,
@@ -4087,7 +4088,7 @@ export const BASE_ABILITIES: AbilityRecord = {
 
   // ──────────────────────────────────────────────────────────────────────────
   // 疾电叱羽 — instant SELF cast. Place an HP-bearing redirect zone below the
-  // caster (radius 8u, lasts 8s, 430000 HP). Allies inside gain 【疾电叱羽】 buff
+  // caster (radius 6u, lasts 8s, 286120 HP). Allies inside gain 【疾电叱羽】 buff
   // that redirects ALL incoming damage to the zone. When the zone HP hits 0
   // (or it expires) the buff is removed and damage resumes normally.
   // The zone itself cannot be targeted by abilities — all damage to it must
@@ -4096,13 +4097,13 @@ export const BASE_ABILITIES: AbilityRecord = {
   ji_dian_chi_yu: {
     id: "ji_dian_chi_yu",
     name: "疾电叱羽",
-    description: "瞬发，自身施放\n于脚下展开疾电叱羽阵，半径8尺，持续8秒，气血上限43万\n阵中我方获得【疾电叱羽】：受到的所有伤害转移到本阵\n本阵气血归零或消失时，护盾解除",
+    description: "瞬发，自身施放\n于脚下展开疾电叱羽阵，半径6尺，持续8秒，气血上限286120\n阵中我方获得【疾电叱羽】：受到的所有伤害转移到本阵\n本阵气血归零或消失时，护盾解除",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 600,
     gcd: true,
     effects: [
-      { type: "PLACE_JI_DIAN_ZONE", value: 430000, range: 8, zoneDurationMs: 8_000 } as any,
+      { type: "PLACE_JI_DIAN_ZONE", value: 286120, range: 6, zoneDurationMs: 8_000 } as any,
     ],
     buffs: [
       {
@@ -4118,7 +4119,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   },
 
   // ──────────────────────────────────────────────────────────────────────────
-  // 乘黄之威 — instant cast (works mid-air / mid-move). Forward dash 12u over
+  // 乘黄之威 — instant cast (works mid-air / mid-move). Forward dash 10u over
   // 0.6s (20u/s). On dash end: flip facing 180° instantly, then silence enemies
   // within 6u and 120° cone of the new facing. Silenced enemies are 恐惧 (FEARED):
   // forced to walk away from the caster while silenced.
@@ -4126,14 +4127,14 @@ export const BASE_ABILITIES: AbilityRecord = {
   cheng_huang_zhi_wei: {
     id: "cheng_huang_zhi_wei",
     name: "乘黄之威",
-    description: "瞬发，可在移动或空中施放\n向前冲刺12尺（20尺/秒），结束后立即转身180°\n并对身后6尺、120°内的敌人施加【恐惧】3秒：沉默并强制远离施法者",
+    description: "瞬发，可在移动或空中施放\n向前冲刺10尺（20尺/秒），结束后立即转身180°\n并对身后6尺、120°内的敌人施加【恐惧】2秒：沉默并强制远离施法者",
     type: "SUPPORT",
     target: "SELF",
     cooldownTicks: 450,
     gcd: true,
     allowWhileControlled: false,
     effects: [
-      { type: "CHENG_HUANG_DASH", value: 12, durationTicks: 18 } as any,
+      { type: "CHENG_HUANG_DASH", value: 10, durationTicks: 18 } as any,
     ],
     buffs: [
       {
@@ -4141,7 +4142,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         name: "恐惧",
         category: "DEBUFF",
         applyTo: "OPPONENT",
-        durationMs: 3_000,
+        durationMs: 2_000,
         description: "沉默并强制远离施法者，无法自主控制移动",
         effects: [
           { type: "SILENCE" },
