@@ -5662,6 +5662,7 @@ When the old imports block was replaced (only the top few lines), the rest of th
 - **Files**: `backend/game/engine/effects/definitions/DirectionalDash.ts`, `backend/game/engine/loop/movement.ts`, `backend/game/engine/state/types/effects.ts`, `backend/game/engine/state/types/state.ts`, `backend/game/abilities/abilities.ts`
 - **Buff duration sync**: `傍花随柳` and `啸如虎` already had override/editor text reflecting `8s` and `20s`, but the canonical runtime `ABILITIES` definitions still used `30_000` and `12_000`. Fix the runtime source in `abilities.ts`; editor/override text alone does not change combat behavior.
 - **Area/range sync**: `雾暗迷云` `迷云` duration plus `镇山河` area and `大狮子吼` range were already reflected in override/editor descriptions (`7s`, `10尺`, `6尺`), but runtime `abilities.ts` and legacy `cards.ts` still carried the old values (`8_000`, `8`, `8`). Update both runtime sources together; the override text is not authoritative for gameplay.
+- **Zone tuning sync**: `生太极` and `吞日月` had editor/override descriptions aligned to larger/longer zones, while runtime `abilities.ts` still used old zone payloads (`生太极` 15u/10s, `吞日月` 15u/10s). Update `channelEffects.PLACE_GROUND_ZONE` plus the runtime descriptions in `abilities.ts` so gameplay and displayed text stay consistent.
 - `properties: []` is now a valid override sentinel meaning "user explicitly cleared all code-defined properties". This required changing `normalizeProperties` to return `[]` instead of `undefined` for empty arrays.
 
 ### Buff detail page pattern

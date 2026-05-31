@@ -3600,11 +3600,11 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   } as any,
 
-  // ─── 生太极 — channel 1.5s, movable/air, self zone 15u 10s, reuses qionglong_huasheng zone logic ───
+  // ─── 生太极 — channel 1.5s, movable/air, self zone 20u 15s, reuses qionglong_huasheng zone logic ───
   sheng_tai_ji: {
     id: "sheng_tai_ji",
     name: "生太极",
-    description: "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落生太极阵，持续10秒，半径15尺。阵中自身获得【生太极·护体】：免疫控制；阵中敌方获得【生太极·迟滞】：移动减速40%",
+    description: "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落生太极阵，持续15秒，半径20尺。阵中自身获得【生太极·护体】：免疫控制；阵中敌方获得【生太极·迟滞】：移动减速40%",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -3621,8 +3621,8 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         type: "PLACE_GROUND_ZONE",
         value: 0,
-        range: 15,
-        zoneDurationMs: 10_000,
+        range: 20,
+        zoneDurationMs: 15_000,
         zoneIntervalMs: 1_000,
         zoneOffsetUnits: 0,
         zoneHeight: 15,
@@ -3630,11 +3630,11 @@ export const BASE_ABILITIES: AbilityRecord = {
     ],
   } as any,
 
-  // ─── 吞日月 — channel 1.5s, movable/air, self zone 15u 10s, 1s pulse: enemy 封轻功 ───
+  // ─── 吞日月 — channel 1.5s, movable/air, self zone 15u 15s, 1s pulse: enemy 封轻功 ───
   tun_ri_yue: {
     id: "tun_ri_yue",
     name: "吞日月",
-    description: "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落吞日月阵，持续10秒，半径15尺。阵中敌方获得【吞日月】：封轻功",
+    description: "运功1.5秒（可移动、可在空中施放）。读条完成后于脚下降落吞日月阵，持续15秒，半径15尺。阵中敌方获得【吞日月】：封轻功",
     type: "CHANNEL",
     target: "SELF",
     cooldownTicks: 300,
@@ -3652,7 +3652,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         type: "PLACE_GROUND_ZONE",
         value: 0,
         range: 15,
-        zoneDurationMs: 10_000,
+        zoneDurationMs: 15_000,
         zoneIntervalMs: 1_000,
         zoneOffsetUnits: 0,
         zoneHeight: 15,
