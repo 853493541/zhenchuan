@@ -3,6 +3,24 @@
 Record all problems solved, unresolved issues, and disproved approaches here.
 Each entry goes under its relevant section header.
 
+## 技能灰置/施放失败提示文案统一映射 (2026-05-31)
+
+**Implemented / checked**:
+- 在 `frontend/app/game/screens/in-game/components/BattleArena/BattleArena.tsx` 统一更新技能灰置与施放前校验提示文案，按产品映射替换核心文案：
+  - `技能配置不存在 -> 该招式不存在`
+  - 冷却/GCD/层数恢复/封轻功/观战限制/特殊跳跃限制/非轻功限制/受控/锁足等多类限制统一为 `招式施展失败`
+  - 骑御限制改为 `该招式无法在骑行状态下施展`
+  - 击退/拉拽限制统一为 `该招式无法在位移时施展`
+  - 气血阈值不足统一为 `气血要求不足`
+  - 目标选择/目标类型错误统一为 `目标类型不正确`
+  - 距离过远/过近统一为 `目标在招式范围之外`
+  - 特定目标规则失败（如目标过高血量、曙色已存在、实体目标限制）统一为 `招式施展失败`
+- 同步更新 `frontend/app/game/screens/in-game/InGameClient.tsx` 的服务端错误码文案映射，保证“服务端拒绝施放”与“前端灰置/本地校验”提示一致。
+- 已完成 backend/frontend build，并执行 `pm2 restart frontend backend`；两进程 online。
+
+**Lesson**:
+- 这类文案统一不能只改点击施放分支，还要同时覆盖“灰置禁用来源”分支（`getAbilityDisabledWarning`），否则同一限制会在不同入口显示不同提示。
+
 ## 最终技能系数核对表定版并清理旧版本 (2026-05-31)
 
 ## 补齐伤害核对表空当前系数位 (2026-05-31)

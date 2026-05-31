@@ -40,25 +40,25 @@ function getGameErrorText(rawCode: string) {
     case "ERR_OUTER_POWER_LOCKED":
       return "经脉受损 无法运功";
     case "ERR_NON_QINGGONG_LOCKED":
-      return "你当前只能施展轻功招式";
+      return "招式施展失败";
     case "ERR_DISPLACEMENT":
       return "该招式无法在位移时施展";
     case "ERR_KNOCKED_BACK":
-      return "你被击退，无法行动";
+      return "该招式无法在位移时施展";
     case "ERR_PULLED":
-      return "你被拉拽，无法行动";
+      return "该招式无法在位移时施展";
     case "ERR_CONTROLLED":
-      return "你被控制，无法行动";
+      return "招式施展失败";
     case "ERR_ROOTED":
-      return "你被锁足，无法施展该招式";
+      return "招式施展失败";
     case "ERR_TARGET_UNTARGETABLE":
       return "目标无法选中";
     case "ERR_ABILITY_NOT_IN_HAND":
       return "技能不可用";
     case "ERR_ABILITY_NOT_FOUND":
-      return "技能配置不存在";
+      return "该招式不存在";
     case "ERR_ON_COOLDOWN":
-      return "这个能力正在冷却";
+      return "招式施展失败";
     case "ERR_NO_GCD":
       return "行动值不足";
     case "ERR_GAME_OVER":
@@ -66,23 +66,23 @@ function getGameErrorText(rawCode: string) {
     case "ERR_NOT_AUTHENTICATED":
       return "登录状态失效，请重新进入";
     case "ERR_OUT_OF_RANGE":
-      return "距离太远，无法释放该能力";
+      return "目标在招式范围之外";
     case "ERR_TOO_CLOSE":
-      return "距离太近，无法释放该能力";
+      return "目标在招式范围之外";
     case "ERR_TARGET_UNAVAILABLE":
       return "警告：目标丢失或不可选中";
     case "ERR_SELECT_ENEMY_TARGET":
-      return "请选择敌方目标";
+      return "目标类型不正确";
     case "ERR_REQUIRES_GROUNDED":
       return "该技能需要落地后施放";
     case "ERR_REQUIRES_STANDING":
       return "该技能需要站立后施放";
     case "ERR_QINGGONG_SEALED":
-      return "你被封轻功，无法施放轻功技能";
+      return "招式施展失败";
     case "ERR_HP_TOO_LOW":
-      return "当前气血不足，无法施放";
+      return "气血要求不足";
     case "ERR_TARGET_HP_TOO_HIGH":
-      return "目标气血过高，无法施放";
+      return "招式施展失败";
     case "ERR_BLOCKED_BY_BUFF":
       return "该招式被当前气劲阻止";
     case "ERR_INVALID_PAYLOAD":

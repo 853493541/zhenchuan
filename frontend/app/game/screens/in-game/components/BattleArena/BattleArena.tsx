@@ -7576,8 +7576,8 @@ export default function BattleArena({
       ?? (selectedEntity ? { x: selectedEntity.position.x, y: selectedEntity.position.y, z: selectedEntity.position.z } : undefined);
 
     // Abilities targeting the opponent require a target (player or entity) to be selected first
-    if (ability?.target === 'OPPONENT' && selectedSelfNow && !isFriendlyTargetAbility && !ability?.canTargetSelf) {
-      showInGameWarning('该技能不能以自己为目标');
+      if (ability?.target === 'OPPONENT' && selectedSelfNow && !isFriendlyTargetAbility && !ability?.canTargetSelf) {
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (ability?.target === 'OPPONENT' && !selectedTargetIdNow && !selectedEntityIdNow && !selectedSelfNow) {
@@ -7585,11 +7585,11 @@ export default function BattleArena({
         beginPendingGroundCast(id);
         return;
       }
-      showInGameWarning('请先选择目标');
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (ability?.target === 'OPPONENT' && isFriendlyTargetAbility && selectedTargetIdNow) {
-      showInGameWarning('请先选择友方目标');
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (
@@ -7607,7 +7607,7 @@ export default function BattleArena({
       ((isFriendlyTargetAbility && selectedEntity.ownerUserId !== me.userId) ||
         (!isFriendlyTargetAbility && selectedEntity.ownerUserId === me.userId))
     ) {
-      showInGameWarning(isFriendlyTargetAbility ? '请先选择友方目标' : '请先选择敌方目标');
+      showInGameWarning('目标类型不正确');
       return;
     }
     if (ability?.target === 'OPPONENT' && selectedTarget && blocksTargetingClient(selectedTarget.buffs)) {
@@ -7615,15 +7615,15 @@ export default function BattleArena({
       return;
     }
     if (abilityKey === 'hong_meng_tian_jin' && hasShuSeClient((selectedSelfTarget ?? selectedTarget)?.buffs)) {
-      showInGameWarning('目标已受曙色影响');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedEntityIdNow) {
-      showInGameWarning('该技能只能对敌方玩家施放');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'qin_yin_gong_ming' && selectedEntityIdNow) {
-      showInGameWarning('该技能只能对敌方玩家施放');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'dou_zhuan_xing_yi' && selectedTarget && hasMianLaClient(selectedTarget.buffs)) {
@@ -7661,21 +7661,21 @@ export default function BattleArena({
       localVelocityRef.current = { x: 0, y: 0 };
     }
     if (ability?.cannotCastWhileRooted && buffsHaveAnyEffect(me?.buffs, ['ROOT'])) {
-      showInGameWarning('你被锁足，无法施展该招式');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (abilityKey === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-      showInGameWarning('凌然天风特殊跳跃中无法施展任驰骋');
+      showInGameWarning('招式施展失败');
       return;
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
-      showInGameWarning(`当前气血必须大于${ability.minSelfHpExclusive}才能施放`);
+      showInGameWarning('气血要求不足');
       return;
     }
     if (typeof ability?.minSelfHpPercentExclusive === 'number') {
       const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ability.minSelfHpPercentExclusive / 100);
       if ((me?.hp ?? 0) <= requiredHp) {
-        showInGameWarning(`当前气血必须大于${ability.minSelfHpPercentExclusive}%才能施放`);
+        showInGameWarning('气血要求不足');
         return;
       }
     }
@@ -9547,7 +9547,7 @@ export default function BattleArena({
     );
 
     const getAbilityDisabledWarning = (ab: any, instance: any): string | undefined => {
-      if (!ab) return '技能配置不存在';
+      if (!ab) return '该招式不存在';
       const targetContext = getAbilityTargetContext(ab);
       const targetForChecks = targetContext.targetForChecks;
       const targetPos = targetContext.targetPos;
@@ -9560,13 +9560,13 @@ export default function BattleArena({
       if (!ignoreSpectatorCooldown && maxCharges > 1) {
         const chargeCount = typeof instance?.chargeCount === 'number' ? instance.chargeCount : maxCharges;
         const chargeLockTicks = getRuntimeCountdownTicks(instance, 'chargeLockTicks', '_chargeLockTicksSyncedAt', cooldownClockMs);
-        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
-        if (chargeLockTicks > 0) return '这个能力正在冷却';
-        if (chargeCount <= 0) return '招式层数正在恢复';
+        if (sharedGcdTicks > 0) return '招式施展失败';
+        if (chargeLockTicks > 0) return '招式施展失败';
+        if (chargeCount <= 0) return '招式施展失败';
       } else if (!ignoreSpectatorCooldown) {
         const instanceCooldown = getRuntimeCountdownTicks(instance, 'cooldown', '_cooldownSyncedAt', cooldownClockMs);
-        if (instanceCooldown > 0) return '这个能力正在冷却';
-        if (sharedGcdTicks > 0) return '公共调息中，暂时无法施展';
+        if (instanceCooldown > 0) return '招式施展失败';
+        if (sharedGcdTicks > 0) return '招式施展失败';
       }
 
       const airborneLockedLocal =
@@ -9574,31 +9574,31 @@ export default function BattleArena({
         jumpSendRef.current ||
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
-      if (isQinggongLike && qinggongSealed) return '你被封轻功，无法施放轻功技能';
-      if (selfYumenSpectating && !isQinggongLike) return '观战中只能施展江湖轻功';
+      if (isQinggongLike && qinggongSealed) return '招式施展失败';
+      if (selfYumenSpectating && !isQinggongLike) return '招式施展失败';
       if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-        return '凌然天风特殊跳跃中无法施展任驰骋';
+        return '招式施展失败';
       }
       if (getActiveChannelClient(me?.activeChannel ?? null)) return '正在进行其他动作';
-      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '骑御状态下无法施展该招式';
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '该招式无法在骑行状态下施展';
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
       if (powerLockWarning) return powerLockWarning;
-      if (nonQinggongLocked && !isQinggongLike) return '你当前只能施展轻功招式';
+      if (nonQinggongLocked && !isQinggongLike) return '招式施展失败';
       if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDisplaced')) return '该招式无法在位移时施展';
-      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '你被击退，无法行动';
-      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '你被拉拽，无法行动';
-      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '你被控制，无法行动';
-      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '你被锁足，无法施展该招式';
+      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '该招式无法在位移时施展';
+      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '该招式无法在位移时施展';
+      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '招式施展失败';
+      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '招式施展失败';
       if (ab?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) return '该技能需要落地后施放';
       if (requiresStandingAtCastClient(ab) && !mountedYuqiToggle) {
         if (isStandingCastBlocked(wasdKeys)) return '该技能需要站立后施放';
       }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
-        return `当前气血必须大于${ab.minSelfHpExclusive}才能施放`;
+        return '气血要求不足';
       }
       if (typeof ab?.minSelfHpPercentExclusive === 'number') {
         const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
-        if ((me?.hp ?? 0) <= requiredHp) return `当前气血必须大于${ab.minSelfHpPercentExclusive}%才能施放`;
+        if ((me?.hp ?? 0) <= requiredHp) return '气血要求不足';
       }
 
       // Ground-target abilities stay available after caster-state checks.
@@ -9606,16 +9606,16 @@ export default function BattleArena({
 
       const needsSelectedTarget = ab?.target === 'OPPONENT' && !ab?.allowGroundCastWithoutTarget;
       if (needsSelectedTarget && selectedSelf && !targetContext.friendlyTarget && !ab?.canTargetSelf) {
-        return '该技能不能以自己为目标';
+        return '目标类型不正确';
       }
-      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return '请先选择友方目标';
-      if (needsSelectedTarget && !targetPos) return targetContext.friendlyTarget ? '请先选择友方目标' : '请先选择目标';
+      if (needsSelectedTarget && targetContext.friendlyTarget && !targetContext.hasSelectedTarget) return '目标类型不正确';
+      if (needsSelectedTarget && !targetPos) return '目标类型不正确';
 
       // 拿云式: target HP must be < 30%
       if (ab?.id === 'na_yun_shi' || instance?.abilityId === 'na_yun_shi') {
         const tgtHp = (targetForChecks as any)?.hp ?? Infinity;
         const tgtMaxHp = Math.max(1, Number((targetForChecks as any)?.maxHp ?? 100));
-        if (tgtHp >= tgtMaxHp * 0.3) return '目标气血过高，无法施放';
+        if (tgtHp >= tgtMaxHp * 0.3) return '招式施展失败';
       }
       // 梯云纵 / 扶摇直上 mutual exclusion (mirrors backend gate)
       if (ab?.id === 'ti_yun_zong' || instance?.abilityId === 'ti_yun_zong') {
@@ -9625,10 +9625,10 @@ export default function BattleArena({
         if (activeSelfBuffsClient(me.buffs, locallyConsumedJumpBoostAt).some((b: any) => b.buffId === 9003)) return '该招式被当前气劲阻止';
       }
       if ((ab?.id === 'hong_meng_tian_jin' || instance?.abilityId === 'hong_meng_tian_jin') && hasShuSeClient((targetForChecks as any)?.buffs)) {
-        return '目标已受曙色影响';
+        return '招式施展失败';
       }
       if (ab?.id === 'dou_zhuan_xing_yi' || instance?.abilityId === 'dou_zhuan_xing_yi') {
-        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
+        if (targetContext.entityTarget) return '招式施展失败';
         if (hasMianLaClient((targetForChecks as any)?.buffs)) return '目标处于免拉状态';
       }
       if (
@@ -9640,7 +9640,7 @@ export default function BattleArena({
         return '请选择敌方目标';
       }
       if (ab?.id === 'qin_yin_gong_ming' || instance?.abilityId === 'qin_yin_gong_ming') {
-        if (targetContext.entityTarget) return '该技能只能对敌方玩家施放';
+        if (targetContext.entityTarget) return '招式施展失败';
       }
       if (ab?.target !== 'OPPONENT') return undefined;
 
@@ -9654,8 +9654,8 @@ export default function BattleArena({
       const effectiveRange = getEffectiveAbilityRangeClient(ab, me?.buffs);
       const inMaxRange = typeof effectiveRange !== 'number' || distanceToTarget <= effectiveRange;
       const inMinRange = typeof ab?.minRange !== 'number' || distanceToTarget >= ab.minRange;
-      if (!inMaxRange) return '距离太远，无法释放该能力';
-      if (!inMinRange) return '距离太近，无法释放该能力';
+      if (!inMaxRange) return '目标在招式范围之外';
+      if (!inMinRange) return '目标在招式范围之外';
 
       if (ab?.target === 'OPPONENT' && myPos && targetPos && !targetContext.selfTarget && !targetContext.friendlyTarget) {
         if (requiresFacingByDefault(ab) && myFacing) {
