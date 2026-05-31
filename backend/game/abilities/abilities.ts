@@ -537,7 +537,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileKnockedBack: true,
     allowWhilePulled: true,
     allowWhileDisplaced: true,
-    effects: [{ type: "QIAN_LONG_WU_YONG", value: 8 } as any],
+    effects: [{ type: "QIAN_LONG_WU_YONG", value: 8, damageValue: 2 } as any],
     buffs: [],
   },
 
@@ -2132,7 +2132,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     faceDirection: false,
     effects: [
       // durationTicks: 18 = 12u ÷ (20u/sec) × 30 ticks/sec
-      { type: "KNOCKBACK_DASH", value: 12, durationTicks: 18, wallStunMs: 4_000 },
+      { type: "KNOCKBACK_DASH", value: 12, durationTicks: 18, wallStunMs: 4_000, wallHitDamage: 0.5 } as any,
     ],
     buffs: [
       {
@@ -2666,6 +2666,7 @@ export const BASE_ABILITIES: AbilityRecord = {
       {
         type: "LIE_RI_ZHAN",
         value: 4,
+        extraDamageValue: 4,
       } as any,
     ],
     buffs: [
@@ -3512,7 +3513,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     effects: [
-      { type: "PO_FENG_STRIKE" } as any,
+      { type: "PO_FENG_STRIKE", strikeDamage: 1 } as any,
     ],
     buffs: [
       {

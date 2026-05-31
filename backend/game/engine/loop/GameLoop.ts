@@ -2597,10 +2597,29 @@ export class GameLoop {
         if (stunMs > 0) {
           const jiuAbility = ABILITIES["jiu_zhuan_gui_yi"] as any;
           const yuHuaBuff = jiuAbility?.buffs?.find((b: any) => b.buffId === 9202);
+          const knockbackEffect = Array.isArray(jiuAbility?.effects)
+            ? jiuAbility.effects.find((effect: any) => effect?.type === "KNOCKBACK_DASH")
+            : null;
+          const wallHitDamage = Number(knockbackEffect?.wallHitDamage ?? 0);
           if (jiuAbility && yuHuaBuff) {
             // Remove the KNOCKED_BACK phase debuff so it doesn't overlap
             player.buffs = player.buffs.filter((b) => b.buffId !== 9101);
             const sourceId: string = (player as any)._wallKnockSourceUserId ?? player.userId;
+
+            if (wallHitDamage > 0) {
+              applyDamageToHostileTarget({
+                state: this.state,
+                source: { userId: sourceId, buffs: [] },
+                target: { kind: "player", target: player as any },
+                baseDamage: wallHitDamage,
+                abilityId: "jiu_zhuan_gui_yi",
+                abilityName: jiuAbility.name,
+                effectType: "DAMAGE",
+                damageType: jiuAbility.damageType,
+                timestamp: Date.now(),
+              });
+            }
+
             // addBuff handles: 递减, CONTROL_IMMUNE check, BUFF_APPLIED event, status bar
             addBuff({
               state: this.state,

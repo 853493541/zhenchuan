@@ -17,6 +17,13 @@ Each entry goes under its relevant section header.
   - `撼地`: `GROUND_TARGET_DASH.aoeDamage`
   同步把运行时结算改为读取这些字段，确保编辑器改值后对战结算也生效。
 - adControl 展示结构调整：同一技能的多条系数行合并在同一技能卡片内展示，不再按“每行一张卡”拆散；技能图标在该页缩小；若 `md` 有行但代码侧未匹配到 setting，仍展示该行 `输出方式`，并将输入框灰态禁用（占位“未匹配”）。
+- 按“手动逐条对齐”先修前 5 条未匹配：`横扫六合(造成伤害) / 九转归一(造成伤害) / 烈日斩(额外造成伤害) / 破风(造成伤害) / 潜龙勿用(造成伤害)`：
+  - `横扫六合`: 将 `HENG_SAO_LIU_HE_AOE` 纳入伤害提取类型，直伤行可独立匹配。
+  - `九转归一`: 为 `KNOCKBACK_DASH` 增加 `wallHitDamage` 并在撞墙结束时结算该伤害，新增可编辑项。
+  - `烈日斩`: 增加 `extraDamageValue`，把“银月斩存在时的额外伤害”从倍率翻倍改为可独立系数字段。
+  - `破风`: `PO_FENG_STRIKE` 增加 `strikeDamage`，不再只有流血 DoT 可编辑。
+  - `潜龙勿用`: `QIAN_LONG_WU_YONG` 增加 `damageValue`，将伤害与范围参数拆开。
+  校验脚本确认以上 5 条现在均可匹配到对应 setting。
 - 每条加成标签改为显示系数表“输出方式”（如 `造成持续伤害`），替换原内部技术标签（如 `读条完成 · 延时范围伤害倍率`）。
 - 删除中间版本 `frontend/app/ability-editor/adControlCoeffWhitelist.ts`，避免与逐行数据源冲突。
 

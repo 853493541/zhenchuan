@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-05-31T08:05:38.824Z",
+  "updatedAt": "2026-05-31T09:07:29.268Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -33,11 +33,13 @@
         "canCastWhileMounted": false
       },
       "numeric": {
-        "cooldownTicks": 360
+        "cooldownTicks": 360,
+        "effects.0.value": 1.2708,
+        "buffs.0.effects.0.value": 0.125
       },
       "description": "对周围5尺5个目标造成(1.2708*攻击力)点伤害并添加12秒持续伤害效果，每2秒造成（0.125攻击力)点伤害。若只命中单个目标则伤害提高100%",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -175,6 +177,7 @@
         "cooldownTicks": 900
       },
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -184,8 +187,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "fengxiu_diang": {
       "properties": {
@@ -197,6 +199,7 @@
       },
       "description": "恢复友方目标369598点气血值，并使其10秒内受到的伤害降低40%",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -206,8 +209,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "fuyao_zhishang": {
       "properties": {
@@ -218,6 +220,7 @@
       },
       "description": "江湖轻功，身轻如燕，能跳得更高，并能施展踏云。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "精巧",
@@ -227,8 +230,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "fuguang_lueying": {
       "properties": {
@@ -240,6 +242,7 @@
       },
       "description": "施展后进入隐身状态，前5秒可以移动但移动速度降低50%，后15秒内移动会结束隐身效果。施展任何招式将提前结束隐身效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -249,8 +252,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "guchong_xianji": {
       "properties": {
@@ -285,6 +287,7 @@
       },
       "description": "解除自身控制效果，持续运功9秒，持续期间受到的伤害降低50%且免疫控制效果，每1秒回复最大气血值5%，完整运功额外回复30%最大气血值。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -294,8 +297,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "nuwa_butian": {
       "properties": {
@@ -307,6 +309,7 @@
       },
       "description": "祈求女娲指引，进入补天姿态，基础攻击力提高100%，免疫锁足、减速效果，移动速度降低50%，受到的伤害降低50%，运功不会被伤害打退，持续20秒。若骑乘坐骑将使你脱离这个姿态。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -316,8 +319,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "sanliu_xia": {
       "properties": {
@@ -329,6 +331,7 @@
       },
       "description": "解除受控效果，向前翻越10尺，使自身5秒内无法被敌人选中且移动速度提高20%，\n效果期间每秒回复2%气血最大值，主动施展技能将提前解除该效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -338,8 +341,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "fu_rong_bing_di": {
       "properties": {
@@ -665,10 +667,12 @@
         "canCastWhileMounted": false
       },
       "numeric": {
-        "cooldownTicks": 0
+        "cooldownTicks": 0,
+        "effects.0.value": 10
       },
       "description": "向目标冲刺造成(1.4375*攻击力)外功伤害，添加锁足和“心怵”效果。若目标已拥有“心怵”效果，则添加定身并强化“心怵”效果，同时该招式的调息时间额外增加16秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -678,8 +682,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "chan_xiao": {
       "properties": {
@@ -715,6 +718,7 @@
       },
       "description": "使周围6尺内5个目标眩晕5秒，眩晕期间招式调息速度降低50%。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -724,8 +728,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "dican_longxiang": {
       "properties": {
@@ -737,6 +740,7 @@
       },
       "description": "对周围8尺内最多5个目标造成(0.01*攻击力)点伤害并定身，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -746,8 +750,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "han_di": {
       "properties": {
@@ -759,6 +762,7 @@
       },
       "description": "使用轻功腾空跳向目标区域，对半径5尺范围内最多5个目标造成眩晕和(0.5*攻击力)点伤害。持续3秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "苍云",
@@ -768,8 +772,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "he_gui_gu_shan": {
       "properties": {
@@ -781,6 +784,7 @@
       },
       "description": "跳跃至正前方15尺处并以重剑猛击地面，对半径6尺范围内的最多10个目标造成(3.1625*攻击力)点伤害并使其晕眩3秒，对周围4尺内的目标造成额外50%伤害。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -790,8 +794,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "jiang_chun_zhu_xiu": {
       "properties": {
@@ -803,6 +806,7 @@
       },
       "description": "以剑气击伤敌人心脉，使其施展轻功则2秒内无法施展招式，并受到（0.5*攻击力)点伤害，持续9秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -812,8 +816,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "jiu_zhuan_gui_yi": {
       "properties": {
@@ -825,6 +828,7 @@
       },
       "description": "对目标造成（0.5攻击力）点伤害，将其击退12尺，击退中的目标如果碰撞障碍则眩晕4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -834,8 +838,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "lei_ting_zhen_nu": {
       "properties": {
@@ -847,6 +850,7 @@
       },
       "description": "使目标眩晕，不受任何增益效果影响，持续15秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -856,8 +860,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "leizhenzi": {
       "properties": {
@@ -869,6 +872,7 @@
       },
       "description": "使目标眩晕，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -878,8 +882,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zhenshen_xingsi": {
       "properties": {
@@ -937,6 +940,7 @@
       },
       "description": "对自身周围8尺内的最多6个目标造成锁足效果，持续9秒。目标在被锁足的后半段时间里若被伤害招式命中，则有50%几率解除其锁足效果",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -946,8 +950,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "shengsi_jie": {
       "properties": {
@@ -1028,6 +1031,7 @@
       },
       "description": "对周围6尺内的最多6个目标造成(2.1562*攻击力)点伤害，并使这些目标锁足3秒，减疗50%持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1037,8 +1041,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "wufang_xingjin": {
       "properties": {
@@ -1050,6 +1053,7 @@
       },
       "description": "使自身会心效果提高20%，对选择区域范围内的最多6个目标均造成(0.5989*攻击力)点伤害，并使其锁足10.5秒。目标在被锁足的后半段持续时间里若被伤害招式命中，则有50%几率解除其锁足效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1059,8 +1063,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "wuyun_jiekong": {
       "properties": {
@@ -1094,6 +1097,7 @@
       },
       "description": "给友方目标一个5层的护盾，使其受到的所有伤害降低40%，运功不会被伤害击退，被攻击则消耗一层，每消耗一层恢复自身3%气血最大值，持续20秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1103,8 +1107,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "dienong_zu": {
       "properties": {
@@ -1116,6 +1119,7 @@
       },
       "description": "使自身移动速度提高55%，持续15秒，清除自身所有移动限制(击倒除外)并使自身免疫控制效果(被拉除外)，持续3秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -1125,8 +1129,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "duangu_jue": {
       "properties": {
@@ -1138,6 +1141,7 @@
       },
       "description": "使你突破一切限制，解除自身控制效果，卸除自身所有内功不利效果、点穴效果、持续伤害不利效果。施展后不受招式控制和无法施展内功招式效果的影响，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1147,8 +1151,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "duoming_gu": {
       "properties": {
@@ -1160,6 +1163,7 @@
       },
       "description": "使自身受到的伤害提高30%，招式伤害提高30%，持续12秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -1169,8 +1173,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "gu_feng_sa_ta": {
       "properties": {
@@ -1182,6 +1185,7 @@
       },
       "description": "解除自身控制，投掷锁链至目标点，使自身冲向其位置。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
@@ -1191,8 +1195,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "houyao": {
       "properties": {
@@ -1200,6 +1203,7 @@
       },
       "description": "向后方快速撤退。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1209,8 +1213,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "huayu_suxin": {
       "properties": {
@@ -1222,6 +1225,7 @@
       },
       "description": "使自身每秒恢复气血最大值的6%，持续5秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1231,8 +1235,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ji": {
       "properties": {
@@ -1267,6 +1270,7 @@
       },
       "description": "解除所有移动限制，并且不受招式控制(击退和被拉除外)，移动速度提高100%，持续6秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1276,8 +1280,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "lingxiao_lansheng": {
       "properties": {
@@ -1289,6 +1292,7 @@
       },
       "description": "江湖轻功，向左侧迅速移动，可以避开敌人的攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1298,8 +1302,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "niao_xiang_bi_kong": {
       "properties": {
@@ -1311,6 +1314,7 @@
       },
       "description": "突破内功限制，能够在空中连续跳跃多次，持续15秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -1320,8 +1324,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "nieyun_zhuyue": {
       "properties": {
@@ -1333,6 +1336,7 @@
       },
       "description": "江湖轻功，解除被击僵直，向前冲刺一段距离。冲刺过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1342,8 +1346,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "qionglong_huasheng": {
       "properties": {
@@ -1355,6 +1358,7 @@
       },
       "description": "自身将向前冲刺，持续2秒，可以转向，结束后在脚下生成“生太极”气场，并回复自身10%的最大气血值。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1364,8 +1368,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "que_ta_zhi": {
       "properties": {
@@ -1378,6 +1381,7 @@
       },
       "description": "使你被命中几率降低70%，持续5秒，清除自身所有移动限制，并使你不受招式控制(击退和被拉除外)，持续3.5秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -1387,8 +1391,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "sheng_ming_you": {
       "properties": {
@@ -1400,6 +1403,7 @@
       },
       "description": "立刻恢复自身20%气血最大值，同时10秒内使自身被命中几率降低20%。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -1409,8 +1413,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "shou_ru_shan": {
       "properties": {
@@ -1422,6 +1425,7 @@
       },
       "description": "使自身受到的伤害降低80%，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1431,8 +1435,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "taxingxing": {
       "properties": {
@@ -1444,6 +1447,7 @@
       },
       "description": "门派轻功，解除自身减速、锁足效果，使自身虚化浮空，被命中几率降低65%，移动速度提高30%，期间免疫控制且可自由漂浮，无法施展招式。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -1453,8 +1457,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "tai_yin_zhi": {
       "properties": {
@@ -1466,6 +1469,7 @@
       },
       "description": "向后疾退，解除自身锁足效果，疾退过程中自身被命中几率降低100%。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1475,8 +1479,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "tian_di_di_ang": {
       "properties": {
@@ -1488,6 +1491,7 @@
       },
       "description": "使自身化解受到的伤害55%，持续10秒。并不产生威胁值，运功不被打退，持续1秒。该招式的施放无视控制效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",
@@ -1497,8 +1501,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "wu_jianyu": {
       "properties": {
@@ -1536,6 +1539,7 @@
       },
       "description": "招式伤害提高30%，不受任何控制影响，20秒内受到攻击不会重伤。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -1545,8 +1549,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "xinglou_yueying": {
       "properties": {
@@ -1558,6 +1561,7 @@
       },
       "description": "清除自身所有移动限制，并使自身不受招式控制(击退和被拉除外)，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1567,8 +1571,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "yaotai_zhenhe": {
       "properties": {
@@ -1580,6 +1583,7 @@
       },
       "description": "江湖轻功，向右侧迅速移动，可以避开敌人攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1589,8 +1593,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "yingfeng_huilang": {
       "properties": {
@@ -1602,6 +1605,7 @@
       },
       "description": "向后疾退，避开敌人的攻击。过程中不受招式控制。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1611,8 +1615,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "yuqi": {
       "properties": {
@@ -1621,6 +1624,7 @@
       },
       "description": "在非战斗状态施展后能成功驾驭和下马，施展驾驭需3秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "通用",
@@ -1630,8 +1634,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "yun_qi_song": {
       "properties": {
@@ -1643,6 +1646,7 @@
       },
       "description": "恢复5%气血值，解除自身阳性、混元性、阴性、毒性不利效果各两个并使自身被命中概率降低60%，持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "藏剑",
@@ -1652,8 +1656,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zhen_shan_he": {
       "properties": {
@@ -1665,6 +1668,7 @@
       },
       "description": "产生一个10尺的气场，范围内队友获得镇山河，并解除外功、阴性、混元性、阳性、毒性和点穴的不利效果，持续8秒。该招式的施放无视任何控制效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1674,8 +1678,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zhuan_qiankun": {
       "properties": {
@@ -1687,6 +1690,7 @@
       },
       "description": "使纯阳诀下所有招式瞬发，不受无法施展内功招式效果的影响，并且自身受到的伤害降低70%，持续6秒，同时解除所有控制效果，自身免疫控制(击退和被拉除外)，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1696,8 +1700,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zuowang_wuwo": {
       "properties": {
@@ -1709,6 +1712,7 @@
       },
       "description": "以混元气劲护持自身，化解自身气血最大值5%伤害。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1718,8 +1722,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "chuan_xin_nu": {
       "properties": {
@@ -1804,6 +1807,7 @@
       },
       "description": "以七星罡气禁锢目标，使其定身，气血恢复速度提高，持续10秒，如果目标为非侠士单位，则持续1秒。任何伤害都会眩晕4秒，同一时间内只能使一个目标被定身，只能对人形目标施展。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -1813,8 +1817,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "qiandie_turui": {
       "properties": {
@@ -1827,6 +1830,7 @@
       },
       "description": "需持续运功，8秒内每0.5秒为半径20尺范围内气血百分比最低的一名小队或团队成员恢复14489点气血值，该招式不会被打退、打断，持续期间自身不受控制招式影响",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -1836,8 +1840,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "xinzheng": {
       "properties": {
@@ -1898,6 +1901,7 @@
       },
       "description": "恢复友方目标138598点气血值。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -1907,8 +1911,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zhong_lin_yu_xiu": {
       "properties": {
@@ -1968,6 +1971,7 @@
       },
       "description": "将前方一定距离内的敌方目标拉到身前，之后使目标无法施展轻功，持续5秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -1977,8 +1981,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "yan_yu_xing": {
       "properties": {
@@ -1991,6 +1994,7 @@
       },
       "description": "解除自身锁足和减速不利效果，快速冲向前方，施展过程中不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -2000,8 +2004,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "kuang_long_luan_wu": {
       "properties": {
@@ -2014,6 +2017,7 @@
       },
       "description": "成功运功会于前方位置唤起雷云，雷云每秒对半径8尺内最多5个敌方目标造成(2.8750*攻击力)点伤害，雷云持续6秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -2023,8 +2027,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "jian_zhu_tian_di": {
       "properties": {
@@ -2105,6 +2108,7 @@
       },
       "description": "使目标定身，持续6秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2114,8 +2118,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "hua_die": {
       "properties": {
@@ -2127,6 +2130,7 @@
       },
       "description": "随风：跳跃一段距离。跳到空中后，消失在敌人视野中，并不受任何伤害，持续1秒。并向前冲刺一段距离。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -2136,8 +2140,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "ji_le_yin": {
       "properties": {
@@ -2149,6 +2152,7 @@
       },
       "description": "将自身周围10尺范围内最多6个敌对目标拉至身边，使其眩晕4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -2158,8 +2162,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "jing_hong_you_long": {
       "properties": {
@@ -2171,6 +2174,7 @@
       },
       "description": "自身躲闪率提高65%，受到的内功伤害降低45%，持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -2180,8 +2184,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "lin_shi_fei_zhua": {
       "properties": {
@@ -2193,6 +2196,7 @@
       },
       "description": "将自身牵引至标记位置，非战斗中使用时将返还部分调息时间。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -2202,8 +2206,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "bang_hua_sui_liu": {
       "properties": {
@@ -2216,6 +2219,7 @@
       },
       "description": "使目标8秒内获得3层“傍花随柳”效果，每层“傍花随柳”目标施展任何招式将受到（1.0攻击力）伤害，最后1层“傍花随柳”时将沉默目标4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -2225,8 +2229,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "shao_ming_zhi": {
       "properties": {
@@ -2263,6 +2266,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的外功伤害降低30%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2272,8 +2276,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "sheng_tai_ji": {
       "properties": {
@@ -2286,6 +2289,7 @@
       },
       "description": "在自身脚下产生一个20尺范围气场，在气场范围内自身和友方目标将免疫控制(被推被拉除外)，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2295,8 +2299,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "tun_ri_yue": {
       "properties": {
@@ -2309,6 +2312,7 @@
       },
       "description": "产生一个15尺的气场，范围内敌方不能施展轻功，持续15秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2318,8 +2322,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ren_jian_he_yi": {
       "properties": {
@@ -2331,6 +2334,7 @@
       },
       "description": "引爆自身13尺范围内的气场，对气场周围6尺内最多5个目标造成（0.5攻击力)点伤害，若引爆友方的气场，则使他们定身5秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2340,8 +2344,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "chong_yin_yang": {
       "properties": {
@@ -2354,6 +2357,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标受到的内功伤害降低30%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -2363,8 +2367,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zhan_wu_chang": {
       "properties": {
@@ -2400,6 +2403,7 @@
       },
       "description": "开启后8秒内受到伤害不再立刻结算，而是每秒结算一次期间受到的伤害，每次结算不超过自身最大血量的20%。期间免疫受击僵直，每次受到攻击回复6%已损生命值。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万灵",
@@ -2409,8 +2413,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "wu_xiang_jue": {
       "properties": {
@@ -2422,6 +2425,7 @@
       },
       "description": "10秒内受到的伤害降低50%，血量每减少25%，减伤效果提高10%，减伤效果自然结束血量低于10%则立刻恢复50%气血最大值。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -2431,8 +2435,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "mie": {
       "properties": {
@@ -2466,6 +2469,7 @@
       },
       "description": "解除自身控制效果并在自身位置创建残影保存自身技能调息时间、气血、内力状态，持续7秒。\n结束后解除自身所有受控状态并召唤影子附着自身，使自身技能调息时间、气血、内力状态恢复至记录时的状态。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "珍奇",
@@ -2475,8 +2479,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zhu_yun_han_rui": {
       "properties": {
@@ -2488,6 +2491,7 @@
       },
       "description": "解除自身控制，免疫控制持续3秒，并在自身脚下生成10尺范围的“逐云寒蕊”，持续10秒。小队成员在进入“逐云寒蕊”短暂延迟后将隐匿其中，身形莫测无法被选中，“逐云寒蕊”消失、离开“逐云寒蕊”或者角色发动攻击后隐匿消失。“逐云寒蕊”免疫控制，可以被攻击，受到范围伤害降低20%。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "rarity": "卓越",
@@ -2497,8 +2501,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "bao_can_shi": {
       "properties": {
@@ -2740,6 +2743,7 @@
       },
       "description": "击倒当前目标2秒，并击退其周围6尺内最多5个其他的敌对目标，造成(0.1000*攻击力)伤害。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2749,8 +2753,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "cheng_huang_zhi_wei": {
       "properties": {
@@ -2762,6 +2765,7 @@
       },
       "description": "向前跳跃10尺，落地时回头对起跳方向长啸，使矩形范围内命中的目标获得2秒恐惧效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2771,8 +2775,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ji_dian_chi_yu": {
       "properties": {
@@ -2784,6 +2787,7 @@
       },
       "description": "召唤海雕飞向自身位置，盘旋至升空，保护自身6尺范围内的小队成员，使范围内的小队成员不会受到伤害，最多承受286120点伤害，持续8秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2793,8 +2797,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "long_xiao_jiu_tian": {
       "properties": {
@@ -2806,6 +2809,7 @@
       },
       "description": "解除自身控制效果并免疫控制效果，持续3秒；使自身受到的伤害降低60%，持续6秒，并击飞自身半径6尺范围内最多5个目标造成(0.5攻击力)点伤害。施展过程中不受控制效果的影响(被拉除外)。同时能够击毁攻击范围内最多5个气场和可见机关。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2815,8 +2819,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "ti_yun_zong": {
       "properties": {
@@ -2828,6 +2831,7 @@
       },
       "description": "当你处于战斗状态时，下一次跳跃能跳得更高，抗摔伤力提高，持续30秒；\n当处于非战斗状态时，可以连续跳跃，持续12秒。施展后，重置“蹑云逐月”的调息时间。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2837,8 +2841,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "xu_ru_lin": {
       "properties": {
@@ -2850,6 +2853,7 @@
       },
       "description": "天策府秘传武技，在自己的伤害招式命中敌人后，有50%的几率使自身气血与内力恢复5%，持续20秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2859,8 +2863,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "yu_yu_cheng_feng": {
       "properties": {
@@ -2872,6 +2875,7 @@
       },
       "description": "命令海雕将自身抓上天空，解除自身受控制状态，使自身免疫控制3秒并减少30%受到的伤害。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2881,8 +2885,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "lian_huan_nu": {
       "properties": {
@@ -2895,6 +2898,7 @@
       },
       "description": "每1秒对目标发射一枚弩箭，一共发射3支。第一枚箭造成(0.8125*攻击力)点外功伤害，第二枚箭造成(1.0500*攻击力)点外功伤害，第三枚箭造成(1.3125*攻击力)点外功伤害。。若目标离自己小于15尺，则每枚箭都击退目标4尺。该招式免疫打断。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "damageType": "外功",
@@ -2904,8 +2908,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "shi_xin_gu": {
       "properties": {
@@ -2917,6 +2920,7 @@
       },
       "description": "使目标玩家不受控制，作用期间目标移动速度提高50%，受到的伤害降低50%，持续6秒。若对队友施展，则持续时间减半。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -2926,8 +2930,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "hong_meng_tian_jin": {
       "properties": {
@@ -2939,6 +2942,7 @@
       },
       "description": "天钺：将目标禁锢至“天禁空间”并使其召唤物全部失效，且无法提前解除，禁锢持续6秒，若目标为团队成员则卸除掉“阴性不利效果”“阳性不利效果”“混元不利效果”“毒不利效果”“持续伤害不利效果”各2个，同一目标20秒内只会被禁锢一次。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -2947,8 +2951,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "shi_fang_xuan_ji": {
       "properties": {
@@ -2961,6 +2964,7 @@
       },
       "description": "运功3秒，选择一个敌对玩家进行伪装，可以完全切换成其外观表现，并且自身与所有人成为友好势力，清除自身仇恨效果，免疫任何伤害，持续20秒。自身使用任何门派技能都会使伪装失效。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "凌雪",
@@ -2970,8 +2974,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "chu_he_han_jie": {
       "properties": {
@@ -2984,6 +2987,7 @@
       },
       "description": "在自身前方生成一道20尺刀气阻碍，敌方玩家目标无法穿越，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "霸刀",
@@ -2993,8 +2997,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "dun_li": {
       "properties": {
@@ -3007,6 +3010,7 @@
       },
       "description": "保护自身不受伤害，2秒内反弹敌方对自身释放的所有招式的伤害及效果，该招式只对玩家生效。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "苍云",
@@ -3015,8 +3019,7 @@
       },
       "isProjectile": false,
       "dunLiWhitelisted": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "lv_ye_man_sheng": {
       "properties": {
@@ -3028,6 +3031,7 @@
       },
       "description": "解除自身控制，使用藤蔓种子，环绕自身形成藤蔓装甲，使得距离自身6尺内的敌对目标攻击自身时将被击退并对其造成(0.5攻击力)点伤害，敌方无法通过对自身冲刺接近6尺(对区域的冲刺则不受影响)。期间免疫控制(击退和被拉除外)，持续5秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "药宗",
@@ -3037,8 +3041,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ru_yi_fa": {
       "properties": {
@@ -3050,6 +3053,7 @@
       },
       "description": "清除自身当前所受的移动限制效果，使自身不受招式控制，持续3秒，并使自身接下来10秒内的下一个伤害招式附带该移动限制效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -3059,8 +3063,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "you_feng_piao_zong": {
       "properties": {
@@ -3073,6 +3076,7 @@
       },
       "description": "将自身所受的控制效果（不包括被推、被拉）转移给当前目标，持续5秒，并在10秒内减少15%受到的伤害，免疫控制效果（不包括被推、被拉）。非受控状态下施展将返回7秒调息时间。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "刀宗",
@@ -3082,8 +3086,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "jian_fei_jing_tian": {
       "properties": {
@@ -3208,6 +3211,7 @@
       },
       "description": "使目标无法使用武器，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "明教",
@@ -3217,8 +3221,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "qiang_zhu_shi": {
       "properties": {
@@ -3230,6 +3233,7 @@
       },
       "description": "打断目标运功，使其不能施展轻功以外的招式，持续4秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -3239,8 +3243,7 @@
       "isProjectile": true,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "xi_bing_yu": {
       "properties": {
@@ -3252,6 +3255,7 @@
       },
       "description": "击飞非治疗心法敌方目标的武器，使目标无法施展轻功以外的招式，持续5秒，武器将掉落至目标6尺位置，若目标拾取到地上的武器则提前解除此效果。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "刀宗",
@@ -3261,8 +3265,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "xia_liu_bao_shi": {
       "properties": {
@@ -3296,6 +3299,7 @@
       },
       "description": "立刻与敌对目标侠士交换位置(免疫被拉的目标除外)。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "衍天",
@@ -3305,8 +3309,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "feng_liu_yun_san": {
       "properties": {
@@ -3319,6 +3322,7 @@
       },
       "description": "冲刺至目标点，并获得2层“云散”效果：施展“一阳指”套路招式时会闪现移动至一个随机攻击位置。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
@@ -3328,8 +3332,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ku_can_gu": {
       "properties": {
@@ -3341,6 +3344,7 @@
       },
       "description": "使自身移动速度降低90%，招式施展距离提高12尺，持续12秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -3350,8 +3354,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "long_zhan_yu_ye": {
       "properties": {
@@ -3363,6 +3366,7 @@
       },
       "description": "将前方10尺扇形范围的最多5个目标吸引到自身前方造成(3.4187*攻击力)点伤害。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "丐帮",
@@ -3372,8 +3376,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "mi_xin_gu": {
       "properties": {
@@ -3385,6 +3388,7 @@
       },
       "description": "使自身无法施展轻功招式，运功不会被打退、打断，不受缴械和无法运功效果的影响，持续12秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "五毒",
@@ -3394,8 +3398,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "yin_qiao": {
       "properties": {
@@ -3431,6 +3434,7 @@
       },
       "description": "使自身进入“机甲”状态，运功过程免疫控制和伤害，进入“机甲”状态可施展特殊招式，机甲状态持续20秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "唐门",
@@ -3440,8 +3444,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "long_yin": {
       "properties": {
@@ -3476,6 +3479,7 @@
       },
       "description": "使自身会心几率提高10%，会心效果提高20%，持续20秒，并使15尺内的10个敌对目标8秒内无法进入隐身状态，已经进入隐身状态的目标则立刻解除隐身状态。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3485,8 +3489,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ling_ran_tian_feng": {
       "properties": {
@@ -3498,6 +3501,7 @@
       },
       "description": "凌空而起，免疫控制(击退和被拉除外)，并使得自身身轻如燕，施展招式最大距离提高5尺，施展任意招式可以额外获得一次跳跃机会，且跳跃(自身按W/A/S/D空格进行跳跃时)变为朝对应方向的一小段冲刺效果，持续8秒。“凌然天风”期间起跳及跳跃时自身免疫击退。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "药宗",
@@ -3507,8 +3511,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": true,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": true
     },
     "she_shen_jue": {
       "properties": {
@@ -3520,6 +3523,7 @@
       },
       "description": "解除友方目标的受控效果(击倒除外)，使其受到的伤害降低30%，并为队友目标承担100%伤害，持续10秒",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "少林",
@@ -3529,8 +3533,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ting_feng_chui_xue": {
       "properties": {
@@ -3542,6 +3545,7 @@
       },
       "description": "平衡自身与友方目标气血值百分比后，再额外恢复双方气血最大值20%。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -3551,8 +3555,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "yuan": {
       "properties": {
@@ -3564,6 +3567,7 @@
       },
       "description": "冲刺到友方目标身边，为其承受1次伤害，并击飞其周围5个目标。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3573,8 +3577,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": true,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "zi_qi_dong_lai": {
       "properties": {
@@ -3586,6 +3589,7 @@
       },
       "description": "使自身外功和内功基础攻击力提高25%，会心几率提高25%，会心效果提高25%，持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3595,8 +3599,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "po_cang_qiong": {
       "properties": {
@@ -3609,6 +3612,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标内功会心提高10%，会心效果提高15%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3618,8 +3622,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "ren_chi_cheng": {
       "properties": {
@@ -3629,6 +3632,7 @@
       },
       "description": "军中秘传马技，使你可在战斗中上马并解除自身锁足和减速效果，并在5秒内不受控制招式影响。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "天策",
@@ -3638,8 +3642,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "sui_xing_chen": {
       "properties": {
@@ -3652,6 +3655,7 @@
       },
       "description": "在自身脚下产生一个15尺范围气场，在气场范围内自身和友方目标外功会心提高10%，会心效果提高15%，气场持续10秒。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "纯阳",
@@ -3661,8 +3665,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": false,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "wu_an_mi_yun": {
       "properties": {
@@ -3675,6 +3678,7 @@
       },
       "description": "施展招式后使目标陷入持续7秒的“迷云”状态：施展招式时生效的目标随机选择，不分敌我。迷云状态结束后，目标获得“雾释”效果，效果持续期间不会再次陷入“迷云”。",
       "descriptionReviewStatus": "fixed",
+      "adControlStatus": "unfixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "段氏",
@@ -3684,8 +3688,7 @@
       "isProjectile": false,
       "dunLiWhitelisted": false,
       "ignoreDodge": true,
-      "noWeaponRequired": false,
-      "adControlStatus": "unfixed"
+      "noWeaponRequired": false
     },
     "dong_zhu_ji_wei": {
       "numeric": {
@@ -3693,8 +3696,8 @@
       },
       "description": "解除自身受控状态，使自身移动速度提高100%，免疫所有控制效果持续8秒。",
       "descriptionReviewStatus": "fixed",
-      "cooldownReviewStatus": "fixed",
-      "adControlStatus": "unfixed"
+      "adControlStatus": "unfixed",
+      "cooldownReviewStatus": "fixed"
     },
     "hun_ya_nu_tao": {
       "numeric": {
@@ -3702,14 +3705,14 @@
       },
       "description": "击退自身周围6尺敌对目标，使其眩晕4秒",
       "descriptionReviewStatus": "fixed",
-      "cooldownReviewStatus": "fixed",
-      "adControlStatus": "unfixed"
+      "adControlStatus": "unfixed",
+      "cooldownReviewStatus": "fixed"
     },
     "zhen_xia_che": {
       "description": "什么都是假的，只有下车是真的。",
       "descriptionReviewStatus": "fixed",
-      "cooldownReviewStatus": "fixed",
-      "adControlStatus": "unfixed"
+      "adControlStatus": "unfixed",
+      "cooldownReviewStatus": "fixed"
     }
   }
 }

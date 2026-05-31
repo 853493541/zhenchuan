@@ -200,6 +200,7 @@ const MS_PER_GAME_TICK = 1000 / 30;
 const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>> = {
   DAMAGE: "直接伤害倍率",
   BANG_DA_GOU_TOU: "棒打狗头伤害倍率",
+  HENG_SAO_LIU_HE_AOE: "横扫六合伤害倍率",
   BONUS_DAMAGE_IF_TARGET_HP_GT: "追加伤害倍率",
   PERIODIC_DAMAGE: "持续伤害倍率",
   CHANNEL_AOE_TICK: "引导范围伤害倍率",
@@ -226,6 +227,7 @@ const DAMAGE_VALUE_EFFECT_LABELS: Partial<Record<AbilityEffect["type"], string>>
 const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
   "DAMAGE",
   "BANG_DA_GOU_TOU",
+  "HENG_SAO_LIU_HE_AOE",
   "BONUS_DAMAGE_IF_TARGET_HP_GT",
   "PERIODIC_DAMAGE",
   "CHANNEL_AOE_TICK",
@@ -516,6 +518,58 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
           order: 240 + effectIndex,
           path: ["effects", effectIndex, "routeDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "qian_long_wu_yong" && effect.type === "QIAN_LONG_WU_YONG" && typeof (effect as any).damageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.damageValue`,
+          label: "潜龙勿用伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 246 + effectIndex,
+          path: ["effects", effectIndex, "damageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "jiu_zhuan_gui_yi" && effect.type === "KNOCKBACK_DASH" && typeof (effect as any).wallHitDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.wallHitDamage`,
+          label: "九转归一伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 撞墙时伤害倍率会乘以攻击力`,
+          order: 247 + effectIndex,
+          path: ["effects", effectIndex, "wallHitDamage"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "lie_ri_zhan" && effect.type === "LIE_RI_ZHAN" && typeof (effect as any).extraDamageValue === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.extraDamageValue`,
+          label: "烈日斩额外伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 额外伤害倍率会乘以攻击力`,
+          order: 248 + effectIndex,
+          path: ["effects", effectIndex, "extraDamageValue"],
+          step: 0.1,
+        })
+      );
+    }
+
+    if (baseAbility.id === "po_feng" && effect.type === "PO_FENG_STRIKE" && typeof (effect as any).strikeDamage === "number") {
+      definitions.push(
+        createNumericFieldDefinition({
+          id: `effects.${effectIndex}.strikeDamage`,
+          label: "破风伤害倍率",
+          description: `技能效果 ${effectIndex + 1} · 伤害倍率会乘以攻击力`,
+          order: 249 + effectIndex,
+          path: ["effects", effectIndex, "strikeDamage"],
           step: 0.1,
         })
       );

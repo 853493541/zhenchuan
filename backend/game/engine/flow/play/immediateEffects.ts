@@ -2491,9 +2491,9 @@ export function applyImmediateEffects(params: {
         if (!enemyApplied) break;
         const now = Date.now();
         const hasYinYue = effTarget.buffs.some((b: any) => isRuntimeBuffActive(b, now) && b.buffId === YIN_YUE_ZAN_DOT_BUFF_ID);
-        const mult = hasYinYue ? 2 : 1;
-
-        const baseDmg = (effect.value ?? 4) * mult;
+        const baseDamage = Number(effect.value ?? 4);
+        const extraDamage = hasYinYue ? Number((effect as any).extraDamageValue ?? baseDamage) : 0;
+        const baseDmg = baseDamage + extraDamage;
         const lrzDmg = resolveScheduledDamage({ source, target: effTarget, base: baseDmg, abilityId: ability.id, damageType: (ability as any).damageType });
         if (lrzDmg > 0) {
           const { adjustedDamage: adjLrz, redirectPlayer: rtLrz, redirectAmt: raLrz } = preCheckRedirect(state, effTarget as any, lrzDmg);
@@ -3010,13 +3010,14 @@ export function applyImmediateEffects(params: {
           rangeUnits: Math.max(0, Number(effect.value ?? 8)),
           coneAngleDeg: Number((effect as any).coneAngleDeg ?? 60),
         });
+        const baseDamage = Number((effect as any).damageValue ?? 2);
         for (const candidate of coneTargets) {
           applyImmediateDamageToEnemyTarget({
             state,
             source,
             ability,
             target: candidate,
-            baseDamage: 2,
+            baseDamage,
             effectType: "QIAN_LONG_WU_YONG",
             now,
           });
@@ -3791,7 +3792,8 @@ export function applyImmediateEffects(params: {
       // ─── 破风: 1 damage + 破风 debuff + 流血, extra 流血 if CONTROL_IMMUNE ──
       case "PO_FENG_STRIKE": {
         if (!enemyApplied) break;
-        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: 1, abilityId: ability.id, damageType: (ability as any).damageType });
+        const strikeDamage = Number((effect as any).strikeDamage ?? 1);
+        const pfDmg = resolveScheduledDamage({ source, target: effTarget, base: strikeDamage, abilityId: ability.id, damageType: (ability as any).damageType });
         if (pfDmg > 0 && !hasDamageImmune(effTarget as any)) {
           const { adjustedDamage: adjPf, redirectPlayer: rtPf, redirectAmt: raPf } = preCheckRedirect(state, effTarget as any, pfDmg);
           const applyPf = adjPf;
