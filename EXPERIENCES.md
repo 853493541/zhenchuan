@@ -3616,3 +3616,37 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 - Availability rollouts for runtime consumables must cover both state logic and client recognition tables; missing either side causes "available but not real" behavior.
 
 
+## 180. Added randomized real disguise props for exported-map modes (2026-06-01)
+
+**Implemented / checked**:
+- Added a frontend-only exported-map scene component that places decorative disguise GLBs at the supplied coordinates.
+- Randomization behavior per scene load:
+  - uses at least 5 points,
+  - may use all points,
+  - picks among the 3 disguise GLBs for each selected point.
+- Props are non-colliding and non-interactive to avoid affecting gameplay.
+
+**Verification**:
+- Frontend build passed.
+- Backend build passed.
+- PM2 restart (`frontend backend`) passed with both online.
+
+**Lesson**:
+- When a feature is purely about visual bluffing in the world, keep it in the scene layer rather than the gameplay state layer; that preserves networking and collision behavior while still changing the battlefield read.
+
+
+## 181. Delayed fake disguise world props to avoid early fake identification (2026-06-01)
+
+**Implemented / checked**:
+- Added a 20-second visibility delay to the randomized fake disguise props in the exported-map scene.
+- The scene still decides the random placements immediately, but rendering waits until the delay expires.
+
+**Verification**:
+- Frontend build passed.
+- Backend build passed.
+- PM2 restart (`frontend backend`) passed with both online.
+
+**Lesson**:
+- For visual deception features, timing of reveal is part of the mechanic; if props appear before surrounding scenery settles, players can infer which objects are fake from load order alone.
+
+

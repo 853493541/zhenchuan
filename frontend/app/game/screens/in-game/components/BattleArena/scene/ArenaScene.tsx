@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import Ground from './Ground';
 import MapObjects from './MapObjects';
 import Character from './Character';
+import FakeDisguiseProps from './FakeDisguiseProps';
 import PickupBooks from './PickupBooks';
 import AoeZone from './AoeZone';
 import TargetEntityVisual from './TargetEntityVisual';
@@ -1093,18 +1094,23 @@ export default function ArenaScene({
         <>
           {/* World */}
           {isExportedMap ? (
-            <ExportedMapScene
-              worldWidth={mapWidth}
-              worldHeight={mapHeight}
-              showCollisionShells={showCollisionShells}
-              blueprintMode={blueprintMode}
-              hideVisuals={blindWorldMode}
-              terrainDepthPrepass={isYumenMode && safeZoneStructureXrayActive}
-              onCollisionSystemReady={onCollisionSystemReady}
-              onLoadTiming={onSceneLoadTiming}
-              onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
-              onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
-            />
+            <>
+              <ExportedMapScene
+                worldWidth={mapWidth}
+                worldHeight={mapHeight}
+                showCollisionShells={showCollisionShells}
+                blueprintMode={blueprintMode}
+                hideVisuals={blindWorldMode}
+                terrainDepthPrepass={isYumenMode && safeZoneStructureXrayActive}
+                onCollisionSystemReady={onCollisionSystemReady}
+                onLoadTiming={onSceneLoadTiming}
+                onPointerMove={onGroundPointerMove ? handleGroundPointerMove : undefined}
+                onPointerDown={onGroundPointerDown ? handleGroundPointerDown : undefined}
+              />
+              {!blindWorldMode && !blueprintMode && (
+                <FakeDisguiseProps worldHalfX={worldHalfX} worldHalfY={worldHalfY} modeKey={String(mode ?? '')} />
+              )}
+            </>
           ) : (
             <>
               <Ground

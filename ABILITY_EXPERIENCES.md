@@ -3407,3 +3407,45 @@ if (adjXxx > 0 && !hasDamageImmune(target)) {
 **Lesson**:
 - For disguise variants, inventory availability is not enough; you must wire the full chain (consumable channel complete -> runtime buff id -> remove/cancel/preload -> frontend disguise ID recognition) or the item appears available but behaves like a stub.
 
+
+## 166. Added random real disguise props at fixed map points (2026-06-01)
+
+**Implemented / checked**:
+- Added decorative exported-map scene props at the provided world coordinates.
+- On each scene load, the client now:
+  - randomly chooses a count between `5` and all provided points,
+  - randomly samples that many locations,
+  - randomly assigns one of the three disguise GLBs to each location.
+- The props are visual-only and do not participate in collision or input raycasting.
+- Mounted in the exported-map branch so the feature applies to both `test` and `yumenguan` mode scenes.
+
+**Implementation detail**:
+- New component: `frontend/app/game/screens/in-game/components/BattleArena/scene/FakeDisguiseProps.tsx`
+- Mounted from `ArenaScene.tsx` only when world visuals are shown (not blind/blueprint mode).
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both services online.
+- PM2 restart counters after feature: `frontend 303`, `backend 310`.
+
+**Lesson**:
+- For fake-vs-real disguise atmosphere, frontend-only decorative props are enough when the requirement is visual deception only; disable raycasting on those meshes so they do not break ground targeting or pointer interaction.
+
+
+## 167. Delayed fake disguise prop reveal by 20 seconds (2026-06-01)
+
+**Implemented / checked**:
+- Updated `FakeDisguiseProps.tsx` so the random fake disguise props do not render immediately on scene load.
+- They now stay hidden for `20_000ms` after the scene mounts, then appear using the already-selected random placement set.
+- This keeps initial map/building loading visually cleaner and reduces the chance that players identify fake props before surrounding world assets finish appearing.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both services online.
+- PM2 restart counters after this timing tweak: `frontend 304`, `backend 311`.
+
+**Lesson**:
+- When deceptive world props should blend into streaming scenery, delaying visibility can matter more than preloading; keep the chosen placement set stable during the hidden window so the reveal does not reshuffle after load.
+
