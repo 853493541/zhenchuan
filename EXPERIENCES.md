@@ -3534,3 +3534,19 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 - Fix: route damage through `applyDamageToHostileTarget()`, resolve the actual knockback victim through `getDunLiReflectVictim()`, add a short `KNOCKED_BACK` debuff when knockback lands, and explicitly clear `activeChannel` on the knockback victim so reflected self-knockback breaks 连环弩 immediately.
 
 
+## 175. TLS cert mismatch incident: zhenchuan domain serving baizhan cert (2026-06-01)
+
+### 175.1 What was verified
+- Public endpoint `170.9.60.63:443` currently serves `CN=baizhan.renstoolbox.com` for both SNI and non-SNI handshakes.
+- Local nginx on this VM serves `CN=zhenchuan.renstoolbox.com` correctly for `-servername zhenchuan.renstoolbox.com`.
+- `zhenchuan` local cert is present and valid (`/etc/letsencrypt/live/zhenchuan.renstoolbox.com-0001/fullchain.pem`, expires 2026-08-09).
+- Active local nginx config includes `sites-enabled/zhenchuan` with zhenchuan certificate paths.
+
+### 175.2 Conclusion
+- The public TLS terminator for `zhenchuan.renstoolbox.com` is not currently using this VM's zhenchuan cert chain.
+- This is an ingress/DNS/LB-side mismatch, not an app runtime failure.
+
+### 175.3 Operational lesson
+- Always compare `public IP cert fingerprint` vs `local cert fingerprint` when a domain suddenly shows another host's certificate; this quickly distinguishes local nginx config issues from upstream ingress drift.
+
+
