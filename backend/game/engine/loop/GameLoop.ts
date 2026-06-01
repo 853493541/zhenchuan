@@ -2886,27 +2886,18 @@ export class GameLoop {
         }
       }
 
-      // Post-pull stun (极乐引): when the pull's activeDash ends, apply 眩晕.
-      // NOTE: 极乐引 is now instant AOE, so this block will never fire — kept for safety.
-      if (dashStateBefore && !player.activeDash && this.pendingPostPullStuns.has(player.userId)) {
-        const pendingStun = this.pendingPostPullStuns.get(player.userId)!;
-        this.pendingPostPullStuns.delete(player.userId);
-        const stunCfg = PULL_CHANNEL_POST_STUN_CONFIG[pendingStun.abilityId];
-        if (stunCfg && (player.hp ?? 0) > 0) {
-          const abilityRef = ABILITIES[pendingStun.abilityId] as any ?? { id: pendingStun.abilityId, name: pendingStun.abilityName };
+      // Generic post-pull stun: when a pull's activeDash ends, apply deferred stun buff.
+      if (dashStateBefore && !player.activeDash && (dashStateBefore as any)._postPullStun) {
+        const stunInfo = (dashStateBefore as any)._postPullStun;
+        if ((player.hp ?? 0) > 0) {
+          const abilityRef = ABILITIES[stunInfo.abilityId] as any ?? { id: stunInfo.abilityId, name: stunInfo.abilityName };
           addBuff({
             state: this.state,
-            sourceUserId: pendingStun.sourceUserId,
+            sourceUserId: stunInfo.sourceUserId,
             targetUserId: player.userId,
             ability: abilityRef,
             buffTarget: player as any,
-            buff: {
-              buffId: stunCfg.buffId,
-              name: stunCfg.buffName,
-              category: "DEBUFF",
-              durationMs: stunCfg.durationMs,
-              effects: [{ type: "CONTROL" }],
-            } as any,
+            buff: stunInfo.buffDef,
           });
           movementStateChanged = true;
         }

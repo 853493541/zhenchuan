@@ -2622,16 +2622,14 @@ export function applyImmediateEffects(params: {
               ticksRemaining: ticksNeeded,
             };
           }
-          // Apply stun immediately — it will still be active after pull ends
+          // Defer stun: attach to activeDash so GameLoop applies it after pull completes
           if (jileStunBuffDef) {
-            addBuff({
-              state,
+            (pullTarget.activeDash as any)._postPullStun = {
               sourceUserId: pullSource.userId,
-              targetUserId: pullTarget.userId,
-              ability,
-              buffTarget: pullTarget,
-              buff: jileStunBuffDef,
-            });
+              abilityId: ability.id,
+              abilityName: ability.name,
+              buffDef: jileStunBuffDef,
+            };
           }
           if (candidate.kind === "player" || jileReflectVictim) {
             applyPlayerPullDashRuntimeBuff({
