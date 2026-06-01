@@ -639,7 +639,29 @@ export function applyMovement(
   const POWER_DIRECTIONAL_JUMP_DISTANCE = 18 * UNIT_SCALE;
   const POWER_DOUBLE_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
   const MULTI_JUMP_DIRECTIONAL_JUMP_DISTANCE = 12 * UNIT_SCALE;
-  const LING_RAN_TIAN_FENG_UPWARD_JUMP_HEIGHT = 8 * UNIT_SCALE;
+  const LING_RAN_CHARGE_BUFF_ID = 2655;
+
+function setLingRanCharge(player: any, value: number) {
+  player.lingRanTianFengCharges = value;
+  const idx = (player.buffs ?? []).findIndex((b: any) => b.buffId === LING_RAN_CHARGE_BUFF_ID);
+  if (value > 0) {
+    if (idx === -1) {
+      player.buffs.push({
+        buffId: LING_RAN_CHARGE_BUFF_ID,
+        name: "凌然天风·跳跃次数",
+        category: "BUFF",
+        expiresAt: Date.now() + 7_000,
+        effects: [],
+      });
+    }
+  } else {
+    if (idx !== -1) {
+      player.buffs.splice(idx, 1);
+    }
+  }
+}
+
+const LING_RAN_TIAN_FENG_UPWARD_JUMP_HEIGHT = 8 * UNIT_SCALE;
   const LING_RAN_TIAN_FENG_UPWARD_JUMP_TICKS = 15;
   const LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_HEIGHT = 4 * UNIT_SCALE;
   const LING_RAN_TIAN_FENG_DIRECTIONAL_JUMP_DISTANCE = 8.7 * UNIT_SCALE;
@@ -668,7 +690,8 @@ export function applyMovement(
   const wasAirborne = (player.position.z ?? 0) > currentGroundH + 0.01;
 
   if (!lingRanTianFengActive && (player.lingRanTianFengCharges ?? 0) !== 0) {
-    player.lingRanTianFengCharges = 0;
+    console.log(`[LINGRAN] charge zeroed: buff expired, was ${player.lingRanTianFengCharges}`);
+    setLingRanCharge(player, 0);
   }
   const lingRanCastLiftSustainChannelAbilityId = player.lingRanCastLiftSustainChannelAbilityId;
   const lingRanCastLiftSustainVzPerTick = Number(player.lingRanCastLiftSustainVzPerTick ?? 0);
@@ -1091,6 +1114,7 @@ export function applyMovement(
     const jumpTargetVy = jumpTargetVelocity.vy;
     if (input.jump && lingRanTianFengActive) {
       const lingRanTianFengCharges = Math.max(0, Math.min(1, Number(player.lingRanTianFengCharges ?? 0)));
+      console.log(`[LINGRAN] jump attempt: charges=${lingRanTianFengCharges} active=${lingRanTianFengActive}`);
       if (lingRanTianFengCharges > 0) {
         const hasLingRanJumpRefillBuff = activeBuffs.some((b: any) => b.buffId === 1014 || b.buffId === 2712);
         const jumpDir = normalizePlanar(jumpTargetVx, jumpTargetVy);
@@ -1127,7 +1151,7 @@ export function applyMovement(
           maxDownVz: -(initialVz + 0.1),
           ticksRemaining: specialJumpTicks,
         };
-        player.lingRanTianFengCharges = hasLingRanJumpRefillBuff ? 1 : 0;
+        setLingRanCharge(player, hasLingRanJumpRefillBuff ? 1 : 0);
         if (jumpDir) {
           player.facing = { x: jumpDir.x, y: jumpDir.y };
         }

@@ -1266,6 +1266,16 @@ export function applyImmediateEffects(params: {
   );
   if (lingRanTianFengActive || ability.id === "ling_ran_tian_feng") {
     source.lingRanTianFengCharges = 1;
+    if (!source.buffs.some((b: any) => b.buffId === 2655)) {
+      source.buffs.push({
+        buffId: 2655,
+        name: "凌然天风·跳跃次数",
+        category: "BUFF",
+        expiresAt: Date.now() + 7_000,
+        effects: [],
+      });
+    }
+    console.log(`[LINGRAN] charge refresh: ability=${ability.id} charges=1 active=${lingRanTianFengActive}`);
   }
 
   for (const effect of ability.effects) {

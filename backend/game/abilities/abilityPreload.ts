@@ -330,6 +330,17 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     effects: [],
   });
 
+  // 凌然天风·跳跃次数: visible charge indicator buff
+  buffs.push({
+    buffId: 2655,
+    name: "凌然天风·跳跃次数",
+    category: "BUFF",
+    durationMs: 7_000,
+    breakOnPlay: false,
+    description: "可进行一次特殊跳跃（凌然天风期间每次施放招式刷新）",
+    effects: [],
+  });
+
   buffs.push({
     buffId: 1310,
     name: "生太极",
