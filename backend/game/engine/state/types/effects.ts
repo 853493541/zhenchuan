@@ -25,6 +25,7 @@ export type EffectType =
   | "ATTACK_LOCK"
   | "NON_QINGGONG_LOCK"
   | "CONTROL"
+  | "KNOCKDOWN"  // Type 2 — knockdown (击倒): highest hard control, blocks Type 0/1/3, no DR, not cleansable
   | "SILENCE"
   | "DISARM"
   | "LOCKOUT_IMMUNE"
@@ -79,7 +80,7 @@ export type EffectType =
   | "KNOCKED_BACK"
   | "PULLED"
   | "SPEED_BOOST"
-  // Level 0 control (removable by cleanse)
+  // Type 0 control (removable by cleanse)
   | "ROOT"
   | "SLOW"
   | "RANGE_BOOST"

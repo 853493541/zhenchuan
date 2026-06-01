@@ -651,6 +651,7 @@ function applyKnockbackToHostileTarget(params: {
   const distance = Math.hypot(dx, dy);
   if (distance < 0.001) return false;
   if (target.kind === "player" && hasKnockedBackImmune(knockbackTarget)) return false;
+  if ((knockbackTarget.buffs ?? []).some((b: any) => isKnockdown(b))) return false;
 
   const dirX = dx / distance;
   const dirY = dy / distance;
@@ -917,13 +918,19 @@ function isMoheKnockdown(buff: { buffId: number; sourceAbilityId?: string }): bo
   return buff.buffId === 1002 && buff.sourceAbilityId === "mohe_wuliang";
 }
 
+const KNOCKDOWN_BUFF_IDS = new Set([1002, 1340, 2635, 2641]);
+
+function isKnockdown(buff: { buffId: number }): boolean {
+  return KNOCKDOWN_BUFF_IDS.has(buff.buffId);
+}
+
 function isStunDebuff(buff: {
   buffId: number;
   sourceAbilityId?: string;
   category?: string;
   effects?: Array<{ type: string }>;
 }): boolean {
-  if (isMoheKnockdown(buff)) return false;
+  if (isKnockdown(buff)) return false;
   if (buff.category !== "DEBUFF") return false;
   return Array.isArray(buff.effects) && buff.effects.some((e) => e.type === "CONTROL");
 }
@@ -1089,7 +1096,7 @@ function applyType3KnockbackControl(params: {
     return { applied: false, removedStuns: false };
   }
 
-  if (target.buffs.some((b: any) => isMoheKnockdown(b))) {
+  if (target.buffs.some((b: any) => isKnockdown(b))) {
     return { applied: false, removedStuns: false };
   }
 
@@ -3436,6 +3443,7 @@ export class GameLoop {
               const pullSourcePlayer = reflectedPullTarget ? targetPlayer : player;
               const pullTargetPlayer = reflectedPullTarget ?? targetPlayer;
               if (hasKnockbackImmune(pullTargetPlayer as any)) continue;
+              if ((pullTargetPlayer.buffs ?? []).some((b: any) => isKnockdown(b))) continue;
 
               // 雷霆震怒 interaction: pull also strips the buff first
               const leiTingIdx = (pullTargetPlayer.buffs as any[]).findIndex((b: any) => b.buffId === 2506);

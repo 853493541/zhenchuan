@@ -81,12 +81,12 @@ export function captureAndCleanseControls(
 }
 
 /**
- * Control level cleansability:
- *   Level 0 – ROOT                 → REMOVABLE by cleanse (default)
+ * Control type cleansability:
+ *   Type 0 – ROOT                 → REMOVABLE by cleanse (default)
  *   Selected SLOW/QINGGONG_SEAL    → REMOVABLE by any cleanse (hardcoded list above)
- *   Level 1 – CONTROL, ATTACK_LOCK → REMOVABLE by cleanse
- *   Level 2 – KNOCKED_BACK         → NOT removable (physics effect, must expire)
- *   Level 3 – SILENCE              → NOT removable (hard silence, must expire)
+ *   Type 1 – CONTROL, ATTACK_LOCK → REMOVABLE by cleanse
+ *   Type 3 – KNOCKED_BACK         → NOT removable (forced dash-state, must expire)
+ *   Lockout – SILENCE              → NOT removable (hard silence, must expire)
  */
 export function handleCleanse(
   source: { buffs: ActiveBuff[] },

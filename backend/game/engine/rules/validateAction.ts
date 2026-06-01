@@ -465,7 +465,7 @@ export function validateCastAbility(
     throw new Error("ERR_BLOCKED_BY_BUFF");
   }
 
-  /* ================= SILENCE (Level 3 — not removable) ================= */
+  /* ================= SILENCE (Lockout — not a control type) ================= */
   if (hasEffect(player, "SILENCE") && !abilityAllowsSilence(ability)) {
     throw new Error("ERR_SILENCED");
   }
@@ -496,7 +496,7 @@ export function validateCastAbility(
     }
   }
 
-  /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
+  /* ================= Type 3: KNOCKED_BACK (forced dash-state knockback, not removable) ================= */
   if (hasEffect(player, "KNOCKED_BACK")) {
     const allowsKnockback =
       (ability as any).allowWhileKnockedBack === true ||
@@ -507,7 +507,7 @@ export function validateCastAbility(
     }
   }
 
-  /* ================= PULLED (Level 2 — not removable) ================= */
+  /* ================= Type 3: PULLED (forced dash-state pull, not removable) ================= */
   if (hasEffect(player, "PULLED")) {
     const allowsPulled =
       (ability as any).allowWhilePulled === true ||
@@ -518,9 +518,9 @@ export function validateCastAbility(
     }
   }
 
-  /* ================= CONTROL / ATTACK_LOCK (Level 1 — removable) ================= */
+  /* ================= Type 1/2: CONTROL / ATTACK_LOCK / KNOCKDOWN (stun/freeze/knockdown — hard control, removable by cleanse, subject to DR; knockdown is Type 2, not cleansable, no DR) ================= */
   const isControlled =
-    hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
+    hasEffect(player, "CONTROL") || hasEffect(player, "KNOCKDOWN") || hasEffect(player, "ATTACK_LOCK");
   const allowsOverride =
     (ability as any).allowWhileControlled === true ||
     (Array.isArray(ability.effects) &&
@@ -533,7 +533,7 @@ export function validateCastAbility(
     throw new Error("ERR_ROOTED");
   }
 
-  /* (Level 0 — ROOT / SLOW only restrict movement unless ability is ROOT-locked) */
+  /* (Type 0 — ROOT / SLOW restrict movement only; abilities still castable unless ability is ROOT-locked) */
 
   /* ================= MIN SELF HP (exclusive, shields not counted) ================= */
   if (typeof (ability as any).minSelfHpExclusive === "number") {
@@ -826,7 +826,7 @@ export function validatePlayAbility(
     throw new Error("ERR_ON_COOLDOWN");
   }
 
-  /* ================= SILENCE (Level 3 — not removable) ================= */
+  /* ================= SILENCE (Lockout — not a control type) ================= */
 
   if (hasEffect(player, "SILENCE") && !abilityAllowsSilence(ability)) {
     throw new Error("ERR_SILENCED");
@@ -858,7 +858,7 @@ export function validatePlayAbility(
     }
   }
 
-  /* ================= KNOCKED_BACK (Level 2 — not removable) ================= */
+  /* ================= Type 3: KNOCKED_BACK (forced dash-state knockback, not removable) ================= */
 
   if (hasEffect(player, "KNOCKED_BACK")) {
     const allowsKnockback =
@@ -870,7 +870,7 @@ export function validatePlayAbility(
     }
   }
 
-  /* ================= PULLED (Level 2 — not removable) ================= */
+  /* ================= Type 3: PULLED (forced dash-state pull, not removable) ================= */
 
   if (hasEffect(player, "PULLED")) {
     const allowsPulled =
@@ -882,10 +882,10 @@ export function validatePlayAbility(
     }
   }
 
-  /* ================= CONTROL / ATTACK_LOCK (Level 1 — removable) ================= */
+  /* ================= Type 1/2: CONTROL / ATTACK_LOCK / KNOCKDOWN (stun/freeze/knockdown — hard control, removable by cleanse, subject to DR; knockdown is Type 2, not cleansable, no DR) ================= */
 
   const isControlled =
-    hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
+    hasEffect(player, "CONTROL") || hasEffect(player, "KNOCKDOWN") || hasEffect(player, "ATTACK_LOCK");
 
   const allowsOverride =
     (ability as any).allowWhileControlled === true ||
@@ -900,7 +900,7 @@ export function validatePlayAbility(
     throw new Error("ERR_ROOTED");
   }
 
-  /* (Level 0 — ROOT / SLOW only restrict movement unless ability is ROOT-locked) */
+  /* (Type 0 — ROOT / SLOW restrict movement only; abilities still castable unless ability is ROOT-locked) */
 
   /* ================= TARGETING (STEALTH / UNTARGETABLE) ================= */
 

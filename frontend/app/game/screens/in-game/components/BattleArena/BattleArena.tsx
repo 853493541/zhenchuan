@@ -13529,7 +13529,7 @@ export default function BattleArena({
           allowAnyCancel={allowAnyCancel}
           playerScale={debugLabel === 'me'}
           categoryFilter={categoryFilter}
-          visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
+          visibilityMode={showHiddenBuffStatusBar ? 'all' : 'visible'}
         />
         {customUiMode && (
           <div className={styles.customUiStatusGuide} aria-hidden="true">
@@ -13620,7 +13620,7 @@ export default function BattleArena({
             borderlessIcons
             maxPerRow={3}
             onCopyBuffName={appendAbilityNameToChatInput}
-            visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
+            visibilityMode={showHiddenBuffStatusBar ? 'all' : 'visible'}
           />
         </div>
       </div>
@@ -15419,7 +15419,7 @@ export default function BattleArena({
     >
       {showInlinePlayerStatus && (
         <div className={styles.playerBuffRow}>
-          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} onCopyBuffName={appendAbilityNameToChatInput} playerScale visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'} />
+          <StatusBar buffs={playerStatusBuffs} debugLabel="me" onCancelBuff={onCancelBuff} onCopyBuffName={appendAbilityNameToChatInput} playerScale visibilityMode={showHiddenBuffStatusBar ? 'all' : 'visible'} />
         </div>
       )}
 
@@ -17654,7 +17654,7 @@ export default function BattleArena({
                     buffs={targetBuffs}
                     debugLabel={isSelf ? 'me-target' : 'opp'}
                     onCopyBuffName={appendAbilityNameToChatInput}
-                    visibilityMode={showHiddenBuffStatusBar ? 'hidden-only' : 'visible'}
+                    visibilityMode={showHiddenBuffStatusBar ? 'all' : 'visible'}
                     allowAnyCancel={!isSelf && isDummyEntity && isOwnEntity && selectedEntity?.kind === 'test_dummy_ally'}
                     onCancelBuff={
                       isSelf

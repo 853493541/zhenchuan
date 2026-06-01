@@ -48,6 +48,7 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   PERIODIC_DAMAGE: "DEBUFF",
   CHANNEL_AOE_TICK: "BUFF",
   CONTROL: "DEBUFF",
+  KNOCKDOWN: "DEBUFF",  // Type 2 — knockdown (击倒)
   MIYUN_IMMUNE: "BUFF",
 
   // ✅ Channel buffs are BUFFs (self-cast)
@@ -77,11 +78,11 @@ export const EFFECT_CATEGORY_MAP: Record<EffectType, string> = {
   HAN_RU_LEI_AOE: "DEBUFF",
   JUMP_BOOST: "BUFF",
 
-  /* ================= CONTROL LEVELS ================= */
-  KNOCKED_BACK: "DEBUFF",  // Level 2 — NOT removable by cleanse
-  PULLED: "DEBUFF",         // Level 2 — NOT removable by cleanse (being pulled by enemy)
+  /* ================= CONTROL TYPES ================= */
+  KNOCKED_BACK: "DEBUFF",  // Type 3 — forced dash-state knockback, not removable by cleanse
+  PULLED: "DEBUFF",         // Type 3 — forced dash-state pull, not removable by cleanse
   SPEED_BOOST: "BUFF",
-  // Level 0 — removable by cleanse
+  // Type 0 — removable by cleanse
   ROOT: "DEBUFF",
   SLOW: "DEBUFF",
   RANGE_BOOST: "BUFF",

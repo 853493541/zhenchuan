@@ -27,7 +27,7 @@ type Props = {
   borderlessIcons?: boolean;
   maxPerRow?: number;
   categoryFilter?: "BUFF" | "DEBUFF";
-  visibilityMode?: "visible" | "hidden-only";
+  visibilityMode?: "visible" | "hidden-only" | "all";
   onCopyBuffName?: (name: string) => void;
 };
 

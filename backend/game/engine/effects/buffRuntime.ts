@@ -52,6 +52,12 @@ function isMoheStun(buff: ActiveBuff): boolean {
   return buff.buffId === 1202 && buff.sourceAbilityId === "mohe_wuliang";
 }
 
+const KNOCKDOWN_BUFF_IDS = new Set([1002, 1340, 2635, 2641]);
+
+function isKnockdown(buff: { buffId: number }): boolean {
+  return KNOCKDOWN_BUFF_IDS.has(buff.buffId);
+}
+
 const ROOT_DR_BUFF_ID = 990100;
 const STUN_DR_BUFF_ID = 990101;
 const LOCKOUT_DR_BUFF_ID = 990102;
@@ -104,6 +110,7 @@ const SILENCE_FAMILY_EFFECT_TYPES = new Set(["SILENCE", "DISARM", "INNER_POWER_L
 const SHARED_LOCKOUT_EFFECT_TYPES = new Set(["SILENCE", "ATTACK_LOCK", "DISARM", "INNER_POWER_LOCK", "OUTER_POWER_LOCK", "NON_QINGGONG_LOCK"]);
 const CONTROL_ONLY_IMMUNE_BLOCKED_EFFECT_TYPES = new Set([
   "CONTROL",
+  "KNOCKDOWN",
   "ROOT",
   "SLOW",
   "KNOCKED_BACK",
@@ -135,7 +142,7 @@ function getActiveResistanceBuff(
 
 function getResistanceConfig(runtimeBuff: BuffDefinition): ResistanceConfig | null {
   if (runtimeBuff.category !== "DEBUFF") return null;
-  if (runtimeBuff.buffId === 1002) return null;
+  if (isKnockdown(runtimeBuff)) return null;
   if (runtimeBuff.buffId === SHI_XIN_GU_BUFF_ID) return null;
 
   if (runtimeBuff.effects.some((e) => SHARED_LOCKOUT_EFFECT_TYPES.has(e.type))) {
@@ -217,7 +224,7 @@ function refreshResistanceBuff(params: {
 }
 
 function isStunDebuff(buff: ActiveBuff): boolean {
-  if (isMoheKnockdown(buff)) return false;
+  if (isKnockdown(buff)) return false;
   if (buff.category !== "DEBUFF") return false;
   return buff.effects.some((e) => e.type === "CONTROL");
 }
@@ -225,6 +232,7 @@ function isStunDebuff(buff: ActiveBuff): boolean {
 const CONTROL_TYPES_BLOCKED_WHILE_KNOCKED_DOWN = new Set([
   "ROOT",
   "CONTROL",
+  "KNOCKDOWN",
   "ATTACK_LOCK",
   "KNOCKED_BACK",
   "PULLED",
@@ -818,10 +826,10 @@ export function addBuff(params: {
     };
   }
   const now = Date.now();
-  const incomingMoheKnockdown =
+  const incomingKnockdown =
     sourceUserId !== targetUserId &&
-    runtimeBuff.buffId === 1002 &&
-    runtimeBuff.effects.some((e) => e.type === "CONTROL");
+    isKnockdown(runtimeBuff) &&
+    runtimeBuff.effects.some((e) => e.type === "CONTROL" || e.type === "KNOCKDOWN");
 
   if (hasAntiStealth(buffTarget)) {
     const blockedByAntiStealth =
@@ -940,10 +948,10 @@ export function addBuff(params: {
 
   if (sourceUserId !== targetUserId && hasControlImmune(buffTarget)) {
     const hadCC = runtimeBuff.effects.some(
-      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "ROOT"
+      (e) => e.type === "CONTROL" || e.type === "KNOCKDOWN" || e.type === "ATTACK_LOCK" || e.type === "ROOT"
     );
     const filteredEffects = runtimeBuff.effects.filter(
-      (e) => e.type !== "CONTROL" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT" && e.type !== "DAMAGE_IMMUNE"
+      (e) => e.type !== "CONTROL" && e.type !== "KNOCKDOWN" && e.type !== "ATTACK_LOCK" && e.type !== "ROOT" && e.type !== "DAMAGE_IMMUNE"
     );
     if (filteredEffects.length === 0) {
       return;
@@ -1024,9 +1032,10 @@ export function addBuff(params: {
     });
   }
 
-  // 摩诃无量交互：倒地期间免疫其他控制层级（可被沉默），并且新硬控会替换摩诃无量·眩晕。
+  // Type 2 knockdown interaction: while knocked down, immune to incoming Type 0/1/3 controls (silence still applies).
+  // Applying a knockdown removes existing stuns and 雷霆震怒.
   if (sourceUserId !== targetUserId) {
-    if (incomingMoheKnockdown) {
+    if (incomingKnockdown) {
       const removedStuns = buffTarget.buffs.filter(isStunDebuff);
       if (removedStuns.length > 0) {
         buffTarget.buffs = buffTarget.buffs.filter((b) => !isStunDebuff(b));
@@ -1064,7 +1073,7 @@ export function addBuff(params: {
     }
 
     // 雷霆震怒: while target has this buff, immune to other CONTROL effects (knockdown bypasses)
-    if (!incomingMoheKnockdown) {
+    if (!incomingKnockdown) {
       const targetHasLeiTing = buffTarget.buffs.some(
         (b) => b.buffId === LEI_TING_ZHEN_NU_BUFF_ID && b.expiresAt > now
       );
@@ -1081,7 +1090,7 @@ export function addBuff(params: {
       }
     }
 
-    if (buffTarget.buffs.some((b) => isMoheKnockdown(b) && b.expiresAt > now)) {
+    if (buffTarget.buffs.some((b) => isKnockdown(b) && b.expiresAt > now)) {
       const filteredEffects = runtimeBuff.effects.filter(
         (e) => !CONTROL_TYPES_BLOCKED_WHILE_KNOCKED_DOWN.has(e.type)
       );
@@ -1097,7 +1106,7 @@ export function addBuff(params: {
     }
 
     const incomingHardControl = runtimeBuff.effects.some(
-      (e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK" || e.type === "KNOCKED_BACK" || e.type === "PULLED"
+      (e) => e.type === "CONTROL" || e.type === "KNOCKDOWN" || e.type === "ATTACK_LOCK" || e.type === "KNOCKED_BACK" || e.type === "PULLED"
     );
     if (incomingHardControl) {
       const removedMoheStuns = buffTarget.buffs.filter(isMoheStun);
@@ -1307,6 +1316,7 @@ export function addBuff(params: {
     const isConsumableChannel = typeof activeChannel?.consumableId === "string";
     const isCC = runtimeBuff.effects.some((e) =>
       e.type === "CONTROL" ||
+      e.type === "KNOCKDOWN" ||
       e.type === "KNOCKED_BACK" ||
       e.type === "PULLED" ||
       (!isConsumableChannel && (
@@ -1326,7 +1336,7 @@ export function addBuff(params: {
   if (sourceUserId !== targetUserId) {
     const controlTypes = runtimeBuff.effects
       .map((e) => e.type)
-      .filter((t) => ["ROOT", "CONTROL", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"].includes(t));
+      .filter((t) => ["ROOT", "CONTROL", "KNOCKDOWN", "ATTACK_LOCK", "KNOCKED_BACK", "PULLED", "SILENCE", "NON_QINGGONG_LOCK"].includes(t));
     removeStealthOnIncomingControl({
       state,
       targetUserId,

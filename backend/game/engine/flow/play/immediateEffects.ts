@@ -662,6 +662,9 @@ function pullImmediateTargetTowardAnchor(params: {
   if (target.kind === "player" && hasKnockbackImmune(pullTarget as any)) {
     return false;
   }
+  if ((pullTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) {
+    return false;
+  }
 
   const dx = anchor.x - pullTarget.position.x;
   const dy = anchor.y - pullTarget.position.y;
@@ -765,6 +768,7 @@ function applyImmediateKnockback(params: {
   const distance = Math.hypot(dx, dy);
   if (distance < 0.001) return false;
   if (target.kind === "player" && hasKnockedBackImmune(kbTarget)) return false;
+  if ((kbTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) return false;
 
   const dirX = dx / distance;
   const dirY = dy / distance;
@@ -1369,9 +1373,8 @@ export function applyImmediateEffects(params: {
           const hasRoot = effects.some((e: any) => e?.type === "ROOT");
           const hasControl = effects.some((e: any) => e?.type === "CONTROL");
           const hasAttackLock = effects.some((e: any) => e?.type === "ATTACK_LOCK");
-          const isMoheKnockdown = buff?.buffId === 1002 && buff?.sourceAbilityId === "mohe_wuliang";
-          const isNamedKnockdown = typeof buff?.name === "string" && buff.name.includes("倒地");
-          return hasRoot || hasControl || hasAttackLock || isMoheKnockdown || isNamedKnockdown;
+          const hasKnockdown = effects.some((e: any) => e?.type === "KNOCKDOWN");
+          return hasRoot || hasControl || hasAttackLock || hasKnockdown;
         });
 
         const capturedControls = captureAndCleanseControls(source, Date.now());
@@ -1598,6 +1601,9 @@ export function applyImmediateEffects(params: {
         // but we need to know whether to set activeDash).
         if (hasKnockedBackImmune(kbTarget)) break;
 
+        // Type 2 knockdown blocks knockback push
+        if ((kbTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) break;
+
         const kbDirX = kdx / kdist;
         const kbDirY = kdy / kdist;
         const kbDistance = gameplayUnitsToWorldUnits(effect.value ?? 12, state.unitScale);
@@ -1649,6 +1655,7 @@ export function applyImmediateEffects(params: {
           if (candidate.kind !== "player") continue;
           const kbTarget = candidate.target as any;
           if (!kbTarget || hasKnockedBackImmune(kbTarget)) continue;
+          if ((kbTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) continue;
           const kdx = kbTarget.position.x - source.position.x;
           const kdy = kbTarget.position.y - source.position.y;
           const kdist = Math.sqrt(kdx * kdx + kdy * kdy);
@@ -2599,6 +2606,7 @@ export function applyImmediateEffects(params: {
           if (cdist <= STOP_DISTANCE) continue; // already close enough
           // Check knockback immunity (pull = forced movement)
           if (hasKnockbackImmune(pullTarget as any)) continue;
+          if ((pullTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) continue;
           const dirX = cdx / cdist;
           const dirY = cdy / cdist;
           // Pull toward caster: velocity is negative of direction (toward caster)
@@ -2686,10 +2694,12 @@ export function applyImmediateEffects(params: {
         const kbDistance = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.value ?? 30)), storedUnitScale);
         const kbTicks = Math.max(1, Number(effect.durationTicks ?? 30));
         const center = { x: primary.position.x, y: primary.position.y, z: primary.position.z ?? 0 };
+        const KNOCKDOWN_IDS = new Set([1002, 1340, 2635, 2641]);
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, center, aoeRadius)) {
           const t: any = candidate.target;
           if (t === primary) continue; // exclude primary
           if (hasKnockedBackImmune(t)) continue;
+          if ((t.buffs ?? []).some((b: any) => KNOCKDOWN_IDS.has(b.buffId))) continue;
           // Knockback direction = caster -> victim (away from caster).
           // Entity dash now uses the velocity-free collision helper, so
           // this no longer crashes the loop.

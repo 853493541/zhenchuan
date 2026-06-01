@@ -697,17 +697,17 @@ export function applyMovement(
     delete player.lingRanCastLiftSustainVzPerTick;
   }
 
-  // ── Level 2 (KNOCKED_BACK) and Level 1 (CONTROL/stun/knockdown): ──
+  // ── Type 3 (KNOCKED_BACK) and Type 1 (CONTROL/stun/ATTACK_LOCK): ──
   // Both fully lock the player — no movement, no facing, no jump.
   const isFullyLocked =
     allEffects.some((e) => e.type === "KNOCKED_BACK") ||
-    allEffects.some((e) => e.type === "CONTROL" || e.type === "ATTACK_LOCK");
+    allEffects.some((e) => e.type === "CONTROL" || e.type === "KNOCKDOWN" || e.type === "ATTACK_LOCK");
   if (isFullyLocked) {
     applyForcedControlFall(player, wasAirborne);
     input = null;
   }
 
-  // ── Level 0 ROOT: blocks WASD + facing direction + jump. ──
+  // ── Type 0 ROOT: blocks WASD + facing direction + jump. ──
   // Camera movement is purely client-side and is unaffected.
   const isRooted = !isFullyLocked && allEffects.some((e) => e.type === "ROOT");
   if (isRooted) {
