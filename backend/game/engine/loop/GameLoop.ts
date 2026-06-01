@@ -4027,13 +4027,14 @@ export class GameLoop {
                   continue;
                 }
                 const stackMult = buff.stacks ?? 1;
-                const dmg = resolveScheduledDamage({
+                const periDamageRoll = resolveScheduledDamageRoll({
                   source: opp,
                   target: player,
                   base: (e.value ?? 0) * stackMult,
                   abilityId: buff.sourceAbilityId,
                   damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
                 });
+                const dmg = periDamageRoll.damage;
                 if (dmg > 0) {
                   const { adjustedDamage: adjPeri, redirectPlayer: rtPeri, redirectAmt: raPeri } =
                     preCheckRedirect(this.state, player as any, dmg);
@@ -4050,6 +4051,7 @@ export class GameLoop {
                     abilityName: buff.sourceAbilityName ?? buff.name,
                     effectType: "PERIODIC_DAMAGE",
                     value: periApply,
+                    isCrit: periDamageRoll.isCrit,
                     shieldAbsorbed: (periResult.shieldAbsorbed ?? 0) > 0 ? periResult.shieldAbsorbed : undefined,
                   });
                   if (periResult.hpDamage > 0 || periResult.shieldAbsorbed > 0) {
@@ -4818,13 +4820,14 @@ export class GameLoop {
               buffsChanged = true;
               continue;
             }
-            const dmg = resolveScheduledDamage({
+            const entityPeriDamageRoll = resolveScheduledDamageRoll({
               source: sourcePlayer ?? ({ userId: buff.sourceUserId ?? entity.ownerUserId, buffs: [] } as any),
               target: entity as any,
               base: (e.value ?? 0) * (buff.stacks ?? 1),
               abilityId: buff.sourceAbilityId,
               damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
             });
+            const dmg = entityPeriDamageRoll.damage;
             if (dmg > 0) {
               const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(this.state, entity as any, dmg);
               const result = applyDamageToTarget(entity as any, adjustedDamage);
@@ -4840,6 +4843,7 @@ export class GameLoop {
                 abilityName: buff.sourceAbilityName ?? buff.name,
                 effectType: "PERIODIC_DAMAGE",
                 value: adjustedDamage,
+                isCrit: entityPeriDamageRoll.isCrit,
                 shieldAbsorbed: (result.shieldAbsorbed ?? 0) > 0 ? result.shieldAbsorbed : undefined,
               } as any);
               if (result.hpDamage > 0 || result.shieldAbsorbed > 0) {
