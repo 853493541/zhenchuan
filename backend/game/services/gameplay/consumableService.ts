@@ -3,7 +3,14 @@ import { randomUUID } from "crypto";
 import { addBuff, pushBuffExpired } from "../../engine/effects/buffRuntime";
 import type { ActiveBuff, GameState, PlayerState } from "../../engine/state/types";
 import { resolveNonCritHealAmountRoll } from "../../engine/utils/combatMath";
-import { SAND_DISGUISE_BUFF_ID, SAND_DISGUISE_CONSUMABLE_ID } from "../../engine/utils/disguise";
+import {
+  GUAN_MU_DISGUISE_BUFF_ID,
+  GUAN_MU_DISGUISE_CONSUMABLE_ID,
+  SAND_DISGUISE_BUFF_ID,
+  SAND_DISGUISE_CONSUMABLE_ID,
+  WA_GUAN_DISGUISE_BUFF_ID,
+  WA_GUAN_DISGUISE_CONSUMABLE_ID,
+} from "../../engine/utils/disguise";
 import { applyHealToTarget, removeLinkedShield } from "../../engine/utils/health";
 import {
   YUE_YING_SHA_ABILITY,
@@ -35,8 +42,8 @@ export const STARTING_CONSUMABLE_COUNTS: Record<ConsumableId, number> = {
   jin_chuang_yao: 2,
   yue_ying_sha: 1,
   sha_shi_wei_zhuang: 4,
-  guan_mu_wei_zhuang: 0,
-  wa_guan_wei_zhuang: 0,
+  guan_mu_wei_zhuang: 4,
+  wa_guan_wei_zhuang: 4,
   sha_xing_xie: 0,
   ma_cao: 0,
   yi_jie_wu_qi_he: 0,
@@ -113,18 +120,34 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
     },
   },
   guan_mu_wei_zhuang: {
-    id: "guan_mu_wei_zhuang",
+    id: GUAN_MU_DISGUISE_CONSUMABLE_ID,
     name: "灌木伪装",
     cooldownMs: 0,
     usableInCombat: false,
-    implemented: false,
+    implemented: true,
+    channel: {
+      durationMs: 2_000,
+      forwardChannel: true,
+      lockMovement: false,
+      cancelOnMove: true,
+      cancelOnJump: true,
+      applyDisguiseOnComplete: true,
+    },
   },
   wa_guan_wei_zhuang: {
-    id: "wa_guan_wei_zhuang",
+    id: WA_GUAN_DISGUISE_CONSUMABLE_ID,
     name: "瓦罐伪装",
     cooldownMs: 0,
     usableInCombat: false,
-    implemented: false,
+    implemented: true,
+    channel: {
+      durationMs: 2_000,
+      forwardChannel: true,
+      lockMovement: false,
+      cancelOnMove: true,
+      cancelOnJump: true,
+      applyDisguiseOnComplete: true,
+    },
   },
   sha_xing_xie: {
     id: "sha_xing_xie",
@@ -170,7 +193,7 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
   },
 };
 
-const STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID, YUE_YING_SHA_BUFF_ID]);
+const STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID, GUAN_MU_DISGUISE_BUFF_ID, WA_GUAN_DISGUISE_BUFF_ID, YUE_YING_SHA_BUFF_ID]);
 const FUGUANG_COMPANION_BUFF_ID = 1021;
 const BLOCKING_CONSUMABLE_EFFECTS = new Set(["ROOT", "CONTROL", "KNOCKED_BACK", "PULLED", "DISPLACEMENT", "FEARED", "FREEZE"]);
 
@@ -297,7 +320,7 @@ function breakStealthForConsumable(state: GameState, player: PlayerState, consum
   const remainingBuffs: ActiveBuff[] = [];
 
   for (const buff of player.buffs as ActiveBuff[]) {
-    if (buff.buffId === SAND_DISGUISE_BUFF_ID && consumable.breaksDisguise === false) {
+    if ((buff.buffId === SAND_DISGUISE_BUFF_ID || buff.buffId === GUAN_MU_DISGUISE_BUFF_ID || buff.buffId === WA_GUAN_DISGUISE_BUFF_ID) && consumable.breaksDisguise === false) {
       remainingBuffs.push(buff);
       continue;
     }

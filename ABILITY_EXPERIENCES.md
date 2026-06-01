@@ -3283,3 +3283,127 @@ if (adjXxx > 0 && !hasDamageImmune(target)) {
 **Lesson**:
 - If style consistency requires ASCII punctuation, run punctuation normalization before formula migration to avoid mixed-width output and reduce cleanup passes.
 
+
+
+## 160. 砂石伪装 enemy-view visibility gate regression (2026-06-01)
+
+**Implemented / checked**:
+- Traced the symptom to the frontend enemy-view visibility gate in `frontend/app/game/screens/in-game/components/BattleArena/scene/ArenaScene.tsx`, not to backend state sync or the disguise model loader.
+- Confirmed `砂石伪装` carries both `DISGUISE` and `STEALTH`, so opponent rendering was culling disguised players through `shouldHideByStealthFromEnemyView()` before the replacement cart model could render.
+- Fixed the gate by exempting active disguise buffs from stealth-only enemy hiding, while keeping the existing untargetable / hidden-HP-bar disguise behavior intact.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both processes `online`.
+- PM2 startup logs showed the new frontend/backend processes starting successfully with no startup-blocking errors. Existing historical warnings remain: frontend `MaxListenersExceededWarning`, backend websocket disconnect / lag-probe logs.
+
+**Lesson**:
+- When a buff combines `STEALTH` with a special visible presentation such as `DISGUISE`, enemy-view hide rules must explicitly exempt that presentation. Otherwise the generic stealth cull can erase entities before their special render path runs.
+
+
+
+## 161. 砂石伪装 remote cart render regression in Character.tsx (2026-06-01)
+
+**Implemented / checked**:
+- Follow-up testing showed the enemy-view stealth-gate exemption alone was insufficient; the disguised opponent could still disappear, which disproved the initial “state hidden before render” theory as the full root cause.
+- Compared the current cart render path in `frontend/app/game/screens/in-game/components/BattleArena/scene/Character.tsx` against the original working implementation from the `砂石伪装` introduction commit.
+- Restored the simpler disguise mount path by removing the later ref-driven primitive rotation hook from `DisguiseCartModel()` and letting the cart use its JSX rotation like the original implementation.
+- Disabled frustum culling on disguise meshes and on the fallback disguise box so the remote replacement model cannot vanish because of imported mesh bounds / primitive-culling behavior.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both processes `online`.
+- PM2 startup logs showed the new frontend/backend processes starting successfully with no startup-blocking errors. Existing historical warnings remain: frontend `MaxListenersExceededWarning`; backend lag-probe / websocket / gameplay noise.
+
+**Lesson**:
+- For imported replacement models in the BattleArena character layer, prefer the simplest stable mount path. If a disguise form already renders correctly with static JSX rotation, avoid adding ref-driven per-frame primitive mutation unless there is a demonstrated need, and disable frustum culling on imported disguise meshes when disappearance symptoms look camera-dependent.
+
+
+
+## 162. 瓦罐伪装 enabled by cloning 砂石伪装 with a jar mesh (2026-06-01)
+
+**Implemented / checked**:
+- Enabled the previously stubbed consumable `wa_guan_wei_zhuang` in `backend/game/services/gameplay/consumableService.ts` with the same 2-second forward-channel completion flow as `砂石伪装`.
+- Added a dedicated runtime buff ID `980003` for 瓦罐伪装 in `backend/game/engine/utils/disguise.ts` after confirming `980002` is already used by `月影沙`.
+- Reused the existing disguise mechanics: stealth, root, special-bar `解除伪装`, untargetable-by-selection behavior, leash cleanup, and generic `removeDisguiseBuffs()` expiry/removal path.
+- Chose a real resource-pack mesh instead of a random fallback: `wj_坛子001_001_hd.glb`, found in the exported map asset set and texture map.
+- Generalized the frontend disguise renderer in `frontend/app/game/screens/in-game/components/BattleArena/scene/Character.tsx` and `ArenaScene.tsx` so disguise buffs can carry a mesh name; `砂石伪装` still uses `wj_木车002_hd.glb`, while `瓦罐伪装` now uses `wj_坛子001_001_hd.glb`.
+- Updated preload/manual-cancel / `解除伪装` handling so both disguise variants are surfaced to the client and can be canceled through the same special-bar ability.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both processes `online`.
+- PM2 confirmed the newest build is running with `frontend` restart count `299` and `backend` restart count `306`, with no startup-blocking errors.
+
+**Lesson**:
+- When adding more disguise consumables, keep one shared disguise mechanic path and put the visual difference on buff metadata such as mesh name. That avoids duplicating hide/untargetable/cancel/leash logic for every disguise variant.
+
+
+
+## 163. Follow-up: start/refill stock for 灌木伪装 + 瓦罐伪装 (2026-06-01)
+
+**Implemented / checked**:
+- Updated `backend/game/services/gameplay/consumableService.ts` starting stock so `guan_mu_wei_zhuang` is now `4` (matching `wa_guan_wei_zhuang: 4`).
+- Confirmed this single source feeds both initial battle player inventory and the control-panel refill route (`/api/game/cheat/refill-consumables`) via `createStartingConsumableCounts()`.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both services `online`.
+- PM2 restart counters after this follow-up: `frontend 300`, `backend 307`.
+
+**Lesson**:
+- For consumable stock follow-ups, prefer changing only `STARTING_CONSUMABLE_COUNTS` when refill/start routes already derive from `createStartingConsumableCounts()`; this keeps start stock and cheat refill behavior automatically in sync.
+
+
+## 164. Frontend consumable metadata drift hid disguise counts (2026-06-01)
+
+**Implemented / checked**:
+- Kept backend start/refill stock at `4` for both `guan_mu_wei_zhuang` and `wa_guan_wei_zhuang`.
+- Fixed frontend mismatch in `BattleArena.tsx` consumable table:
+  - `guan_mu_wei_zhuang`: `implemented: true`, `startingCount: 4`
+  - `wa_guan_wei_zhuang`: `implemented: true`, `startingCount: 4`
+
+**Why users reported “not seeing x4”**:
+- UI count badge only renders when `consumable.implemented === true`.
+- Frontend still had both disguise consumables as `implemented: false`, so they appeared as unavailable/hidden from expected count presentation despite backend stock being present.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed (compiled successfully).
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both services online.
+- PM2 restart counters after fix: `frontend 301`, `backend 308`.
+
+**Lesson**:
+- When changing consumable backend behavior, always update `CONSUMABLE_ITEMS` frontend metadata in lockstep; otherwise users can receive server counts but still see disabled or misleading UI.
+
+
+## 165. Enabled 灌木伪装 as the third real disguise variant (2026-06-01)
+
+**Implemented / checked**:
+- Added full backend disguise runtime support for 灌木伪装:
+  - New constants and buff ID `980004`.
+  - Runtime buff/ability/factory in `backend/game/engine/utils/disguise.ts`.
+  - Consumable channel completion path in `GameLoop.ts` now applies 灌木伪装 buff like the other two disguise consumables.
+  - `REMOVE_SELF_BUFFS` and `解除伪装` now clear all three disguise buff IDs.
+  - Manual-cancelable runtime set includes `980004`.
+  - Ability preload now exposes 灌木伪装 runtime buff metadata.
+- Enabled `guan_mu_wei_zhuang` consumable definition as implemented with the same forward-channel disguise flow as 砂石/瓦罐.
+
+**Render / visibility sync**:
+- Frontend disguise buff ID sets now include `980004` in both:
+  - `BattleArena.tsx`
+  - `scene/ArenaScene.tsx`
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both services online.
+- PM2 restart counters after this change: `frontend 302`, `backend 309`.
+
+**Lesson**:
+- For disguise variants, inventory availability is not enough; you must wire the full chain (consumable channel complete -> runtime buff id -> remove/cancel/preload -> frontend disguise ID recognition) or the item appears available but behaves like a stub.
+

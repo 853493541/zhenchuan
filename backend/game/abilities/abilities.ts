@@ -1,7 +1,7 @@
 // backend/game/abilities/abilities.ts
 
 import { Ability } from "../engine/state/types";
-import { SAND_DISGUISE_BUFF_ID } from "../engine/utils/disguise";
+import { GUAN_MU_DISGUISE_BUFF_ID, SAND_DISGUISE_BUFF_ID, WA_GUAN_DISGUISE_BUFF_ID } from "../engine/utils/disguise";
 import {
   AbilityEditorOverrideEntry,
   AbilityEditorOverrideMap,
@@ -4980,7 +4980,7 @@ export const BASE_ABILITIES: AbilityRecord = {
   jie_chu_wei_zhuang: {
     id: "jie_chu_wei_zhuang",
     name: "解除伪装",
-    iconPath: "/icons/砂石伪装.png",
+    iconPath: "/icons/伪装.png",
     description: "伪装期间可用\n结束伪装，恢复原技能栏\n无冷却，不进入公共冷却",
     type: "SUPPORT",
     target: "SELF",
@@ -4989,7 +4989,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     noWeaponRequired: true,
     specialBarAbility: true,
     hiddenFromDraft: true,
-    effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [SAND_DISGUISE_BUFF_ID] } as any],
+    effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [SAND_DISGUISE_BUFF_ID, GUAN_MU_DISGUISE_BUFF_ID, WA_GUAN_DISGUISE_BUFF_ID] } as any],
     buffs: [],
   },
 };

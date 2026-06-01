@@ -66,7 +66,7 @@ const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const ZHU_YUN_HIDE_BUFF_IDS = new Set([2716]);
 const SHI_FANG_XUAN_JI_BUFF_ID = 2642;
 const HONG_MENG_TIAN_JIN_BUFF_ID = 2645;
-const DISGUISE_BUFF_IDS = new Set([980001]);
+const DISGUISE_BUFF_IDS = new Set([980001, 980003, 980004]);
 const YUMEN_SPECTATOR_BUFF_ID = 990202;
 
 function isActiveBuffClient(buff: any, now = Date.now()): boolean {
@@ -109,6 +109,18 @@ function hasDisguiseBuff(buffs?: any[]): boolean {
   );
 }
 
+function getDisguiseMeshName(buffs?: any[]): string | undefined {
+  const disguiseBuff = activeBuffsClient(buffs).find((b: any) =>
+    DISGUISE_BUFF_IDS.has(b?.buffId) ||
+    (b.effects ?? []).some((e: any) => e.type === 'DISGUISE') ||
+    (typeof b?.name === 'string' && b.name.includes('伪装'))
+  );
+  if (!disguiseBuff) return undefined;
+  if (typeof disguiseBuff.disguiseMeshName === 'string' && disguiseBuff.disguiseMeshName) return disguiseBuff.disguiseMeshName;
+  const effectMeshName = (disguiseBuff.effects ?? []).find((e: any) => e?.type === 'DISGUISE' && typeof e?.meshName === 'string')?.meshName;
+  return typeof effectMeshName === 'string' && effectMeshName ? effectMeshName : undefined;
+}
+
 function hasHongMengTianJinBuff(buffs?: any[]): boolean {
   return activeBuffsClient(buffs).some((b: any) =>
     b?.buffId === HONG_MENG_TIAN_JIN_BUFF_ID ||
@@ -118,6 +130,7 @@ function hasHongMengTianJinBuff(buffs?: any[]): boolean {
 }
 
 function shouldHideByStealthFromEnemyView(buffs?: any[]): boolean {
+  if (hasDisguiseBuff(buffs)) return false;
   return (hasStealthBuff(buffs) && !hasSanliuXiaBuff(buffs)) || hasHongMengTianJinBuff(buffs);
 }
 
@@ -916,6 +929,7 @@ export default function ArenaScene({
     ? (entities ?? []).find((entity) => entity.id === selectedEntityId) ?? null
     : null;
   const meDisguised = hasDisguiseBuff(me?.buffs);
+  const meDisguiseMeshName = getDisguiseMeshName(me?.buffs);
   const meYumenSpectator = hasYumenSpectatorBuff(me?.buffs) || me.yumenDefeated === true || yumenSpectatorUserIdSet.has(me.userId);
   const meSemiTransparent = !meDisguised && (hasStealthBuff(me?.buffs) || hasSanliuXiaBuff(me?.buffs) || meYumenSpectator);
   const meShiFang = hasShiFangXuanJiBuff(me?.buffs);
@@ -1067,9 +1081,11 @@ export default function ArenaScene({
           worldHalfY={worldHalfY}
           isStealthed={meSemiTransparent}
           isDisguised={meDisguised}
+          disguiseMeshName={meDisguiseMeshName}
           hideHpBar={meDisguised || meYumenSpectator}
           cameraFadeEnabled={isExportedMap && !selfOnlyMode}
           hpColorOverride={meShiFang ? '#2acb6b' : undefined}
+          debugId={me.userId}
         />
       )}
 
@@ -1320,9 +1336,32 @@ export default function ArenaScene({
       {/* Opponents — render all of them */}
       {opponents.map((opp, i) => {
         const disguised = hasDisguiseBuff(opp.buffs);
+        const disguiseMeshName = getDisguiseMeshName(opp.buffs);
         const oppShiFang = hasShiFangXuanJiBuff(opp.buffs);
         const oppYumenSpectator = hasYumenSpectatorBuff(opp.buffs) || opp.yumenDefeated === true || yumenSpectatorUserIdSet.has(opp.userId);
         const hiddenByStealth = shouldHideByStealthFromEnemyView(opp.buffs) && !(meYumenSpectator && oppYumenSpectator);
+        if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('playwrightDisguiseProbe')) {
+          const probeTarget = window as any;
+          const probe = probeTarget.__zhenchuanDisguiseProbe ?? { characters: {}, opponents: {} };
+          probe.opponents = {
+            ...(probe.opponents ?? {}),
+            [opp.userId]: {
+              userId: opp.userId,
+              username: opp.username,
+              disguised,
+              hasStealth: hasStealthBuff(opp.buffs),
+              hiddenByStealth,
+              buffs: (opp.buffs ?? []).map((buff: any) => ({
+                buffId: buff?.buffId,
+                name: buff?.name,
+                expiresAt: buff?.expiresAt,
+                effects: (buff?.effects ?? []).map((effect: any) => effect?.type),
+              })),
+              updatedAt: Date.now(),
+            },
+          };
+          probeTarget.__zhenchuanDisguiseProbe = probe;
+        }
         if (hiddenByStealth) return null;
 
         const dx = opp.position.x - me.position.x;
@@ -1377,12 +1416,14 @@ export default function ArenaScene({
               worldHalfY={worldHalfY}
               isStealthed={!disguised && (hasSanliuXiaBuff(opp.buffs) || oppYumenSpectator)}
               isDisguised={disguised}
+              disguiseMeshName={disguiseMeshName}
               hideHpBar={disguised || hasZhuYunHideBuff(opp.buffs)}
               hideHealthMeter={oppYumenSpectator}
               nameColorOverride={oppYumenSpectator ? '#b7b7b7' : (oppShiFang ? '#7cffb0' : undefined)}
               hpColorOverride={oppShiFang ? '#2acb6b' : undefined}
               instantSnapAtRef={opponentInstantSnapAtRef}
               instantSnapWindowMs={600}
+              debugId={opp.userId}
             />
           </group>
         );

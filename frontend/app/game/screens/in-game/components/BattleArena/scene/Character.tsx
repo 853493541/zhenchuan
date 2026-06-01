@@ -22,10 +22,9 @@ const _bodyWorldPos = new THREE.Vector3();
 const SELF_HIDE_DISTANCE = CHAR_HEIGHT;
 const SELF_FADE_DISTANCE = CHAR_HEIGHT * 1.8;
 const OPPONENT_VERTICAL_BLINK_THRESHOLD = 4;
-const DISGUISE_CART_GLB_NAME = 'wj_木车002_hd.glb';
-const DISGUISE_CART_GLB_URL = `${EXPORTED_MAP_DATA_PATH}/meshes/${encodeURIComponent(DISGUISE_CART_GLB_NAME)}`;
+const DEFAULT_DISGUISE_GLB_NAME = 'wj_木车002_hd.glb';
 const DISGUISE_TEXTURE_MAP_URL = `${EXPORTED_MAP_DATA_PATH}/texture-map.json`;
-let disguiseCartPrototypePromise: Promise<THREE.Group> | null = null;
+const disguisePrototypePromises = new Map<string, Promise<THREE.Group>>();
 const disguiseTextureLoader = new THREE.TextureLoader();
 const disguiseTextureCache = new Map<string, THREE.Texture>();
 
@@ -75,24 +74,24 @@ function loadDisguiseMRECached(pngName: string): THREE.Texture {
   return disguiseTextureCache.get(key)!;
 }
 
-function loadDisguiseCartGltf(loader: GLTFLoader): Promise<any> {
+function loadDisguiseGltf(loader: GLTFLoader, glbName: string): Promise<any> {
   return new Promise((resolve, reject) => {
-    loader.load(DISGUISE_CART_GLB_URL, resolve, undefined, reject);
+    loader.load(`${EXPORTED_MAP_DATA_PATH}/meshes/${encodeURIComponent(glbName)}`, resolve, undefined, reject);
   });
 }
 
-async function loadDisguiseCartTextureInfo(): Promise<any | null> {
+async function loadDisguiseTextureInfo(glbName: string): Promise<any | null> {
   try {
     const response = await fetch(DISGUISE_TEXTURE_MAP_URL);
     if (!response.ok) return null;
     const textureMap = await response.json();
-    return textureMap?.[DISGUISE_CART_GLB_NAME] ?? null;
+    return textureMap?.[glbName] ?? null;
   } catch {
     return null;
   }
 }
 
-function applyDisguiseCartTextureMaterials(scene: THREE.Group, textureInfo: any | null) {
+function applyDisguiseModelTextureMaterials(scene: THREE.Group, textureInfo: any | null) {
   const subsetTextures = Array.isArray(textureInfo?.subsets) ? textureInfo.subsets : null;
   let meshIndex = 0;
   scene.traverse((child: any) => {
@@ -168,22 +167,24 @@ function computeHpShieldSegments(hp: number, shield: number, maxHp: number): { h
   };
 }
 
-function loadDisguiseCartPrototype(): Promise<THREE.Group> {
-  if (!disguiseCartPrototypePromise) {
-    const loader = new GLTFLoader();
-    disguiseCartPrototypePromise = Promise.all([
-      loadDisguiseCartGltf(loader),
-      loadDisguiseCartTextureInfo(),
-    ]).then(([gltf, textureInfo]) => {
-      const scene = gltf.scene as THREE.Group;
-      applyDisguiseCartTextureMaterials(scene, textureInfo);
-      return scene;
-    });
-  }
-  return disguiseCartPrototypePromise;
+function loadDisguisePrototype(glbName: string): Promise<THREE.Group> {
+  const existing = disguisePrototypePromises.get(glbName);
+  if (existing) return existing;
+
+  const loader = new GLTFLoader();
+  const promise = Promise.all([
+    loadDisguiseGltf(loader, glbName),
+    loadDisguiseTextureInfo(glbName),
+  ]).then(([gltf, textureInfo]) => {
+    const scene = gltf.scene as THREE.Group;
+    applyDisguiseModelTextureMaterials(scene, textureInfo);
+    return scene;
+  });
+  disguisePrototypePromises.set(glbName, promise);
+  return promise;
 }
 
-function cloneDisguiseCartModel(prototype: THREE.Group): THREE.Group {
+function cloneDisguiseModel(prototype: THREE.Group): THREE.Group {
   const model = prototype.clone(true);
   const box = new THREE.Box3().setFromObject(model);
   const center = box.getCenter(new THREE.Vector3());
@@ -193,41 +194,42 @@ function cloneDisguiseCartModel(prototype: THREE.Group): THREE.Group {
     if (!child?.isMesh) return;
     child.castShadow = true;
     child.receiveShadow = true;
+    child.frustumCulled = false;
   });
   return model;
 }
 
-function DisguiseCartModel({
+function DisguiseModel({
   facingYaw,
-  modelRef,
+  glbName = DEFAULT_DISGUISE_GLB_NAME,
 }: {
   facingYaw: number;
-  modelRef: MutableRefObject<THREE.Object3D | null>;
+  glbName?: string;
 }) {
   const [model, setModel] = useState<THREE.Group | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    loadDisguiseCartPrototype()
+    loadDisguisePrototype(glbName)
       .then((prototype) => {
-        if (!cancelled) setModel(cloneDisguiseCartModel(prototype));
+        if (!cancelled) setModel(cloneDisguiseModel(prototype));
       })
       .catch(() => {
         if (!cancelled) setModel(null);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [glbName]);
 
   if (!model) {
     return (
-      <mesh ref={modelRef as any} position={[0, 0.35, 0]} rotation={[0, facingYaw, 0]} castShadow>
+      <mesh position={[0, 0.35, 0]} rotation={[0, facingYaw, 0]} castShadow frustumCulled={false}>
         <boxGeometry args={[1.25, 0.7, 0.85]} />
         <meshStandardMaterial color="#7a6042" roughness={0.8} metalness={0.05} />
       </mesh>
     );
   }
 
-  return <primitive ref={modelRef as any} object={model} rotation={[0, facingYaw, 0]} />;
+  return <primitive object={model} rotation={[0, facingYaw, 0]} />;
 }
 
 interface CharacterProps {
@@ -260,13 +262,15 @@ interface CharacterProps {
   hideHpBar?: boolean;
   /** Hide only the health meter while keeping visible enemy names. */
   hideHealthMeter?: boolean;
-  /** Replace the character with the exported-map cart mesh for 砂石伪装. */
+  /** Replace the character with an exported-map disguise mesh. */
   isDisguised?: boolean;
+  disguiseMeshName?: string;
   cameraFadeEnabled?: boolean;
   nameColorOverride?: string;
   hpColorOverride?: string;
   instantSnapAtRef?: MutableRefObject<number>;
   instantSnapWindowMs?: number;
+  debugId?: string;
 }
 
 export default function Character({
@@ -293,15 +297,16 @@ export default function Character({
   hideHpBar = false,
   hideHealthMeter = false,
   isDisguised = false,
+  disguiseMeshName,
   cameraFadeEnabled = false,
   nameColorOverride,
   hpColorOverride,
   instantSnapAtRef,
   instantSnapWindowMs = 0,
+  debugId,
 }: CharacterProps) {
   const groupRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.Mesh>(null);
-  const disguiseRef = useRef<THREE.Object3D>(null);
   const capRef = useRef<THREE.Mesh>(null);
   const shadowRef = useRef<THREE.Mesh>(null);
   const arcRef = useRef<THREE.Mesh>(null);
@@ -375,9 +380,6 @@ export default function Character({
       const yaw = Math.atan2(f.x, -f.y); // z-flip: negate game-y for correct Three.js facing
       if (bodyRef.current) {
         bodyRef.current.rotation.set(0, yaw, 0);
-      }
-      if (disguiseRef.current) {
-        disguiseRef.current.rotation.set(0, yaw, 0);
       }
 
       // Smooth arc display yaw — rotates at max 720°/s so a full 180° takes ~0.25s
@@ -477,6 +479,51 @@ export default function Character({
       arcGlowRef.current.visible = visualAlpha > 0.02;
     }
 
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('playwrightDisguiseProbe')) {
+      const probeTarget = window as any;
+      const probe = probeTarget.__zhenchuanDisguiseProbe ?? { characters: {} };
+      const key = debugId ?? username ?? (isMe ? 'self' : 'unknown');
+      let meshCount = 0;
+      let visibleMeshCount = 0;
+      groupRef.current.traverse((child: any) => {
+        if (!child?.isMesh) return;
+        meshCount += 1;
+        if (child.visible !== false) visibleMeshCount += 1;
+      });
+      const projected = new THREE.Vector3(
+        groupRef.current.position.x,
+        groupRef.current.position.y + CHAR_HEIGHT * 0.5,
+        groupRef.current.position.z,
+      ).project(camera);
+      probe.characters = {
+        ...(probe.characters ?? {}),
+        [key]: {
+          isMe,
+          username,
+          isDisguised,
+          disguiseMeshName,
+          isStealthed,
+          hideHpBar,
+          world: { x: worldX, y: worldY, z: worldZ },
+          scene: {
+            x: groupRef.current.position.x,
+            y: groupRef.current.position.y,
+            z: groupRef.current.position.z,
+          },
+          meshCount,
+          visibleMeshCount,
+          ndc: { x: projected.x, y: projected.y, z: projected.z },
+          screen: {
+            x: (projected.x * 0.5 + 0.5) * size.width,
+            y: (-projected.y * 0.5 + 0.5) * size.height,
+          },
+          inClip: projected.z >= -1 && projected.z <= 1 && Math.abs(projected.x) <= 1 && Math.abs(projected.y) <= 1,
+          updatedAt: Date.now(),
+        },
+      };
+      probeTarget.__zhenchuanDisguiseProbe = probe;
+    }
+
     // --- World->screen anchor for floating numbers / HUD overlays ---
     if (onScreenBounds) {
       const headWorld = new THREE.Vector3(
@@ -514,7 +561,7 @@ export default function Character({
     <group ref={groupRef} position={[threeX, threeY, threeZ]}>
       {isDisguised ? (
         <>
-          <DisguiseCartModel facingYaw={facingYaw} modelRef={disguiseRef} />
+          <DisguiseModel facingYaw={facingYaw} glbName={disguiseMeshName ?? DEFAULT_DISGUISE_GLB_NAME} />
           <mesh ref={shadowRef} position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <circleGeometry args={[0.95, 20]} />
             <meshBasicMaterial color="#000000" transparent opacity={0.24} depthWrite={false} />

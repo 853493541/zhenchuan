@@ -1,7 +1,17 @@
 import { ABILITIES } from "./abilities";
 import { applyPropertyOverridesToEffects, BuffEditorOverrideEntry, loadBuffEditorOverrides } from "./buffEditorOverrides";
 import { loadAbilityEditorOverrides } from "./abilityPropertySystem";
-import { SAND_DISGUISE_BUFF, SAND_DISGUISE_CONSUMABLE_ID, SAND_DISGUISE_CONSUMABLE_NAME } from "../engine/utils/disguise";
+import {
+  GUAN_MU_DISGUISE_BUFF,
+  GUAN_MU_DISGUISE_CONSUMABLE_ID,
+  GUAN_MU_DISGUISE_CONSUMABLE_NAME,
+  SAND_DISGUISE_BUFF,
+  SAND_DISGUISE_CONSUMABLE_ID,
+  SAND_DISGUISE_CONSUMABLE_NAME,
+  WA_GUAN_DISGUISE_BUFF,
+  WA_GUAN_DISGUISE_CONSUMABLE_ID,
+  WA_GUAN_DISGUISE_CONSUMABLE_NAME,
+} from "../engine/utils/disguise";
 import { YUE_YING_SHA_BUFF, YUE_YING_SHA_CONSUMABLE_ID, YUE_YING_SHA_CONSUMABLE_NAME } from "../engine/utils/yueYingSha";
 import { YUMEN_KUANG_SHA_BUFF, YUMEN_PREP_BUFF, YUMEN_PREP_ABILITY_ID, YUMEN_SPECTATOR_BUFF, YUMEN_ZHANYI_BUFF, YUMEN_ZHUI_MING_BUFF } from "../engine/utils/yumenSafeZone";
 
@@ -176,6 +186,20 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
     manualCancelable: true,
     sourceAbilityId: SAND_DISGUISE_CONSUMABLE_ID,
     sourceAbilityName: SAND_DISGUISE_CONSUMABLE_NAME,
+  });
+
+  buffs.push({
+    ...WA_GUAN_DISGUISE_BUFF,
+    manualCancelable: true,
+    sourceAbilityId: WA_GUAN_DISGUISE_CONSUMABLE_ID,
+    sourceAbilityName: WA_GUAN_DISGUISE_CONSUMABLE_NAME,
+  });
+
+  buffs.push({
+    ...GUAN_MU_DISGUISE_BUFF,
+    manualCancelable: true,
+    sourceAbilityId: GUAN_MU_DISGUISE_CONSUMABLE_ID,
+    sourceAbilityName: GUAN_MU_DISGUISE_CONSUMABLE_NAME,
   });
 
   buffs.push({

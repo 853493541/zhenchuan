@@ -683,8 +683,8 @@ const CONSUMABLE_ITEMS = [
   { id: 'jin_chuang_yao', name: '金疮药', implemented: true, startingCount: 2, cooldownMs: 120_000 },
   { id: 'yue_ying_sha', name: '月影沙', implemented: true, startingCount: 1, cooldownMs: 30_000 },
   { id: 'sha_shi_wei_zhuang', name: '砂石伪装', implemented: true, startingCount: 4, cooldownMs: 0 },
-  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
-  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: false, startingCount: 0, cooldownMs: 0 },
+  { id: 'guan_mu_wei_zhuang', name: '灌木伪装', implemented: true, startingCount: 4, cooldownMs: 0 },
+  { id: 'wa_guan_wei_zhuang', name: '瓦罐伪装', implemented: true, startingCount: 4, cooldownMs: 0 },
   { id: 'sha_xing_xie', name: '沙行蝎', implemented: false, startingCount: 0, cooldownMs: 0 },
   { id: 'ma_cao', name: '马草', implemented: false, startingCount: 0, cooldownMs: 0 },
   { id: 'yi_jie_wu_qi_he', name: '一阶武器盒', implemented: false, startingCount: 0, cooldownMs: 0 },
@@ -2880,7 +2880,7 @@ const UNTARGETABLE_BUFF_IDS = new Set([1008]);
 const YUMEN_KUANG_SHA_BUFF_ID = 990200;
 const YUMEN_SPECTATOR_BUFF_ID = 990202;
 const YUMEN_PREP_BUFF_ID = 990204;
-const DISGUISE_BUFF_IDS = new Set([980001]);
+const DISGUISE_BUFF_IDS = new Set([980001, 980003, 980004]);
 const SANLIU_XIA_BUFF_IDS = new Set([1007, 1008]);
 const HONG_MENG_TIAN_JIN_BUFF_IDS = new Set([2645]);
 const SHU_SE_BUFF_IDS = new Set([2646]);
@@ -3018,6 +3018,7 @@ function hasShiFangXuanJiClient(buffs?: ActiveBuff[]): boolean {
 }
 
 function shouldHideOpponentByStealth(buffs?: ActiveBuff[]): boolean {
+  if (hasDisguiseClient(buffs)) return false;
   return (hasStealthClient(buffs) && !hasSanliuXiaClient(buffs)) || hasHongMengTianJinClient(buffs);
 }
 

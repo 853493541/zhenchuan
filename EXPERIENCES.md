@@ -3550,3 +3550,69 @@ Lesson: damage/buff/movement reflection MUST hook at every chokepoint. Pre-immun
 - Always compare `public IP cert fingerprint` vs `local cert fingerprint` when a domain suddenly shows another host's certificate; this quickly distinguishes local nginx config issues from upstream ingress drift.
 
 
+## 176. 瓦罐伪装 enabled with resource-pack jar asset (2026-06-01)
+
+**Implemented / checked**:
+- Enabled the existing stub consumable `wa_guan_wei_zhuang` by copying the `砂石伪装` runtime flow instead of building a separate disguise system.
+- Verified the resource pack contains a suitable jar mesh, `wj_坛子001_001_hd.glb`, so no random fallback asset choice was needed.
+- Generalized the frontend disguise render path so different disguise buffs can specify different exported-map meshes while sharing the same runtime disguise behavior.
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` completed with both project processes `online`.
+
+**Lesson**:
+- For feature variants that differ only by presentation, prefer one shared mechanic path plus asset metadata. That keeps future disguise additions cheap and reduces regression surface.
+
+
+## 177. Follow-up stock sync for 灌木伪装 and 瓦罐伪装 (2026-06-01)
+
+**Implemented / checked**:
+- Raised `guan_mu_wei_zhuang` starting count from `0` to `4` in `STARTING_CONSUMABLE_COUNTS`.
+- Kept `wa_guan_wei_zhuang` at `4`.
+- Verified both battle-start inventory initialization and control-panel refill use the same shared stock source (`createStartingConsumableCounts()`).
+
+**Verification**:
+- `cd /home/ubuntu/zhenchuan/backend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan/frontend && npm run build` passed.
+- `cd /home/ubuntu/zhenchuan && pm2 restart frontend backend` passed with both services online.
+
+**Lesson**:
+- Shared defaults should stay centralized so follow-up balance/stock changes do not require endpoint-specific patches.
+
+
+## 178. Fixed frontend/backend consumable config drift for disguise stock display (2026-06-01)
+
+**Implemented / checked**:
+- Backend already correctly set `guan_mu_wei_zhuang: 4` and `wa_guan_wei_zhuang: 4` in starting stock/refill source.
+- Frontend `BattleArena.tsx` still marked both as unimplemented with zero start count; updated both to `implemented: true` and `startingCount: 4`.
+
+**Verification**:
+- Backend build passed.
+- Frontend build passed.
+- PM2 restart (`frontend backend`) passed with both online.
+
+**Lesson**:
+- If users report missing inventory while backend numbers are correct, check frontend availability/count guards (`implemented`, fallback counts, slot rendering) before assuming server initialization failed.
+
+
+## 179. Made 灌木伪装 fully available as third disguise path (2026-06-01)
+
+**Implemented / checked**:
+- Converted 灌木伪装 from placeholder into full disguise consumable behavior with its own buff ID (`980004`) and mesh metadata.
+- Integrated the new buff ID into:
+  - channel-complete disguise apply path,
+  - disguise removal/cancel paths,
+  - preload metadata,
+  - frontend disguise detection sets.
+
+**Verification**:
+- Backend build passed.
+- Frontend build passed.
+- PM2 restart (`frontend backend`) passed with both online.
+
+**Lesson**:
+- Availability rollouts for runtime consumables must cover both state logic and client recognition tables; missing either side causes "available but not real" behavior.
+
+

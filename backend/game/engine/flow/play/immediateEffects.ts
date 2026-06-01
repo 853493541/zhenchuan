@@ -33,7 +33,7 @@ import { applyDashRuntimeBuff, DASH_CC_IMMUNE_BUFF_ID } from "../../effects/defi
 import { processOnDamageTaken, preCheckRedirect, applyRedirectToOpponent } from "../../effects/onDamageHooks";
 import { getDunLiReflectVictim } from "../../effects/dunLiReflect";
 import { getAbilityRangeBonusFromBuffs, getEffectiveAbilityRange } from "../../utils/abilityRange";
-import { removeDisguiseBuffs, SAND_DISGUISE_BUFF_ID } from "../../utils/disguise";
+import { GUAN_MU_DISGUISE_BUFF_ID, removeDisguiseBuffs, SAND_DISGUISE_BUFF_ID, WA_GUAN_DISGUISE_BUFF_ID } from "../../utils/disguise";
 import {
   CHU_HE_HAN_JIE_WALL_DURATION_MS,
   CHU_HE_HAN_JIE_WALL_HEIGHT_UNITS,
@@ -2260,8 +2260,10 @@ export function applyImmediateEffects(params: {
         const removeIds = new Set((effect as any).buffIds ?? []);
         if (removeIds.size === 0) break;
 
-        if (removeIds.has(SAND_DISGUISE_BUFF_ID)) {
+        if (removeIds.has(SAND_DISGUISE_BUFF_ID) || removeIds.has(GUAN_MU_DISGUISE_BUFF_ID) || removeIds.has(WA_GUAN_DISGUISE_BUFF_ID)) {
           removeIds.delete(SAND_DISGUISE_BUFF_ID);
+          removeIds.delete(GUAN_MU_DISGUISE_BUFF_ID);
+          removeIds.delete(WA_GUAN_DISGUISE_BUFF_ID);
           removeDisguiseBuffs(state, source as any, Date.now());
         }
 

@@ -1060,6 +1060,24 @@ export function useGameState(gameId: string, selfUserId: string, initialAuthToke
             normalizeDiffTimestamps(message.diff, offsetMs),
             receiveDateNow,
           );
+          if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            if (params.get("playwrightDisguiseProbe") === "1") {
+              const target = window as any;
+              const probe = (target.__zhenchuanDisguiseWsProbe ??= { messages: [] });
+              probe.messages.push({
+                type: message.type,
+                version: message.version,
+                timestamp: message.timestamp,
+                receivedAt: receiveDateNow,
+                paths: normalizedDiff.map((patch) => patch.path),
+                buffPatches: normalizedDiff
+                  .filter((patch) => /\/players\/\d+\/buffs$/.test(patch.path))
+                  .map((patch) => ({ path: patch.path, value: patch.value })),
+              });
+              if (probe.messages.length > 80) probe.messages.splice(0, probe.messages.length - 80);
+            }
+          }
           for (const patch of normalizedDiff) {
             if (patch.path === "/leaveNotice" && patch.value?.userId) {
               markPlayerDisconnectedForDiagnostics(patch.value.userId, "leave-notice", {

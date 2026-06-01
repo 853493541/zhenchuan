@@ -79,12 +79,17 @@ import {
 } from "../utils/yumenSafeZone";
 import { buildYumenResults, countYumenAlivePlayers } from "../utils/yumenResults";
 import {
+  GUAN_MU_DISGUISE_ABILITY,
+  GUAN_MU_DISGUISE_CONSUMABLE_ID,
   SAND_DISGUISE_ABILITY,
-  SAND_DISGUISE_BUFF,
   SAND_DISGUISE_CONSUMABLE_ID,
   SAND_DISGUISE_LEASH_RADIUS_UNITS,
+  WA_GUAN_DISGUISE_ABILITY,
+  WA_GUAN_DISGUISE_CONSUMABLE_ID,
   clearTargetSelectionsTargetingPlayer,
+  createGuanMuDisguiseRuntimeBuff,
   createSandDisguiseRuntimeBuff,
+  createWaGuanDisguiseRuntimeBuff,
   isDisguiseBuff,
   removeDisguiseBuffs,
 } from "../utils/disguise";
@@ -3203,16 +3208,27 @@ export class GameLoop {
         }
 
         if (chNow >= ch.startedAt + ch.durationMs) {
-          if (isConsumableChannel && (ch as any).consumableId === SAND_DISGUISE_CONSUMABLE_ID) {
+          if (
+            isConsumableChannel &&
+            ((ch as any).consumableId === SAND_DISGUISE_CONSUMABLE_ID ||
+              (ch as any).consumableId === GUAN_MU_DISGUISE_CONSUMABLE_ID ||
+              (ch as any).consumableId === WA_GUAN_DISGUISE_CONSUMABLE_ID)
+          ) {
             const combatDuringChannel = hasCombatActivityAgainstPlayerDuringChannel(this.state, player.userId, ch.startedAt);
             if (player.inCombat !== true && !combatDuringChannel && (player.hp ?? 0) > 0) {
+                const isGuanMuDisguise = (ch as any).consumableId === GUAN_MU_DISGUISE_CONSUMABLE_ID;
+              const isWaGuanDisguise = (ch as any).consumableId === WA_GUAN_DISGUISE_CONSUMABLE_ID;
               addBuff({
                 state: this.state,
                 sourceUserId: player.userId,
                 targetUserId: player.userId,
-                ability: SAND_DISGUISE_ABILITY,
+                  ability: isWaGuanDisguise
+                    ? WA_GUAN_DISGUISE_ABILITY
+                    : (isGuanMuDisguise ? GUAN_MU_DISGUISE_ABILITY : SAND_DISGUISE_ABILITY),
                 buffTarget: player as any,
-                buff: createSandDisguiseRuntimeBuff(player.position),
+                  buff: isWaGuanDisguise
+                    ? createWaGuanDisguiseRuntimeBuff(player.position)
+                    : (isGuanMuDisguise ? createGuanMuDisguiseRuntimeBuff(player.position) : createSandDisguiseRuntimeBuff(player.position)),
               });
               clearTargetSelectionsTargetingPlayer(this.state, player.userId);
             }
