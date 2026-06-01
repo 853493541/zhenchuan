@@ -642,6 +642,37 @@ function getForwardConeEnemyTargets(params: {
   return (rerolledTargets as ImmediateEnemyDamageTarget[] | null) ?? coneTargets;
 }
 
+function removeStunBuffsFromTarget(target: any, state?: any) {
+  if (!Array.isArray(target.buffs)) return;
+  const stunBuffs = target.buffs.filter((b: any) => isStunBuff(b));
+  if (stunBuffs.length === 0) return;
+  target.buffs = target.buffs.filter((b: any) => !isStunBuff(b));
+  if (state) {
+    for (const b of stunBuffs) {
+      state.events.push({
+        id: `sb-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        timestamp: Date.now(),
+        turn: state.turn,
+        type: "BUFF_EXPIRED",
+        actorUserId: target.userId,
+        targetUserId: target.userId,
+        abilityId: b.sourceAbilityId,
+        abilityName: b.sourceAbilityName,
+        buffId: b.buffId,
+        buffName: b.name,
+        buffCategory: b.category,
+      });
+    }
+  }
+}
+
+function isStunBuff(buff: any): boolean {
+  if (buff.category !== "DEBUFF") return false;
+  const isKnockdownBuff = buff.buffId === 1002 || buff.buffId === 1340 || buff.buffId === 2635 || buff.buffId === 2641;
+  if (isKnockdownBuff) return false;
+  return Array.isArray(buff.effects) && buff.effects.some((e: any) => e.type === "CONTROL");
+}
+
 function pullImmediateTargetTowardAnchor(params: {
   state: any;
   ability: any;
@@ -665,6 +696,8 @@ function pullImmediateTargetTowardAnchor(params: {
   if ((pullTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) {
     return false;
   }
+
+  removeStunBuffsFromTarget(pullTarget, state);
 
   const dx = anchor.x - pullTarget.position.x;
   const dy = anchor.y - pullTarget.position.y;
@@ -769,6 +802,8 @@ function applyImmediateKnockback(params: {
   if (distance < 0.001) return false;
   if (target.kind === "player" && hasKnockedBackImmune(kbTarget)) return false;
   if ((kbTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) return false;
+
+  removeStunBuffsFromTarget(kbTarget, state);
 
   const dirX = dx / distance;
   const dirY = dy / distance;
@@ -1604,6 +1639,8 @@ export function applyImmediateEffects(params: {
         // Type 2 knockdown blocks knockback push
         if ((kbTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) break;
 
+        removeStunBuffsFromTarget(kbTarget, state);
+
         const kbDirX = kdx / kdist;
         const kbDirY = kdy / kdist;
         const kbDistance = gameplayUnitsToWorldUnits(effect.value ?? 12, state.unitScale);
@@ -1656,6 +1693,8 @@ export function applyImmediateEffects(params: {
           const kbTarget = candidate.target as any;
           if (!kbTarget || hasKnockedBackImmune(kbTarget)) continue;
           if ((kbTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) continue;
+
+          removeStunBuffsFromTarget(kbTarget, state);
           const kdx = kbTarget.position.x - source.position.x;
           const kdy = kbTarget.position.y - source.position.y;
           const kdist = Math.sqrt(kdx * kdx + kdy * kdy);
@@ -2607,6 +2646,8 @@ export function applyImmediateEffects(params: {
           // Check knockback immunity (pull = forced movement)
           if (hasKnockbackImmune(pullTarget as any)) continue;
           if ((pullTarget.buffs ?? []).some((b: any) => b.buffId === 1002 || b.buffId === 1340 || b.buffId === 2635 || b.buffId === 2641)) continue;
+          // Type 3 pull removes active Type 1 stun/freeze before forced movement
+          removeStunBuffsFromTarget(pullTarget, state);
           const dirX = cdx / cdist;
           const dirY = cdy / cdist;
           // Pull toward caster: velocity is negative of direction (toward caster)
@@ -2700,6 +2741,8 @@ export function applyImmediateEffects(params: {
           if (t === primary) continue; // exclude primary
           if (hasKnockedBackImmune(t)) continue;
           if ((t.buffs ?? []).some((b: any) => KNOCKDOWN_IDS.has(b.buffId))) continue;
+
+          removeStunBuffsFromTarget(t, state);
           // Knockback direction = caster -> victim (away from caster).
           // Entity dash now uses the velocity-free collision helper, so
           // this no longer crashes the loop.

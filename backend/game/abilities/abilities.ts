@@ -2735,7 +2735,6 @@ export const BASE_ABILITIES: AbilityRecord = {
         description: "冻结：无法移动和施放技能；每秒回复5点气血（贯体）；受到伤害立即解除并附加眩晕",
         effects: [
           { type: "CONTROL" },
-          { type: "ROOT" },
           { type: "PERIODIC_GUAN_TI_HEAL", value: 5 },
         ],
       },
@@ -2905,7 +2904,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         category: "DEBUFF",
         durationMs: 6_000,
         description: "定身：无法移动、跳跃和施放技能",
-        effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+        effects: [{ type: "CONTROL" }],
       },
     ],
   },
@@ -4274,7 +4273,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         applyTo: "OPPONENT",
         durationMs: 5_000,
         description: "定身：无法移动、跳跃和施放技能",
-        effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+        effects: [{ type: "CONTROL" }],
       },
       {
         buffId: 2634,
@@ -4351,7 +4350,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         applyTo: "OPPONENT",
         durationMs: 3_000,
         description: "定身：无法移动、跳跃和施放技能",
-        effects: [{ type: "CONTROL" }, { type: "ROOT" }],
+        effects: [{ type: "CONTROL" }],
       },
       {
         buffId: 2640,

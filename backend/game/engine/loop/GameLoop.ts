@@ -653,6 +653,8 @@ function applyKnockbackToHostileTarget(params: {
   if (target.kind === "player" && hasKnockedBackImmune(knockbackTarget)) return false;
   if ((knockbackTarget.buffs ?? []).some((b: any) => isKnockdown(b))) return false;
 
+  removeStunDebuffsFromPlayer(state, knockbackTarget);
+
   const dirX = dx / distance;
   const dirY = dy / distance;
   const knockbackDistance = gameplayUnitsToWorldUnits(distanceUnits, state.unitScale);
@@ -3444,6 +3446,9 @@ export class GameLoop {
               const pullTargetPlayer = reflectedPullTarget ?? targetPlayer;
               if (hasKnockbackImmune(pullTargetPlayer as any)) continue;
               if ((pullTargetPlayer.buffs ?? []).some((b: any) => isKnockdown(b))) continue;
+
+              // Type 3 pull removes active Type 1 stun/freeze before forced movement
+              removeStunDebuffsFromPlayer(this.state, pullTargetPlayer);
 
               // 雷霆震怒 interaction: pull also strips the buff first
               const leiTingIdx = (pullTargetPlayer.buffs as any[]).findIndex((b: any) => b.buffId === 2506);
