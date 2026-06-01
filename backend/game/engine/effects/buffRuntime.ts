@@ -1253,14 +1253,21 @@ export function addBuff(params: {
     expiresAt: now + runtimeBuff.durationMs,
 
     // Periodic effects (DoT / HoT)
-    ...(runtimeBuff.periodicMs !== undefined && {
-      periodicMs: runtimeBuff.periodicMs,
-      periodicStartImmediate: runtimeBuff.periodicStartImmediate === true,
-      lastTickAt:
-        runtimeBuff.periodicStartImmediate === true
-          ? now - runtimeBuff.periodicMs
-          : now,
-    }),
+    ...(runtimeBuff.periodicMs !== undefined
+      ? (() => {
+          const immediate = runtimeBuff.periodicStartImmediate === true;
+          console.log(
+            `[addBuff] buffId=${runtimeBuff.buffId} name="${runtimeBuff.name}" ` +
+            `periodicMs=${runtimeBuff.periodicMs} periodicStartImmediate=${immediate} ` +
+            `durationMs=${runtimeBuff.durationMs} abilityId=${ability.id}`,
+          );
+          return {
+            periodicMs: runtimeBuff.periodicMs,
+            periodicStartImmediate: immediate,
+            lastTickAt: immediate ? now - runtimeBuff.periodicMs : now,
+          };
+        })()
+      : undefined),
 
     appliedAtTurn: state.turn, // informational only
     appliedAt: now,             // wall-clock ms — used by TIMED_AOE_DAMAGE

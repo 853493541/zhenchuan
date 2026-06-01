@@ -12,6 +12,12 @@ function hasPeriodicDamage(buff: BuffDefinition | any): boolean {
   return Array.isArray(buff?.effects) && buff.effects.some((effect: any) => effect?.type === "PERIODIC_DAMAGE");
 }
 
+function hasChannelAoeTick(buff: BuffDefinition | any): boolean {
+  return Array.isArray(buff?.effects) && buff.effects.some(
+    (effect: any) => effect?.type === "CHANNEL_AOE_TICK" || effect?.type === "CHANNEL_AOE_TICK_DAMAGE"
+  );
+}
+
 function getStableTickCount(durationMs: number, periodicMs: number): number | null {
   if (!Number.isFinite(durationMs) || !Number.isFinite(periodicMs) || durationMs <= 0 || periodicMs <= 0) {
     return null;
@@ -55,8 +61,7 @@ export function getHasteAdjustedPeriodicTiming(params: {
 
 export function shouldApplyHasteToBuffTiming(ability: Ability | any, buff: BuffDefinition | any): boolean {
   if (isHasteUnaffectedAbility(ability)) return false;
-  // Only DoT-style periodic damage buffs/debuffs should have haste-adjusted timing.
-  return hasPeriodicDamage(buff);
+  return hasPeriodicDamage(buff) || hasChannelAoeTick(buff);
 }
 
 function getHasteAdjustedBuffEffects(ability: Ability | any, buff: BuffDefinition | any) {
