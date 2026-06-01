@@ -2779,6 +2779,7 @@ export function applyImmediateEffects(params: {
             maxDownVz: 0,
             ticksRemaining: kbTicks,
             vzPerTick: 0,
+            stopOnWall: true,
           };
 
           addBuff({
