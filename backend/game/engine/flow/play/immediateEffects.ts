@@ -2729,7 +2729,9 @@ export function applyImmediateEffects(params: {
           });
         }
 
-        // 3) AOE knockback on OTHER enemies within 6u of primary
+        // 3) AOE knockback on enemies within 6u of primary (including primary).
+        //    If primary was knocked down, the guard below skips them.
+        //    If primary immuned the knockdown, knockback still applies.
         const storedUnitScale = state.unitScale;
         const aoeRadius = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.range ?? 6)), storedUnitScale);
         const kbDistance = gameplayUnitsToWorldUnits(Math.max(0, Number(effect.value ?? 30)), storedUnitScale);
@@ -2738,7 +2740,6 @@ export function applyImmediateEffects(params: {
         const KNOCKDOWN_IDS = new Set([1002, 1340, 2635, 2641]);
         for (const candidate of getImmediateEnemyBuffTargets(state, source.userId, center, aoeRadius)) {
           const t: any = candidate.target;
-          if (t === primary) continue; // exclude primary
           if (hasKnockedBackImmune(t)) continue;
           if ((t.buffs ?? []).some((b: any) => KNOCKDOWN_IDS.has(b.buffId))) continue;
 
