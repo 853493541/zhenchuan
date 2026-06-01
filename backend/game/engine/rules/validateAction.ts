@@ -488,9 +488,9 @@ export function validateCastAbility(
 
   if (hasEffect(player, "DISPLACEMENT")) {
     const allowsDisplacement =
-      (ability as any).allowWhileDisplaced === true ||
+      (ability as any).allowWhileDashing === true ||
       (Array.isArray(ability.effects) &&
-        ability.effects.some((e: any) => e.allowWhileDisplaced === true));
+        ability.effects.some((e: any) => e.allowWhileDashing === true));
     if (!allowsDisplacement) {
       throw new Error("ERR_DISPLACEMENT");
     }
@@ -850,9 +850,9 @@ export function validatePlayAbility(
 
   if (hasEffect(player, "DISPLACEMENT")) {
     const allowsDisplacement =
-      (ability as any).allowWhileDisplaced === true ||
+      (ability as any).allowWhileDashing === true ||
       (Array.isArray(ability.effects) &&
-        ability.effects.some((e) => (e as any).allowWhileDisplaced === true));
+        ability.effects.some((e) => (e as any).allowWhileDashing === true));
     if (!allowsDisplacement) {
       throw new Error("ERR_DISPLACEMENT");
     }

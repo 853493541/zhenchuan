@@ -29,7 +29,7 @@ const BUFF_ICON_PATH_OVERRIDES: Record<string, string> = {
 
 function hasEffectFlag(
   ability: { effects?: Array<Record<string, unknown>> },
-  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "cleanseRootSlow",
+  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "allowWhileDashing" | "allowWhilePulled" | "cleanseRootSlow",
   effectType?: string
 ) {
   return Array.isArray(ability.effects)
@@ -138,6 +138,14 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
       allowWhileKnockedBack:
         (ability as any).allowWhileKnockedBack === true ||
         hasEffectFlag(ability as any, "allowWhileKnockedBack"),
+
+      allowWhileDashing:
+        (ability as any).allowWhileDashing === true ||
+        hasEffectFlag(ability as any, "allowWhileDashing"),
+
+      allowWhilePulled:
+        (ability as any).allowWhilePulled === true ||
+        hasEffectFlag(ability as any, "allowWhilePulled"),
 
       cleanseRootSlow:
         (ability as any).cleanseRootSlow === true ||

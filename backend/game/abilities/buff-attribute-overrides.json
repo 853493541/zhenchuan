@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "updatedAt": "2026-05-31T22:39:31.964Z",
+  "updatedAt": "2026-06-01T19:24:24.416Z",
   "buffs": {
     "1001": {
       "attribute": "毒性",
@@ -225,7 +225,7 @@
       "attribute": "无",
       "description": "不可获得镇山河效果",
       "descriptionReviewStatus": "fixed",
-      "timerVisible": false
+      "timerVisible": true
     },
     "1323": {
       "attribute": "无",

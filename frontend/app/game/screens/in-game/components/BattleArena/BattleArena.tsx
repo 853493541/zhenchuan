@@ -9615,7 +9615,7 @@ export default function BattleArena({
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
       if (powerLockWarning) return powerLockWarning;
       if (nonQinggongLocked && !isQinggongLike) return '招式施展失败';
-      if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDisplaced')) return '该招式无法在位移时施展';
+      if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDashing')) return '该招式无法在位移时施展';
       if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '该招式无法在位移时施展';
       if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '该招式无法在位移时施展';
       if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '招式施展失败';

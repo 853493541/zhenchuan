@@ -249,7 +249,7 @@ export interface AbilityEffect {
   allowWhileControlled?: boolean;
   allowWhileKnockedBack?: boolean;
   allowWhilePulled?: boolean;
-  allowWhileDisplaced?: boolean;
+  allowWhileDashing?: boolean;
   cleanseRootSlow?: boolean;
   applyTo?: TargetType;
 

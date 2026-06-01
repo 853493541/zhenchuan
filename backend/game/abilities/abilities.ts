@@ -534,9 +534,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
-    allowWhileKnockedBack: true,
-    allowWhilePulled: true,
-    allowWhileDisplaced: true,
+    allowWhileDashing: true,
     effects: [{ type: "QIAN_LONG_WU_YONG", value: 8, damageValue: 2 } as any],
     buffs: [],
   },
@@ -1399,7 +1397,6 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileControlled: true,
     allowWhileKnockedBack: true,
     allowWhilePulled: true,
-    allowWhileDisplaced: true,
     effects: [
       {
         type: "PLACE_GROUND_ZONE",
@@ -4918,7 +4915,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileControlled: true,
     allowWhileKnockedBack: true,
     allowWhilePulled: true,
-    allowWhileDisplaced: true,
+    allowWhileDashing: true,
     cleanseRootSlow: true,
     effects: [{ type: "CLEANSE", cleanseRootSlow: true }],
     buffs: [
@@ -4972,7 +4969,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     allowWhileControlled: true,
     allowWhileKnockedBack: true,
     allowWhilePulled: true,
-    allowWhileDisplaced: true,
+    allowWhileDashing: true,
     allowWhileSilenced: true,
     effects: [{ type: "REMOVE_SELF_BUFFS", buffIds: [2727, 2728] } as any],
     buffs: [],

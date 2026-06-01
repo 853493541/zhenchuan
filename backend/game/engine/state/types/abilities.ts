@@ -133,7 +133,7 @@ export interface Ability {
   /**
    * If true, this ability can still be cast while being displaced (DISPLACEMENT effect — dashes, pulls).
    */
-  allowWhileDisplaced?: boolean;
+  allowWhileDashing?: boolean;
 
   /**
    * If true, this ability can still be cast while silenced.

@@ -258,7 +258,7 @@ const DAMAGE_VALUE_EFFECT_TYPES = new Set<AbilityEffect["type"]>([
 
 function hasEffectFlag(
   ability: AbilityWithDescription,
-  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "cleanseRootSlow",
+  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "allowWhileDashing" | "allowWhilePulled" | "cleanseRootSlow",
   effectType?: AbilityEffect["type"]
 ) {
   return Array.isArray(ability.effects)
@@ -280,7 +280,7 @@ function hasEffectType(
 
 function stripEffectFlag(
   ability: AbilityWithDescription,
-  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "cleanseRootSlow",
+  flag: "allowWhileControlled" | "allowWhileKnockedBack" | "allowWhileDashing" | "allowWhilePulled" | "cleanseRootSlow",
   effectType?: AbilityEffect["type"]
 ) {
   if (!Array.isArray(ability.effects) || ability.effects.length === 0) {
