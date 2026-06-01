@@ -1,83 +1,166 @@
-# Zhenchuan Project – Copilot Working Instructions
+# Zhenchuan Project - Copilot Working Instructions
 
-## Task Handling Protocol
+## 1. Task Handling Protocol
 
-1. **Work point-by-point.** When the user provides numbered instructions, tackle them one at a time in order.  
-   At the end of every session, output a **chart summary** with columns: Point | What Was Done | What to Test.
+### 1.1 Point-by-point execution
+When the user provides numbered instructions, handle one point at a time in order.
 
-2. **Always build and restart after changes.**  
-   - Backend: `cd /home/ubuntu/zhenchuan/backend && npm run build`  
-   - Frontend: `cd /home/ubuntu/zhenchuan/frontend && npm run build`  
-   - Restart only this project’s PM2 apps: `pm2 restart frontend backend` (from `/home/ubuntu/zhenchuan`). Do **not** use `pm2 restart all` for Zhenchuan checks, and do **not** restart, stop, or kill `rencipe-*` processes unless the user explicitly asks.  
-   - At the end of **each numbered round / point**, run both builds again to check for errors before replying.  
-   - PM2 must be restarted only after the newest successful build, and the reply must confirm PM2 is running that newest build with no reported startup errors.  
-   - If port `3000` or `5000` is in use when PM2 starts or restarts, kill the occupying process (`lsof -ti:PORT | xargs kill -9`) and restart only `frontend backend` again.  
-   - Ignore unrelated `rencipe-*` PM2 processes and their ports during Zhenchuan verification unless the user explicitly scopes the task to them.  
-   - Never skip the build step — ts-node compiles at startup only.
+### 1.2 Session summary format
+At the end of every session, output a chart with columns: Point | What Was Done | What to Test.
 
-3. **Record experiences.** Every problem solved, unresolved issue, or disproved approach must be written to:  
-   `/home/ubuntu/zhenchuan/EXPERIENCES.md` — filed under appropriate section headers.
+### 1.3 Re-read before edit
+Before editing any file, read the current file contents again first.
 
-4. **Re-read every file before editing it.** Before making changes to any file, read its current contents again first. This prevents edits from being made against stale file state.
+### 1.4 Record experiences
+Record every solved problem, unresolved issue, or disproved approach in:
+`/home/ubuntu/zhenchuan/EXPERIENCES.md`
 
-5. **After gameplay or movement changes, always check frontend prediction.** If backend movement, jump, dash, collision, facing, or buff timing changes, verify the frontend prediction path in `BattleArena.tsx` and correct it in the same session. Do not leave backend and prediction logic knowingly out of sync.
+### 1.5 Primary language policy
+Primary project language is English.
+Chinese is allowed for in-game names/terms where needed, but most documentation, code comments, and agent responses should be in English.
+Respond primarily in English even when the user message is in Chinese, unless the user explicitly asks for Chinese output.
 
-6. **Do not use blur-backed UI panels.** Never use `backdrop-filter: blur(...)` or blur-style overlay backgrounds for in-game panels or menus. Use solid or semi-opaque surfaces instead; blur hurts the user's eyes.
+### 1.6 Ability related experience location
+For ability-related experience entries, edit:
+`/home/ubuntu/zhenchuan/ABILITY_EXPERIENCES.md`
+Keep `EXPERIENCES.md` focused on general/system/non-ability experiences.
 
-## Game: Active Mode
+## 2. Build and Runtime Verification
 
-- **`collision-test`** is the **primary / official game mode** (uses the exported 3D map and the authoritative collision body defined in `exportedMapCollision.ts`).  
-  Treat all game-play logic, collision, ability, and movement work as targeting this mode unless otherwise stated.  
-  Modes `arena` and `pubg` are legacy/secondary.
+### 2.1 Build commands
+- Backend: `cd /home/ubuntu/zhenchuan/backend && npm run build`
+- Frontend: `cd /home/ubuntu/zhenchuan/frontend && npm run build`
 
-## Key Architecture Reminders
+### 2.2 PM2 restart scope
+Restart only this project's PM2 apps from `/home/ubuntu/zhenchuan`:
+`pm2 restart frontend backend`
 
-- GameLoop: `backend/game/engine/loop/GameLoop.ts` — 30 Hz tick; handles movement, abilities, buff ticks.
-- Movement + collision: `backend/game/engine/loop/movement.ts`.
-- Abilities: canonical definition in `backend/game/abilities/abilities.ts`.
-- Effect pipeline: `playService → executeAbility → PlayAbility → immediateEffects → handlers → definitions/`.
-- Exported collision system: `backend/game/map/exportedMapCollision.ts`.
-- State types: `backend/game/engine/state/types/`.
-- Frontend battle scene: `frontend/app/game/screens/in-game/components/BattleArena/`.
+Do not use `pm2 restart all` for Zhenchuan checks.
+Do not restart, stop, or kill `rencipe-*` processes unless explicitly requested.
 
-## Coordinate System
+### 2.3 Verification order per numbered point
+At the end of each numbered round/point, run both builds again before replying.
+Restart PM2 only after the newest successful build.
+Reply must confirm PM2 is running the newest build with no startup-blocking errors.
 
-- World → Three.js: `threeX = worldX − worldHalf`, `threeZ = worldY − worldHalf`, `threeY = worldZ`.
-- Collision-test map is non-square (819 × 828 after 50% scale-up): use **width/2** for X offsets, **height/2** for Y/Z offsets.
+### 2.4 Port conflict handling
+If port `3000` or `5000` is occupied during PM2 start/restart, kill the occupying process:
+`lsof -ti:PORT | xargs kill -9`
+Then restart only `frontend backend` again.
 
-## Input Fields
+### 2.5 Scope discipline
+Ignore unrelated `rencipe-*` PM2 processes and ports unless the user explicitly scopes to them.
 
-- **Never use `<input type="number">`.** It renders browser arrow spinners that are visually unacceptable. Always use `<input type="text" inputMode="decimal">` (or `inputMode="numeric"` for integers), with a regex `onChange` filter that strips non-numeric characters. Add `-moz-appearance: textfield` and hide webkit spin buttons in CSS:
-  ```css
-  input::-webkit-outer-spin-button,
-  input::-webkit-inner-spin-button { display: none; }
-  ```
-- Apply this rule to ALL editor pages (ability detail, buff detail, and any future forms).
+### 2.6 Build-skip exception
+Do not skip the build step unless there are no code changes.
 
-## Git / Version Control
+## 3. Game Rules and Active Modes
 
-- **Never commit** unless explicitly told to. If the user says "commit once", do exactly one commit — never more.
+### 3.1 Primary mode
+`yumenguan` is the primary/official game mode.
 
-## Asset Rules
+### 3.2 Test mode usage
+`test` mode is the fast testing mode.
+Use it for quicker iteration and validation when applicable.
 
-- **Do not create icons or other art assets unless the user explicitly asks for them.** If an icon is missing, keep the code/reference aligned to the intended filename and report the missing asset name instead of creating it.
+### 3.3 Legacy modes
+`arena` and `pubg` are legacy/secondary modes.
 
-## Buff Implementation Rules
+### 3.4 Backend/frontend prediction parity
+After gameplay or movement changes (movement, jump, dash, collision, facing, buff timing), verify frontend prediction in:
+`frontend/app/game/screens/in-game/components/BattleArena/`
+Do not leave backend and frontend prediction logic knowingly out of sync.
 
-- **All buffs must go through `addBuff()` in `buffRuntime.ts`.** Never directly push objects into a player's `buffs` array. Direct pushes bypass immunity checks, the 递减 (diminishing returns) system, BUFF_APPLIED event emission, and the status bar display.
-- **Every buff applied to a player must be declared in the ability's `buffs: []` array** so it is visible, editable, and preloadable. If an ability's custom handler applies a buff, exclude that ability from `applyAbilityBuffs` in `buffs.ts` and call `addBuff` manually.
-- **CONTROL buffs automatically trigger 眩晕递减** (stun diminishing returns, buffId 990101) via `getResistanceConfig` in `addBuff`. ROOT buffs trigger 锁足递减 (990100). No extra code needed — just use `addBuff`.
+### 3.5 UI comfort rule
+Do not use blur-backed in-game panels/menus (`backdrop-filter: blur(...)`).
+Use solid or semi-opaque surfaces instead.
 
-## Common Pitfalls
+## 4. Architecture and Coordinate Reminders
 
-- Do **not** use external URLs in `BACKEND_URL` — causes nginx 404.  
-- Always set `Host` header in nginx proxies.  
-- WebSocket proxy needs `http/1.1 + Upgrade` headers.  
-- Mongoose Mixed fields: reassign array elements with spread `{...obj, prop: newVal}` and call `markModified()` before `save()`.
+### 4.1 Key architecture files
+- Game loop: `backend/game/engine/loop/GameLoop.ts` (30 Hz tick; movement/abilities/buffs)
+- Movement and collision: `backend/game/engine/loop/movement.ts`
+- Ability source of truth: `backend/game/abilities/abilities.ts`
+- Effect pipeline: `playService -> executeAbility -> PlayAbility -> immediateEffects -> handlers -> definitions/`
+- Exported collision: `backend/game/map/exportedMapCollision.ts`
+- State types: `backend/game/engine/state/types/`
+- Frontend battle scene: `frontend/app/game/screens/in-game/components/BattleArena/`
 
-## Live Playwright Verification
+### 4.2 Coordinate system
+- World to Three.js mapping: `threeX = worldX - worldHalf`, `threeZ = worldY - worldHalf`, `threeY = worldZ`
+- Test map is non-square (819 x 828 after 50% scale-up): use `width/2` for X offsets, `height/2` for Y/Z offsets.
 
-- All Playwright/browser verification for this project must run against `https://zhenchuan.renstoolbox.com/` unless the user explicitly asks for a localhost-only check.
-- For auth-protected frontend verification, follow `frontend/tests/SOUND_REVIEW_LIVE_TESTING.md`.
-- Run the live Playwright check against `https://zhenchuan.renstoolbox.com`, not just localhost, whenever you need to verify the sound review UI or similar protected editor flows.
-- Use the designated `catcake` live test username with credentials supplied through local environment variables or the active browser session at runtime; never hardcode the password in repo files or instructions.
+## 5. Editor and UI Input Rules
+
+### 5.1 Numeric input rule
+Never use `<input type="number">`.
+Use `<input type="text" inputMode="decimal">` (or `inputMode="numeric"` for integers), and filter invalid characters with regex in `onChange`.
+
+### 5.2 Spinner removal CSS
+```css
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button { display: none; }
+```
+Also apply `-moz-appearance: textfield`.
+
+### 5.3 Coverage scope
+Apply this input rule to all editor pages (ability detail, buff detail, and future forms).
+
+## 6. Git and Asset Rules
+
+### 6.1 Commit safety
+Never commit unless explicitly requested.
+If user says "commit once", do exactly one commit.
+
+### 6.2 Asset creation safety
+Do not create icons or other art assets unless explicitly requested.
+If an icon is missing, keep the intended filename reference and report the missing asset name.
+
+## 7. Buff Implementation Rules
+
+### 7.1 Mandatory buff entry path
+All buffs must be applied via `addBuff()` in `buffRuntime.ts`.
+Never directly push into a player's `buffs` array.
+
+### 7.2 Ability declaration requirement
+Every player-applied buff must be declared in the ability `buffs: []` array so it is visible, editable, and preloadable.
+If custom handlers apply a buff, exclude that ability from `applyAbilityBuffs` in `buffs.ts` and call `addBuff` manually.
+
+### 7.3 Diminishing returns behavior
+CONTROL buffs automatically trigger stun diminishing returns (buffId `990101`) via `getResistanceConfig` in `addBuff`.
+ROOT buffs trigger root diminishing returns (buffId `990100`).
+
+## 8. Common Pitfalls
+
+### 8.1 Backend URL
+Do not use external URLs in `BACKEND_URL` (can cause nginx 404).
+
+### 8.2 Proxy host header
+Always set `Host` header in nginx proxies.
+
+### 8.3 WebSocket proxy upgrade
+WebSocket proxy requires `http/1.1` and `Upgrade` headers.
+
+### 8.4 Mongoose Mixed fields
+Reassign array elements with spread (`{...obj, prop: newVal}`) and call `markModified()` before `save()`.
+
+## 9. Playwright Verification Policy
+
+### 9.1 When to run Playwright
+Run Playwright tests only when:
+- The update is very large/high-impact, or
+- The user explicitly asks for Playwright testing.
+
+### 9.2 Default target when Playwright is required
+When Playwright is required, use:
+`https://zhenchuan.renstoolbox.com/`
+unless the user explicitly asks for localhost-only verification.
+
+### 9.3 Auth-protected flow guidance
+For auth-protected frontend verification, follow:
+`frontend/tests/SOUND_REVIEW_LIVE_TESTING.md`
+
+### 9.4 Credentials handling
+Use test accounts `测试一` and `测试二` with credentials from local environment variables or the active browser session.
+If those are not enough for the validation scenario, create additional test accounts as needed.
+Never hardcode passwords/tokens in repo files or instructions.
