@@ -518,15 +518,20 @@ export function validateCastAbility(
     }
   }
 
-  /* ================= Type 1/2: CONTROL / ATTACK_LOCK / KNOCKDOWN (stun/freeze/knockdown — hard control, removable by cleanse, subject to DR; knockdown is Type 2, not cleansable, no DR) ================= */
+  /* ================= Type 1: CONTROL / ATTACK_LOCK (stun/freeze — hard control, removable by cleanse, subject to DR) ================= */
   const isControlled =
-    hasEffect(player, "CONTROL") || hasEffect(player, "KNOCKDOWN") || hasEffect(player, "ATTACK_LOCK");
+    hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
   const allowsOverride =
     (ability as any).allowWhileControlled === true ||
     (Array.isArray(ability.effects) &&
       ability.effects.some((e: any) => e.allowWhileControlled === true));
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
+  }
+
+  /* ================= Type 2: KNOCKDOWN (击倒 — highest hard control, not cleansable, no DR) ================= */
+  if (hasEffect(player, "KNOCKDOWN") && !allowsOverride) {
+    throw new Error("ERR_KNOCKED_DOWN");
   }
 
   if (hasEffect(player, "ROOT") && (ability as any).cannotCastWhileRooted === true) {
@@ -885,7 +890,7 @@ export function validatePlayAbility(
   /* ================= Type 1/2: CONTROL / ATTACK_LOCK / KNOCKDOWN (stun/freeze/knockdown — hard control, removable by cleanse, subject to DR; knockdown is Type 2, not cleansable, no DR) ================= */
 
   const isControlled =
-    hasEffect(player, "CONTROL") || hasEffect(player, "KNOCKDOWN") || hasEffect(player, "ATTACK_LOCK");
+    hasEffect(player, "CONTROL") || hasEffect(player, "ATTACK_LOCK");
 
   const allowsOverride =
     (ability as any).allowWhileControlled === true ||
@@ -894,6 +899,11 @@ export function validatePlayAbility(
 
   if (isControlled && !allowsOverride) {
     throw new Error("ERR_CONTROLLED");
+  }
+
+  /* ================= Type 2: KNOCKDOWN (击倒 — highest hard control, not cleansable, no DR) ================= */
+  if (hasEffect(player, "KNOCKDOWN") && !allowsOverride) {
+    throw new Error("ERR_KNOCKED_DOWN");
   }
 
   if (hasEffect(player, "ROOT") && (ability as any).cannotCastWhileRooted === true) {

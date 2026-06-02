@@ -504,7 +504,8 @@ const MARTIAL_COMPACT_COLUMNS = 6;
 const MARTIAL_NARROW_COLUMNS = 4;
 const IN_GAME_WARNING_SCALE_STORAGE_KEY = 'zhenchuan-ingame-warning-scale-v1';
 const IN_GAME_WARNING_UI_KEY = 'in-game-warning';
-const IN_GAME_WARNING_DURATION_MS = 1500;
+const IN_GAME_WARNING_DURATION_MS = 3000;
+const IN_GAME_WARNING_MAX_COUNT = 3;
 const IN_GAME_WARNING_PREVIEW_TEXT = '无法施展该招式';
 const YUMEN_KILL_NOTICE_UI_KEY = 'yumen-kill-notice';
 const YUMEN_KILL_CONFIRM_UI_KEY = 'yumen-kill-confirm';
@@ -534,7 +535,7 @@ const YUMEN_ALIVE_COUNT_MIN_WIDTH = Math.round(YUMEN_ALIVE_COUNT_BASE_WIDTH * YU
 const YUMEN_ALIVE_COUNT_MAX_WIDTH = Math.round(YUMEN_ALIVE_COUNT_BASE_WIDTH * YUMEN_HUD_SETTING_MAX_SCALE);
 const YUMEN_ALIVE_COUNT_MIN_HEIGHT = Math.round(YUMEN_ALIVE_COUNT_BASE_HEIGHT * YUMEN_HUD_SETTING_MIN_SCALE);
 const YUMEN_ALIVE_COUNT_MAX_HEIGHT = Math.round(YUMEN_ALIVE_COUNT_BASE_HEIGHT * YUMEN_HUD_SETTING_MAX_SCALE);
-const REQUIRED_POWER_MISSING_WARNING = '经脉受损 无法运功';
+const REQUIRED_POWER_MISSING_WARNING = '经脉受损，无法运功';
 const DASH_GROUND_TARGET_ABILITY_IDS = new Set(['lin_shi_fei_zhua', 'han_di', 'gu_feng_sa_ta']);
 const JUMP_CORRECTION_WARNING_MIN_XY = 0.6;
 const JUMP_CORRECTION_WARNING_MIN_Z = 0.6;
@@ -5812,8 +5813,8 @@ export default function BattleArena({
       localStorage.setItem(IN_GAME_WARNING_SCALE_STORAGE_KEY, inGameWarningScale.toFixed(2));
     } catch {}
   }, [inGameWarningScale]);
-  const [activeInGameWarning, setActiveInGameWarning] = useState<InGameWarningEvent | null>(null);
-  const inGameWarningTimerRef = useRef<number | null>(null);
+  const [activeInGameWarnings, setActiveInGameWarnings] = useState<InGameWarningEvent[]>([]);
+  const inGameWarningTimerRefs = useRef<Map<number, number>>(new Map());
   const inGameWarningSeqRef = useRef(0);
   const [activeYumenDefeatNotice, setActiveYumenDefeatNotice] = useState<YumenDefeatNotice | null>(null);
   const yumenDefeatNoticeTimerRef = useRef<number | null>(null);
@@ -6188,9 +6189,10 @@ export default function BattleArena({
     if (sceneRecoveryTimerRef.current !== null) {
       window.clearTimeout(sceneRecoveryTimerRef.current);
     }
-    if (inGameWarningTimerRef.current !== null) {
-      window.clearTimeout(inGameWarningTimerRef.current);
+    for (const timerId of inGameWarningTimerRefs.current.values()) {
+      window.clearTimeout(timerId);
     }
+    inGameWarningTimerRefs.current.clear();
     if (yumenDefeatNoticeTimerRef.current !== null) {
       window.clearTimeout(yumenDefeatNoticeTimerRef.current);
     }
@@ -6404,15 +6406,39 @@ export default function BattleArena({
     if (!nextText) return;
     const nextId = inGameWarningSeqRef.current + 1;
     inGameWarningSeqRef.current = nextId;
-    setActiveInGameWarning({ id: nextId, text: nextText });
-    if (inGameWarningTimerRef.current !== null) {
-      window.clearTimeout(inGameWarningTimerRef.current);
-    }
-    inGameWarningTimerRef.current = window.setTimeout(() => {
-      setActiveInGameWarning((current) => (current?.id === nextId ? null : current));
-      inGameWarningTimerRef.current = null;
+    console.log(`[WARN] >>> showInGameWarning id=${nextId} text="${nextText}"`);
+    setActiveInGameWarnings((prev) => {
+      console.log(`[WARN] setState prev=[${prev.map(w => `${w.id}:${w.text.slice(0,10)}`).join(',')}]`);
+      const filtered = prev.filter((w) => w.text !== nextText);
+      console.log(`[WARN] filtered=[${filtered.map(w => `${w.id}:${w.text.slice(0,10)}`).join(',')}]`);
+      for (const w of prev) {
+        if (w.text === nextText) {
+          const oldTimer = inGameWarningTimerRefs.current.get(w.id);
+          console.log(`[WARN] cancel old timer for id=${w.id} oldTimer=${oldTimer}`);
+          if (oldTimer !== undefined) {
+            window.clearTimeout(oldTimer);
+            inGameWarningTimerRefs.current.delete(w.id);
+          }
+        }
+      }
+      const next = [{ id: nextId, text: nextText }, ...filtered];
+      if (next.length > IN_GAME_WARNING_MAX_COUNT) next.pop();
+      console.log(`[WARN] next=[${next.map(w => `${w.id}:${w.text.slice(0,10)}`).join(',')}]`);
+      return next;
+    });
+    const timerId = window.setTimeout(() => {
+      console.log(`[WARN] <<< timer fire id=${nextId} removing`);
+      setActiveInGameWarnings((prev) => {
+        const r = prev.filter((w) => w.id !== nextId);
+        console.log(`[WARN] <<< removed id=${nextId} prev=[${r.map(w => `${w.id}:${w.text.slice(0,10)}`).join(',')}]`);
+        return r;
+      });
+      inGameWarningTimerRefs.current.delete(nextId);
     }, IN_GAME_WARNING_DURATION_MS);
+    inGameWarningTimerRefs.current.set(nextId, timerId);
+    console.log(`[WARN] timer set id=${nextId} timerId=${timerId}`);
   }, []);
+  useEffect(() => { (window as any).__zhenchuanShowInGameWarning = showInGameWarning; }, [showInGameWarning]);
   const showYumenSpectatorAbilityLockWarning = useCallback(() => {
     showInGameWarning('观战中无法调整技能栏');
   }, [showInGameWarning]);
@@ -6458,6 +6484,7 @@ export default function BattleArena({
   }, [externalGameWarning?.id, externalGameWarning?.text, showInGameWarning]);
   const showAbilityDisabledWarning = useCallback((ability: AbilityInfo) => {
     if (ability.disabledWarning) {
+      console.log(`[WARN] showAbilityDisabledWarning text="${ability.disabledWarning}"`);
       showInGameWarning(ability.disabledWarning);
       return;
     }
@@ -7685,7 +7712,7 @@ export default function BattleArena({
       Math.abs(localVzRef.current) > 0.01;
     const mountedYuqiToggle = hasYuqiStateClient(me?.buffs) && abilityKey === 'yuqi';
     if (ability?.requiresOnGround && airborneLockedLocal && !mountedYuqiToggle) {
-        showInGameWarning('该招式需要站立时施展');
+        showInGameWarning('该技能需要落地后施放');
         return;
     }
     if (requiresStandingAtCastClient(ability) && !mountedYuqiToggle) {
@@ -7699,9 +7726,16 @@ export default function BattleArena({
       showInGameWarning('招式施展失败');
       return;
     }
-    if (abilityKey === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-      showInGameWarning('招式施展失败');
+    if (getActiveChannelClient(me?.activeChannel ?? null)) {
+      showInGameWarning('你正在进行其他动作');
       return;
+    }
+    {
+      const powerLockWarning = getPowerLockWarningClient(ability, me?.buffs ?? []);
+      if (powerLockWarning) {
+        showInGameWarning('经脉受损，无法运功');
+        return;
+      }
     }
     if (typeof ability?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ability.minSelfHpExclusive) {
       showInGameWarning('气血要求不足');
@@ -7724,7 +7758,7 @@ export default function BattleArena({
         const dy = targetPos.y - myPos.y;
         const dot = myFacing.x * dx + myFacing.y * dy;
         if (dot < 0) {
-          showInGameWarning('目标不在面朝方向内');
+          showInGameWarning('你必须面向目标');
           return;
         }
       }
@@ -8284,7 +8318,7 @@ export default function BattleArena({
     const buffs = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt);
     const activeChannel = getActiveChannelClient(me?.activeChannel ?? null);
     const lingRanJumpLockImmune = hasLingRanTianFengStateClient(buffs);
-    const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'ATTACK_LOCK']);
+    const fullyLocked = buffsHaveAnyEffect(buffs, ['KNOCKED_BACK', 'CONTROL', 'KNOCKDOWN', 'ATTACK_LOCK', 'PULLED']);
     const rooted = !fullyLocked && buffsHaveAnyEffect(buffs, ['ROOT']);
     const jumpSuppressedByChannel = !lingRanJumpLockImmune && (!!activeChannel || hasLegacyChannelJumpLock(buffs));
     const noJumpLocked = !lingRanJumpLockImmune && buffsHaveAnyEffect(buffs, ['NO_JUMP']);
@@ -8676,9 +8710,9 @@ export default function BattleArena({
         }
       } else if (evt.type === 'COMBAT_STATUS' && evt.targetUserId === myId) {
         if ((evt as any).combatStatus === 'enter' || (evt as any).inCombat === true) {
-          showInGameWarning('进入战斗');
+          showInGameWarning('** 进入战斗 **');
         } else {
-          showInGameWarning('离开战斗');
+          showInGameWarning('<span style="color:#ffff00">** 离开战斗 **</span>');
         }
       } else if (evt.type === 'PLAY_ABILITY' && evt.abilityId === 'dou_zhuan_xing_yi') {
         lastInstantSwapCastAtRef.current = performance.now();
@@ -8844,6 +8878,8 @@ export default function BattleArena({
 
     if (channelMovementLocked) {
       directionPayload = { dx: 0, dy: 0, jump: lingRanJumpLockImmune ? shouldJump : false };
+    } else if (movementControlStateRef.current.fullyLocked || movementControlStateRef.current.rooted) {
+      directionPayload = { dx: 0, dy: 0, jump: false };
     } else if (fearedDirection) {
       directionPayload = { dx: fearedDirection.x, dy: fearedDirection.y, jump: false };
       if (!dashFacingLocked && !facingInputLocked) {
@@ -9609,28 +9645,13 @@ export default function BattleArena({
         jumpSendRef.current ||
         localJumpCountRef.current > 0 ||
         Math.abs(localVzRef.current) > 0.01;
-      if (isQinggongLike && qinggongSealed) return '招式施展失败';
+      if (isQinggongLike && qinggongSealed) return '该招式所需的功力加持效果不存在';
       if (selfYumenSpectating && !isQinggongLike) return '招式施展失败';
-      if (abilityIdForChecks === 'ren_chi_cheng' && isLingRanSpecialJumpActiveClient(me)) {
-        return '招式施展失败';
-      }
-      if (getActiveChannelClient(me?.activeChannel ?? null)) return '正在进行其他动作';
-      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '该招式无法在骑行状态下施展';
+      if (yuqiMounted && !mountedYuqiToggle && ab?.canCastWhileMounted !== true) return '该招式无法在骑乘时施展';
+
+      // Conditions below only show battle log, not gray-out. The actual
+      // blocking and warning are handled in the cast-attempt path.
       const powerLockWarning = getPowerLockWarningClient(ab, me.buffs);
-      if (powerLockWarning) return powerLockWarning;
-      if (nonQinggongLocked && !isQinggongLike) return '招式施展失败';
-      if (displaced && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileDashing')) return '该招式无法在位移时施展';
-      if (knockedBack && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileKnockedBack')) return '该招式无法在位移时施展';
-      if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '该招式无法在位移时施展';
-      if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '招式施展失败';
-      if (ab?.cannotCastWhileRooted && rootedByDebuff) return '招式施展失败';
-      if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
-        return '气血要求不足';
-      }
-      if (typeof ab?.minSelfHpPercentExclusive === 'number') {
-        const requiredHp = Math.max(1, Number(me?.maxHp ?? maxHp)) * (ab.minSelfHpPercentExclusive / 100);
-        if ((me?.hp ?? 0) <= requiredHp) return '气血要求不足';
-      }
 
       // Ground-target abilities stay available after caster-state checks.
       if (ab?.target === 'OPPONENT' && !!ab?.allowGroundCastWithoutTarget) return undefined;
@@ -9692,7 +9713,7 @@ export default function BattleArena({
         if (requiresFacingByDefault(ab) && myFacing) {
           const dx = targetPos.x - myPos.x;
           const dy = targetPos.y - myPos.y;
-          if (myFacing.x * dx + myFacing.y * dy < 0) return '目标不在面朝方向内';
+          if (myFacing.x * dx + myFacing.y * dy < 0) return '你必须面向目标';
         }
           const myZ2 = (myPos as any)?.z ?? localZRef.current ?? 0;
           const tgtZ2 = (targetPos as any)?.z ?? 0;
@@ -13450,8 +13471,7 @@ export default function BattleArena({
   const distanceIndicatorPos = uiPositions[DISTANCE_INDICATOR_UI_KEY] ?? distanceIndicatorDefaultPos;
   const inGameWarningDefaultPos = getDefaultInGameWarningPos();
   const inGameWarningPos = uiPositions[IN_GAME_WARNING_UI_KEY] ?? inGameWarningDefaultPos;
-  const inGameWarningText = activeInGameWarning?.text ?? (customUiMode ? IN_GAME_WARNING_PREVIEW_TEXT : null);
-  const showFloatingInGameWarning = !!inGameWarningText;
+  const showFloatingInGameWarning = activeInGameWarnings.length > 0 || customUiMode;
   const yumenKillNoticeDefaultPos = getDefaultYumenKillNoticePos();
   const yumenKillNoticePos = uiPositions[YUMEN_KILL_NOTICE_UI_KEY] ?? yumenKillNoticeDefaultPos;
   const yumenKillNoticeText = activeYumenDefeatNotice
@@ -14388,7 +14408,7 @@ export default function BattleArena({
   };
 
   const renderInGameWarning = () => {
-    if (!inGameWarningText) {
+    if (activeInGameWarnings.length === 0 && !customUiMode) {
       return null;
     }
 
@@ -14398,7 +14418,7 @@ export default function BattleArena({
         className={`${styles.ingameWarningPlacement} ${customUiMode ? styles.customUiHudPlacementEditing : ''}`}
         style={{
           left: inGameWarningPos.left,
-          top: inGameWarningPos.top,
+          bottom: `calc(100vh - ${inGameWarningPos.top}px)`,
           pointerEvents: customUiMode ? 'auto' : 'none',
           '--game-warning-scale': inGameWarningScale,
         } as React.CSSProperties}
@@ -14407,12 +14427,14 @@ export default function BattleArena({
         {customUiMode ? (
           <div className={`${styles.customUiPlacementLabel} ${styles.ingameWarningPlacementLabel}`}>战斗警告</div>
         ) : null}
-        <div
-          className={`${styles.ingameWarningText} ${customUiMode && !activeInGameWarning ? styles.ingameWarningPreviewText : ''}`}
-          aria-live="polite"
-        >
-          {inGameWarningText}
-        </div>
+        {activeInGameWarnings.map((w, i) => (
+          <div
+            key={w.id}
+            className={`${styles.ingameWarningText} ${customUiMode && activeInGameWarnings.length === 0 ? styles.ingameWarningPreviewText : ''}`}
+            aria-live="polite"
+            dangerouslySetInnerHTML={{ __html: w.text }}
+          />
+        ))}
       </div>
     );
   };

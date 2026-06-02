@@ -38,19 +38,21 @@ function getGameErrorText(rawCode: string) {
     case "ERR_DISARMED":
     case "ERR_INNER_POWER_LOCKED":
     case "ERR_OUTER_POWER_LOCKED":
-      return "经脉受损 无法运功";
+      return "经脉受损，无法运功";
     case "ERR_NON_QINGGONG_LOCKED":
       return "招式施展失败";
     case "ERR_DISPLACEMENT":
-      return "该招式无法在位移时施展";
+      return "该招式无法在冲刺过程中施展";
     case "ERR_KNOCKED_BACK":
-      return "该招式无法在位移时施展";
+      return "该招式无法在被击退时施展";
     case "ERR_PULLED":
-      return "该招式无法在位移时施展";
+      return "该招式无法在被拉拽时施展";
     case "ERR_CONTROLLED":
-      return "招式施展失败";
+      return "该招式无法在眩晕/定身过程中施展";
+    case "ERR_KNOCKED_DOWN":
+      return "该招式无法在倒地过程中施展";
     case "ERR_ROOTED":
-      return "招式施展失败";
+      return "该招式无法在定身时施展";
     case "ERR_TARGET_UNTARGETABLE":
       return "目标无法选中";
     case "ERR_ABILITY_NOT_IN_HAND":

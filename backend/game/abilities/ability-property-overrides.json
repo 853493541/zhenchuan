@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-02T02:37:11.019Z",
+  "updatedAt": "2026-06-02T05:21:38.073Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -633,7 +633,7 @@
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效。每一个持续伤害效果被吞噬会额外造成(1.0攻击力）点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "needs-more",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
