@@ -1861,7 +1861,7 @@
   box-shadow: 0 10px 22px rgba(0, 0, 0, 0.45);
   pointer-events: none;
   z-index: 740;
-  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Source Han Sans CN", sans-serif;
 }
 
 .heartStatHintTitle {
@@ -6449,7 +6449,7 @@
   border: 1px solid rgba(210, 225, 245, 0.18);
   box-shadow: 0 10px 24px rgba(0, 0, 0, 0.62);
   color: #f2f4f8;
-  font-family: "Microsoft YaHei", "PingFang SC", sans-serif;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Source Han Sans CN", sans-serif;
   padding: 8px 11px 9px;
 }
 
