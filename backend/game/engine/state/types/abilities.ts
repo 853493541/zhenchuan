@@ -113,7 +113,7 @@ export interface Ability {
   /**
    * If true, this ability cannot be cast while the player is airborne (z > 0.5).
    */
-  requiresGrounded?: boolean;
+  requiresOnGround?: boolean;
 
   /**
    * If true, this ability can still be cast while under removable level-1 control.

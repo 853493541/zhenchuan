@@ -607,7 +607,7 @@ export function validateCastAbility(
   }
 
   /* ================= REQUIRES GROUNDED ================= */
-  if ((ability as any).requiresGrounded) {
+  if ((ability as any).requiresOnGround) {
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
     const groundedCastLockUntil = (player as any).groundedCastLockUntil ?? 0;

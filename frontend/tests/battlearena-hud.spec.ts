@@ -370,7 +370,7 @@ test('source guards cover BattleArena HUD regression points', async () => {
   expect(consumableService).toContain('cancelOnMove: true');
   expect(consumableService).toContain('applyDisguiseOnComplete: true');
   expect(consumableService).toContain('yue_ying_sha');
-  expect(consumableService).toMatch(/yue_ying_sha:[\s\S]*cooldownMs: 30_000[\s\S]*usableInCombat: true[\s\S]*implemented: true[\s\S]*requiresGrounded: true/);
+  expect(consumableService).toMatch(/yue_ying_sha:[\s\S]*cooldownMs: 30_000[\s\S]*usableInCombat: true[\s\S]*implemented: true[\s\S]*requiresOnGround: true/);
   expect(consumableService).toContain('applyYueYingShaBuff(state, player)');
   expect(consumableService).toContain('STEALTH_BREAK_BUFF_IDS = new Set([1011, 1012, 1013, SAND_DISGUISE_BUFF_ID, YUE_YING_SHA_BUFF_ID])');
   expect(consumableService).toContain('"ROOT"');

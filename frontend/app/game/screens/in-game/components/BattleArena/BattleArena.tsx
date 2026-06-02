@@ -3355,7 +3355,7 @@ interface AbilityInfo {
   friendlyTarget?: boolean;
   canTargetSelf?: boolean;
   faceDirection?: boolean;
-  requiresGrounded?: boolean;
+  requiresOnGround?: boolean;
   requiresStanding?: boolean;
   minSelfHpExclusive?: number;
   minSelfHpPercentExclusive?: number;
@@ -7684,13 +7684,13 @@ export default function BattleArena({
       localJumpCountRef.current > 0 ||
       Math.abs(localVzRef.current) > 0.01;
     const mountedYuqiToggle = hasYuqiStateClient(me?.buffs) && abilityKey === 'yuqi';
-    if (ability?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) {
-      showInGameWarning('该技能需要落地后施放');
-      return;
+    if (ability?.requiresOnGround && airborneLockedLocal && !mountedYuqiToggle) {
+        showInGameWarning('该招式需要站立时施展');
+        return;
     }
     if (requiresStandingAtCastClient(ability) && !mountedYuqiToggle) {
       if (isStandingCastBlocked(keysRef.current)) {
-        showInGameWarning('该技能需要站立后施放');
+        showInGameWarning('该招式需要站立时施展');
         return;
       }
       localVelocityRef.current = { x: 0, y: 0 };
@@ -9624,10 +9624,6 @@ export default function BattleArena({
       if (pulled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhilePulled')) return '该招式无法在位移时施展';
       if (controlled && !abilityAllowsRuntimeBlockClient(ab, 'allowWhileControlled')) return '招式施展失败';
       if (ab?.cannotCastWhileRooted && rootedByDebuff) return '招式施展失败';
-      if (ab?.requiresGrounded && airborneLockedLocal && !mountedYuqiToggle) return '该技能需要落地后施放';
-      if (requiresStandingAtCastClient(ab) && !mountedYuqiToggle) {
-        if (isStandingCastBlocked(wasdKeys)) return '该技能需要站立后施放';
-      }
       if (typeof ab?.minSelfHpExclusive === 'number' && (me?.hp ?? 0) <= ab.minSelfHpExclusive) {
         return '气血要求不足';
       }
@@ -9744,7 +9740,7 @@ export default function BattleArena({
             slotIndex:   normalizeDraftSlotIndex(instance.slotIndex, fallbackSlotIndex),
             target:      'OPPONENT' as 'SELF' | 'OPPONENT',
             minSelfHpExclusive: undefined,
-            requiresGrounded: false,
+            requiresOnGround: false,
             requiresStanding: false,
             qinggong: false,
             qinggongGcdImmune: false,
@@ -9798,7 +9794,7 @@ export default function BattleArena({
           damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
-          requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresOnGround: !!(ability as any).requiresOnGround,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
           qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
@@ -9860,7 +9856,7 @@ export default function BattleArena({
           damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
-          requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresOnGround: !!(ability as any).requiresOnGround,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
           qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
@@ -9924,7 +9920,7 @@ export default function BattleArena({
           damageType: getAbilityDamageTypeClient(ability),
           noWeaponRequired: !!(ability as any).noWeaponRequired,
           canCastWhileMounted: !!(ability as any).canCastWhileMounted,
-          requiresGrounded: !!(ability as any).requiresGrounded,
+          requiresOnGround: !!(ability as any).requiresOnGround,
           requiresStanding: !!(ability as any).requiresStanding,
           qinggong: !!(ability as any).qinggong,
           qinggongGcdImmune: !!(ability as any).qinggongGcdImmune,
@@ -12790,7 +12786,7 @@ export default function BattleArena({
     damageType: getAbilityDamageTypeClient(ability),
     noWeaponRequired: !!ability.noWeaponRequired,
     canCastWhileMounted: !!ability.canCastWhileMounted,
-    requiresGrounded: !!ability.requiresGrounded,
+    requiresOnGround: !!ability.requiresOnGround,
     requiresStanding: !!ability.requiresStanding,
     qinggong: !!ability.qinggong,
     qinggongGcdImmune: !!ability.qinggongGcdImmune,

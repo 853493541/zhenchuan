@@ -2098,7 +2098,7 @@ export class GameLoop {
         if (shouldSuppressJumpWhileChanneling(player as any)) {
           nextInput = { ...nextInput, jump: false };
         } else {
-          // Short lock window for requiresGrounded casts to close jump/cast race.
+          // Short lock window for requiresOnGround casts to close jump/cast race.
           player.groundedCastLockUntil = Date.now() + 250;
         }
       }

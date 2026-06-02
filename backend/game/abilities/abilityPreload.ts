@@ -97,7 +97,7 @@ export function buildAbilityPreload(options?: { applyBuffEditorOverrides?: boole
           : !!(ability as any).faceDirection,
 
       // Grounded-only cast check for client-side readiness/validation.
-      requiresGrounded: !!(ability as any).requiresGrounded,
+      requiresOnGround: !!(ability as any).requiresOnGround,
 
       // Standing-only cast check (no horizontal movement and not airborne).
       requiresStanding: !!(ability as any).requiresStanding,

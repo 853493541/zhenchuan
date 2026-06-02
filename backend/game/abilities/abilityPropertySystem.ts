@@ -12,7 +12,7 @@ export type AbilityPropertyId =
   | "allowWhileKnockedBack"
   | "cleanseRootSlow"
   | "cannotCastWhileRooted"
-  | "requiresGrounded"
+  | "requiresOnGround"
   | "requiresStanding"
   | "canCastWhileMounted"
   | "qinggong"
@@ -311,7 +311,7 @@ function setBooleanAbilityField(
     | "qinggongGcdImmune"
     | "hasteUnaffected"
     | "cannotCastWhileRooted"
-    | "requiresGrounded"
+    | "requiresOnGround"
     | "requiresStanding"
     | "canCastWhileMounted"
     | "allowGroundCastWithoutTarget",
@@ -1231,14 +1231,14 @@ const abilityPropertyDefinitions: AbilityPropertyDefinition[] = [
     },
   },
   {
-    id: "requiresGrounded",
+    id: "requiresOnGround",
     label: "必须落地施放",
     description: "角色在空中或起跳锁定阶段时不可施放。",
     group: "施放限制",
     isApplicable: () => true,
-    getValue: (ability) => !!ability.requiresGrounded,
+    getValue: (ability) => !!ability.requiresOnGround,
     setValue: (ability, enabled) => {
-      setBooleanAbilityField(ability, "requiresGrounded", enabled);
+      setBooleanAbilityField(ability, "requiresOnGround", enabled);
     },
   },
   {

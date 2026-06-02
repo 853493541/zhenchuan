@@ -63,7 +63,7 @@ test('Shifang remains targetable, clears existing targeters, avoids combat entry
   const character = readFile(characterPath);
   const shifang = abilityBlock(abilities, 'shi_fang_xuan_ji');
 
-  expect(shifang).toContain('requiresGrounded: false');
+  expect(shifang).toContain('requiresOnGround: false');
   expect(shifang).toContain('channelCancelOnJump: false');
   expect(shifang).toContain('type: "INVULNERABLE"');
   expect(shifang).not.toContain('type: "UNTARGETABLE"');

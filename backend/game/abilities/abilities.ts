@@ -103,7 +103,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     qinggong: true,
     qinggongGcdImmune: true,
     cannotCastWhileRooted: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [],
     buffs: [
       {
@@ -129,7 +129,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     qinggong: true,
     qinggongGcdImmune: true,
     cannotCastWhileRooted: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [{ type: "DIRECTIONAL_DASH", value: 2.7, dirMode: "AWAY", durationTicks: 30 }],
     isCommon: true,
   },
@@ -197,7 +197,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 900,
     gcd: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     channelDurationMs: 750,
     channelCancelOnMove: false,
     channelCancelOnJump: true,
@@ -502,7 +502,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     requiresStanding: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [],
     buffs: [],
     requireTargetInRangeOnChannelComplete: true,
@@ -956,7 +956,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: false,
-    requiresGrounded: true,
+    requiresOnGround: true,
     allowWhileControlled: true,
     effects: [],
     buffs: [
@@ -1229,7 +1229,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     range: 25,
-    requiresGrounded: true,
+    requiresOnGround: true,
     requiresStanding: true,
     effects: [],
     buffs: [],
@@ -1271,7 +1271,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [
       {
@@ -1297,7 +1297,8 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     channelNotInterruptible: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
+    requiresStanding: true,
     effects: [],
     buffs: [
       {
@@ -1332,7 +1333,8 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: false,
     channelNotInterruptible: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
+    requiresStanding: true,
     effects: [
       { type: "CLEANSE", allowWhileControlled: true },
     ],
@@ -1371,7 +1373,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [],
     buffs: [],
     channelDurationMs: 2_000,
@@ -1423,7 +1425,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 150,
     gcd: true,
     range: 8,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [],
     buffs: [],
     // Channel-specific fields (read by playService as `any`)
@@ -1737,7 +1739,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 0,
     gcd: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     requiresStanding: true,
     effects: [],
     buffs: [],
@@ -2314,7 +2316,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [
       {
         type: "DISPEL_BUFF_ATTRIBUTE",
@@ -2366,7 +2368,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     faceDirection: true,
     effects: [],
     buffs: [
@@ -2398,7 +2400,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [
       {
@@ -2422,7 +2424,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     requiresStanding: false,
     effects: [],
     buffs: [
@@ -2457,7 +2459,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [
       {
@@ -2481,7 +2483,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [
       { type: "DAMAGE", value: 2 },
       {
@@ -2503,7 +2505,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [
       { type: "DAMAGE", value: 0.5989 },
       {
@@ -2723,7 +2725,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     requiresStanding: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     faceDirection: true,
     effects: [],
     buffs: [
@@ -2785,7 +2787,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 4,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [{ type: "DAMAGE", value: 1 }],
     buffs: [
       {
@@ -3246,7 +3248,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     qinggong: true,
     cannotCastWhileRooted: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [
       { type: "TI_YUN_ZONG_REFRESH" } as any,
     ],
@@ -3416,7 +3418,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     range: 20,
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     effects: [],
     buffs: [],
     channelDurationMs: 1_000,
@@ -3543,7 +3545,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [],
     channelDurationMs: 1_500,
@@ -3573,7 +3575,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [],
     channelDurationMs: 1_500,
@@ -3603,7 +3605,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [],
     channelDurationMs: 1_500,
@@ -3633,7 +3635,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [],
     channelDurationMs: 1_500,
@@ -3769,7 +3771,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [],
     channelDurationMs: 1_500,
@@ -3799,7 +3801,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "SELF",
     cooldownTicks: 300,
     gcd: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [],
     channelDurationMs: 1_500,
@@ -3913,7 +3915,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     cooldownTicks: 300,
     gcd: true,
     channelNotInterruptible: true,
-    requiresGrounded: false,
+    requiresOnGround: false,
     effects: [],
     buffs: [
       {
@@ -4389,7 +4391,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     target: "OPPONENT",
     range: 20,
     faceDirection: false,
-    requiresGrounded: false,
+    requiresOnGround: false,
     requireTargetInRangeOnChannelComplete: true,
     cooldownTicks: 450,
     gcd: true,
@@ -4677,7 +4679,7 @@ export const BASE_ABILITIES: AbilityRecord = {
     gcd: true,
     channelNotInterruptible: true,
     range: 25,
-    requiresGrounded: true,
+    requiresOnGround: true,
     requiresStanding: true,
     effects: [],
     buffs: [

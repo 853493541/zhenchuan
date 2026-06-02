@@ -323,7 +323,7 @@ export interface PlayerState {
 
   /**
    * Anti-race cast lock after jump input is queued.
-   * Prevents requiresGrounded abilities from being cast in the same instant as jump.
+   * Prevents requiresOnGround abilities from being cast in the same instant as jump.
    */
   groundedCastLockUntil?: number;
 }

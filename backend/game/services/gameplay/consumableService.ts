@@ -63,7 +63,7 @@ type ConsumableDefinition = {
   usableInCombat: boolean;
   implemented?: boolean;
   breaksDisguise?: boolean;
-  requiresGrounded?: boolean;
+  requiresOnGround?: boolean;
   healBase?: number;
   channel?: {
     durationMs: number;
@@ -103,7 +103,7 @@ const CONSUMABLES: Record<ConsumableId, ConsumableDefinition> = {
     cooldownMs: 30_000,
     usableInCombat: true,
     implemented: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
   },
   sha_shi_wei_zhuang: {
     id: SAND_DISGUISE_CONSUMABLE_ID,
@@ -365,7 +365,7 @@ function validateConsumableUse(player: PlayerState, consumable: ConsumableDefini
   if ((player as any).activeDash) throw new Error("ERR_CONSUMABLE_DASHING");
   if ((getConsumableCounts(player)[consumable.id] ?? 0) <= 0) throw new Error("ERR_CONSUMABLE_EMPTY");
 
-  if (consumable.requiresGrounded === true) {
+  if (consumable.requiresOnGround === true) {
     const jumpCount = (player as any).jumpCount ?? 0;
     const vz = (player as any).velocity?.vz ?? 0;
     const groundedCastLockUntil = (player as any).groundedCastLockUntil ?? 0;

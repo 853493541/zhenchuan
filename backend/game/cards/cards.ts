@@ -133,7 +133,7 @@ export const ABILITIES: Record<string, Ability & { description: string }> = {
     target: "SELF",
     cooldownTicks: 900,
     gcd: true,
-    requiresGrounded: true,
+    requiresOnGround: true,
     channelDurationMs: 750,
     channelCancelOnMove: false,
     channelCancelOnJump: true,
