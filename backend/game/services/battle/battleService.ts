@@ -5,7 +5,7 @@
 
 import { GameState, PlayerState, PickupItem } from "../../engine/state/types";
 import { TournamentState } from "../../engine/state/types";
-import { STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CHANCE_PCT, STARTING_DEFENSE_PCT, STARTING_HUAJIN_PCT } from "../../engine/state/types";
+import { STARTING_ATTACK_DAMAGE, STARTING_BATTLE_HP, STARTING_CRIT_CHANCE_PCT, STARTING_DEFENSE_PCT, STARTING_HUAJIN_PCT, STARTING_PO_FANG_PCT } from "../../engine/state/types";
 import { PlayerID } from "../../engine/state/types/common";
 import { AbilityInstance } from "../../engine/state/types/abilities";
 import { ABILITIES } from "../../abilities/abilities";
@@ -321,6 +321,7 @@ export function initializeBattleState(
       critChancePct: STARTING_CRIT_CHANCE_PCT,
       defensePct: STARTING_DEFENSE_PCT,
       huajinPct: STARTING_HUAJIN_PCT,
+      poFangPct: STARTING_PO_FANG_PCT,
       hasteRatePct: BASE_HASTE_RATE_PCT,
       hand,
       buffs: [],

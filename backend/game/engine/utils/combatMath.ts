@@ -24,6 +24,7 @@ type DamageSource = {
   waiGongCritChancePct?: number;
   neiGongCritChancePct?: number;
   attackDamage?: number;
+  poFangPct?: number;
 };
 
 export type HealRoll = {
@@ -268,6 +269,12 @@ export function resolveScheduledDamageRoll(params: {
   damageType?: string;
 }): DamageRoll {
   let dmg = resolveAttackDamageBase(params.source, params.base);
+
+  // 破防 (source-side): increases damage by X% before defense
+  const poFangPct = Number(params.source.poFangPct ?? 0);
+  if (poFangPct > 0) {
+    dmg *= 1 + poFangPct / 100;
+  }
 
   // DAMAGE MULTIPLIER (e.g. 女娲补天, 夺命蛊, 听雷·伤)
   // Stack additively by bonus portion per stack: value 1.1 with 3 stacks = +30%

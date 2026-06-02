@@ -29,6 +29,7 @@ import {
   STARTING_CRIT_CHANCE_PCT,
   STARTING_DEFENSE_PCT,
   STARTING_HUAJIN_PCT,
+  STARTING_PO_FANG_PCT,
 } from "../engine/state/types";
 import {
   YUMEN_SAFE_ZONE_TOTAL_CIRCLES,
@@ -61,6 +62,7 @@ function getPurpleCombatStats(maxHp = STARTING_BATTLE_HP) {
     critChancePct: STARTING_CRIT_CHANCE_PCT,
     defensePct: STARTING_DEFENSE_PCT,
     huajinPct: STARTING_HUAJIN_PCT,
+    poFangPct: STARTING_PO_FANG_PCT,
   };
 }
 
@@ -71,7 +73,8 @@ function hasPurpleBattleStats(player: any) {
     Number(player?.waiGongCritChancePct ?? player?.critChancePct ?? 0) === STARTING_CRIT_CHANCE_PCT &&
     Number(player?.neiGongCritChancePct ?? player?.critChancePct ?? 0) === STARTING_CRIT_CHANCE_PCT &&
     Number(player?.defensePct ?? 0) === STARTING_DEFENSE_PCT &&
-    Number(player?.huajinPct ?? 0) === STARTING_HUAJIN_PCT
+    Number(player?.huajinPct ?? 0) === STARTING_HUAJIN_PCT &&
+    Number(player?.poFangPct ?? 0) === STARTING_PO_FANG_PCT
   );
 }
 
@@ -3054,13 +3057,14 @@ router.post("/cheat/clear-buffs", async (req, res) => {
 router.post("/cheat/set-crit-chance", async (req, res) => {
   try {
     const userId = getUserIdFromCookie(req);
-    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct, defensePct, huajinPct, maxHp, attackDamage } = req.body;
+    const { gameId, critChancePct, waiGongCritChancePct, neiGongCritChancePct, defensePct, huajinPct, maxHp, attackDamage, poFangPct } = req.body;
 
     const hasLegacy = critChancePct !== undefined;
     const hasDefense = defensePct !== undefined;
     const hasHuajin = huajinPct !== undefined;
     const hasMaxHp = maxHp !== undefined;
     const hasAttackDamage = attackDamage !== undefined;
+    const hasPoFang = poFangPct !== undefined;
     const legacy = Number(critChancePct);
     const waiRaw = waiGongCritChancePct !== undefined ? Number(waiGongCritChancePct) : legacy;
     const neiRaw = neiGongCritChancePct !== undefined ? Number(neiGongCritChancePct) : legacy;
@@ -3068,6 +3072,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
     const huajinRaw = Number(huajinPct);
     const maxHpRaw = Number(maxHp);
     const attackDamageRaw = Number(attackDamage);
+    const poFangRaw = Number(poFangPct);
 
     if (!Number.isFinite(waiRaw) || !Number.isFinite(neiRaw) || (!hasLegacy && waiGongCritChancePct === undefined && neiGongCritChancePct === undefined)) {
       return res.status(400).json({ error: "Provide critChancePct or waiGongCritChancePct/neiGongCritChancePct as numbers" });
@@ -3084,6 +3089,9 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
     if (hasAttackDamage && (!Number.isFinite(attackDamageRaw) || attackDamageRaw <= 0)) {
       return res.status(400).json({ error: "attackDamage must be a positive number" });
     }
+    if (hasPoFang && !Number.isFinite(poFangRaw)) {
+      return res.status(400).json({ error: "poFangPct must be a number" });
+    }
 
     const boundedWaiCrit = Math.max(0, Math.min(100, waiRaw));
     const boundedNeiCrit = Math.max(0, Math.min(100, neiRaw));
@@ -3091,6 +3099,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
     const boundedHuajin = Math.max(0, Math.min(100, huajinRaw));
     const boundedMaxHp = Math.max(1, Math.floor(maxHpRaw));
     const boundedAttackDamage = Math.max(1, Math.floor(attackDamageRaw));
+    const boundedPoFang = Math.max(0, Math.min(100, poFangRaw));
 
     const game = await GameSession.findById(gameId);
     if (!game) return res.status(404).json({ error: "Game not found" });
@@ -3115,6 +3124,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
           diff.push({ path: `/players/${idx}/hp`, value: boundedMaxHp });
         }
         if (hasAttackDamage) diff.push({ path: `/players/${idx}/attackDamage`, value: boundedAttackDamage });
+        if (hasPoFang) diff.push({ path: `/players/${idx}/poFangPct`, value: boundedPoFang });
         return {
           ...p,
           waiGongCritChancePct: boundedWaiCrit,
@@ -3125,6 +3135,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
           ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
           ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
           ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
+          ...(hasPoFang ? { poFangPct: boundedPoFang } : {}),
         };
       });
       loopState.version = (loopState.version ?? 0) + 1;
@@ -3142,6 +3153,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
           diff.push({ path: `/players/${idx}/hp`, value: boundedMaxHp });
         }
         if (hasAttackDamage) diff.push({ path: `/players/${idx}/attackDamage`, value: boundedAttackDamage });
+        if (hasPoFang) diff.push({ path: `/players/${idx}/poFangPct`, value: boundedPoFang });
         return {
           ...p,
           waiGongCritChancePct: boundedWaiCrit,
@@ -3151,6 +3163,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
           ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
           ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
           ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
+          ...(hasPoFang ? { poFangPct: boundedPoFang } : {}),
         };
       });
       game.state.version = (game.state.version ?? 0) + 1;
@@ -3172,6 +3185,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
       ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
       ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
+      ...(hasPoFang ? { poFangPct: boundedPoFang } : {}),
     });
 
     game.state.players = game.state.players.map((p: any) => ({
@@ -3183,6 +3197,7 @@ router.post("/cheat/set-crit-chance", async (req, res) => {
       ...(hasHuajin ? { huajinPct: boundedHuajin } : {}),
       ...(hasMaxHp ? { maxHp: boundedMaxHp, hp: boundedMaxHp } : {}),
       ...(hasAttackDamage ? { attackDamage: boundedAttackDamage } : {}),
+      ...(hasPoFang ? { poFangPct: boundedPoFang } : {}),
     }));
     game.markModified("state");
     game.markModified("state.players");

@@ -301,6 +301,7 @@ type HeartStatKey =
   | 'runSpeed'
   | 'defense'
   | 'huajin'
+  | 'poFang'
   | 'damageReduction';
 
 type HeartStatRow = {
@@ -707,6 +708,7 @@ const HEART_STAT_ORDER: HeartStatKey[] = [
   'runSpeed',
   'defense',
   'huajin',
+  'poFang',
   'damageReduction',
 ];
 const DEFAULT_HEART_STAT_VISIBILITY: Record<HeartStatKey, boolean> = {
@@ -719,6 +721,7 @@ const DEFAULT_HEART_STAT_VISIBILITY: Record<HeartStatKey, boolean> = {
   runSpeed: true,
   defense: true,
   huajin: true,
+  poFang: true,
   damageReduction: true,
 };
 const DEFAULT_GCD_VISIBILITY_SETTINGS: GcdVisibilitySettings = {
@@ -1139,13 +1142,13 @@ const PLAYER_CHANNEL_BAR_PREVIEW_DATA: ChannelBarData = {
   cancelOnMove: true,
   cancelOnJump: true,
 };
-type CombatPresetStatKey = 'attackDamage' | 'maxHp' | 'critChancePct' | 'defensePct' | 'huajinPct';
+type CombatPresetStatKey = 'attackDamage' | 'maxHp' | 'critChancePct' | 'defensePct' | 'huajinPct' | 'poFangPct';
 
 const COMBAT_PRESET_RARITIES = [
-  { id: 'white', label: '白装', color: '#f3f4f6', stats: { critChancePct: 0, defensePct: 0, huajinPct: 40, maxHp: 300000, attackDamage: 10000 } },
-  { id: 'green', label: '绿装', color: '#42b663', stats: { critChancePct: 30, defensePct: 12, huajinPct: 55, maxHp: 900000, attackDamage: 30000 } },
-  { id: 'blue', label: '蓝装', color: '#3a8dff', stats: { critChancePct: 36, defensePct: 16, huajinPct: 60, maxHp: 1050000, attackDamage: 40000 } },
-  { id: 'purple', label: '紫装', color: '#9f5fd9', stats: { critChancePct: 46, defensePct: 23, huajinPct: 73, maxHp: 1200000, attackDamage: 50000 } },
+  { id: 'white', label: '白装', color: '#f3f4f6', stats: { critChancePct: 0, defensePct: 0, huajinPct: 40, maxHp: 300000, attackDamage: 10000, poFangPct: 30 } },
+  { id: 'green', label: '绿装', color: '#42b663', stats: { critChancePct: 30, defensePct: 12, huajinPct: 55, maxHp: 900000, attackDamage: 30000, poFangPct: 32 } },
+  { id: 'blue', label: '蓝装', color: '#3a8dff', stats: { critChancePct: 36, defensePct: 16, huajinPct: 60, maxHp: 1050000, attackDamage: 40000, poFangPct: 35 } },
+  { id: 'purple', label: '紫装', color: '#9f5fd9', stats: { critChancePct: 40, defensePct: 23, huajinPct: 73, maxHp: 1200000, attackDamage: 61000, poFangPct: 42 } },
 ] as const;
 
 const COMBAT_PRESET_STAT_ROWS: Array<{ key: CombatPresetStatKey; label: string }> = [
@@ -1154,6 +1157,7 @@ const COMBAT_PRESET_STAT_ROWS: Array<{ key: CombatPresetStatKey; label: string }
   { key: 'critChancePct', label: '会心' },
   { key: 'defensePct', label: '防御' },
   { key: 'huajinPct', label: '化劲' },
+  { key: 'poFangPct', label: '破防' },
 ];
 
 type CollisionDebugState = {
@@ -12150,6 +12154,10 @@ export default function BattleArena({
     0,
     Math.min(100, Number((me as any)?.huajinPct ?? 0)),
   );
+  const myBasePoFangPct = Math.max(
+    0,
+    Math.min(100, Number((me as any)?.poFangPct ?? 0)),
+  );
   const myHasteRatePct = Math.max(0, Number((me as any)?.hasteRatePct ?? BASE_HASTE_RATE_PCT));
   const myFacingArrow = facingArrow(localFacingRef.current);
   const meEffects = activeSelfBuffsClient(me?.buffs, locallyConsumedJumpBoostAt).flatMap((b: any) => Array.isArray(b?.effects) ? b.effects : []);
@@ -12302,6 +12310,13 @@ export default function BattleArena({
       tooltipLines: [formatTooltipLine('最终伤害降低', formatStatPct(myHuajinPct))],
     },
     {
+      key: 'poFang',
+      label: '破防',
+      value: formatStatPct(myBasePoFangPct),
+      tooltipTitle: '破防',
+      tooltipLines: [formatTooltipLine('造成伤害提高', formatStatPct(myBasePoFangPct))],
+    },
+    {
       key: 'damageReduction',
       label: '伤害减免',
       value: formatWholePct(damageReductionPct),
@@ -12335,6 +12350,7 @@ export default function BattleArena({
     Math.abs(myBaseNeiGongCritChancePct - preset.stats.critChancePct) < 0.001 &&
     Math.abs(myBaseDefensePct - preset.stats.defensePct) < 0.001 &&
     Math.abs(myHuajinPct - preset.stats.huajinPct) < 0.001 &&
+    Math.abs(myBasePoFangPct - preset.stats.poFangPct) < 0.001 &&
     Math.abs(myMaxHp - preset.stats.maxHp) < 0.001 &&
     Math.abs(myAttackDamage - preset.stats.attackDamage) < 0.001
   );
@@ -12345,6 +12361,7 @@ export default function BattleArena({
     }
     if (statKey === 'defensePct') return Math.abs(myBaseDefensePct - preset.stats.defensePct) < 0.001;
     if (statKey === 'huajinPct') return Math.abs(myHuajinPct - preset.stats.huajinPct) < 0.001;
+    if (statKey === 'poFangPct') return Math.abs(myBasePoFangPct - preset.stats.poFangPct) < 0.001;
     if (statKey === 'maxHp') return Math.abs(myMaxHp - preset.stats.maxHp) < 0.001;
     return Math.abs(myAttackDamage - preset.stats.attackDamage) < 0.001;
   };
@@ -12359,12 +12376,13 @@ export default function BattleArena({
     }
     if (!statKey || statKey === 'defensePct') body.defensePct = preset.stats.defensePct;
     if (!statKey || statKey === 'huajinPct') body.huajinPct = preset.stats.huajinPct;
+    if (!statKey || statKey === 'poFangPct') body.poFangPct = preset.stats.poFangPct;
     if (!statKey || statKey === 'maxHp') body.maxHp = preset.stats.maxHp;
     if (!statKey || statKey === 'attackDamage') body.attackDamage = preset.stats.attackDamage;
 
     const statText = statKey
       ? `${COMBAT_PRESET_STAT_ROWS.find((row) => row.key === statKey)?.label ?? '属性'} ${formatCombatPresetValue(statKey, preset.stats[statKey])}`
-      : `外功会心/内功会心 ${preset.stats.critChancePct}%，防御力 ${preset.stats.defensePct}%，化劲 ${preset.stats.huajinPct}%，气血 ${formatGameAmount(preset.stats.maxHp)}，攻击力 ${formatGameAmount(preset.stats.attackDamage)}`;
+      : `外功会心/内功会心 ${preset.stats.critChancePct}%，破防 ${preset.stats.poFangPct}%，防御力 ${preset.stats.defensePct}%，化劲 ${preset.stats.huajinPct}%，气血 ${formatGameAmount(preset.stats.maxHp)}，攻击力 ${formatGameAmount(preset.stats.attackDamage)}`;
 
     return runCheatAction(
       statKey ? `set-${statKey}-${preset.id}` : `set-combat-preset-${preset.id}`,

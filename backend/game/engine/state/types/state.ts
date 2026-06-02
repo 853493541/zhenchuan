@@ -141,6 +141,8 @@ export interface PlayerState {
   defensePct?: number;
   /** Runtime 化劲 percentage (0-100). Applied at the end of damage calculation. */
   huajinPct?: number;
+  /** Runtime 破防 percentage (0-100). Increases damage by X% before defense. */
+  poFangPct?: number;
   /** Runtime 加速率 percentage shown to players. Timing uses a separate reduction constant. */
   hasteRatePct?: number;
 
