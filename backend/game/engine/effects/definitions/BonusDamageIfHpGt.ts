@@ -2,7 +2,7 @@
 
 import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
-import { resolveScheduledDamage } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 import { applyRedirectToOpponent, preCheckRedirect, processOnDamageTaken } from "../onDamageHooks";
@@ -34,13 +34,14 @@ export function handleBonusDamageIfHpGt(
     return;
   }
 
-  const final = resolveScheduledDamage({
+  const damageRoll = resolveScheduledDamageRoll({
     source,
     target,
     base: bonus,
     abilityId: ability.id,
     damageType: (ability as any).damageType,
   });
+  const final = damageRoll.damage;
 
   let eventDamage = final;
   let shieldAbsorbed = 0;
@@ -69,6 +70,7 @@ export function handleBonusDamageIfHpGt(
     abilityName: ability.name,
     effectType: "DAMAGE",
     value: eventDamage,
+    isCrit: damageRoll.isCrit,
     shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
   });
 }

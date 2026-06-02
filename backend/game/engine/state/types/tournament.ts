@@ -90,7 +90,7 @@ export const STARTING_ATTACK_DAMAGE = 61_000;
 export const STARTING_CRIT_CHANCE_PCT = 40;
 export const STARTING_DEFENSE_PCT = 23;
 export const STARTING_HUAJIN_PCT = 73;
-export const STARTING_PO_FANG_PCT = 42;
+export const STARTING_PO_FANG_PCT = 46;
 export const STARTING_GOLD = 5;
 export const GOLD_PER_ROUND = 5; // Income earned per battle
 

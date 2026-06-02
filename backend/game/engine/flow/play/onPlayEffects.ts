@@ -1,7 +1,7 @@
 // backend/game/engine/flow/onPlay.ts
 
 import { GameState } from "../../state/types";
-import { resolveScheduledDamage } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { pushEvent } from "../../../services/flow/events";
 
@@ -25,12 +25,13 @@ export function applyOnPlayBuffEffects(
       const base = effect.value ?? 0;
       if (base <= 0) continue;
 
-      const dmg = resolveScheduledDamage({
+      const onPlayRoll = resolveScheduledDamageRoll({
         source: player,
         target: player,
         base,
         abilityId: buff.sourceAbilityId,
       });
+      const dmg = onPlayRoll.damage;
 
       if (dmg <= 0) continue;
 
@@ -42,6 +43,7 @@ export function applyOnPlayBuffEffects(
         actorUserId: player.userId,
         targetUserId: player.userId,
         value: dmg,
+        isCrit: onPlayRoll.isCrit,
       });
     }
   }

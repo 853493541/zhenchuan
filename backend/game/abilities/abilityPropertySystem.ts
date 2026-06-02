@@ -684,6 +684,18 @@ function buildDamageFieldDefinitions(baseAbility: AbilityWithDescription) {
           step: 0.1,
         })
       );
+      if (typeof (effect as any).perDotDamage === "number") {
+        definitions.push(
+          createNumericFieldDefinition({
+            id: `effects.${effectIndex}.perDotDamage`,
+            label: "玉石俱焚每DOT额外伤害倍率",
+            description: `技能效果 ${effectIndex + 1} · 每吞噬一个持续伤害额外造成的伤害倍率`,
+            order: 253 + effectIndex,
+            path: ["effects", effectIndex, "perDotDamage"],
+            step: 0.1,
+          })
+        );
+      }
     }
 
     if (baseAbility.id === "yin_yue_zhan" && effect.type === "YIN_YUE_ZHAN" && typeof (effect as any).extraDamageValue === "number") {

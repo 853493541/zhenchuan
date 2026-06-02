@@ -8,7 +8,7 @@ import {
   ActiveBuff,
   BuffDefinition,
 } from "../state/types";
-import { resolveScheduledDamage } from "../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../utils/combatMath";
 import { addShieldToTarget, applyDamageToTarget, getMaxHp, removeLinkedShield } from "../utils/health";
 import { ABILITIES } from "../../abilities/abilities";
 import { applyPropertyOverridesToEffects, loadBuffEditorOverrides } from "../../abilities/buffEditorOverrides";
@@ -1182,9 +1182,10 @@ export function addBuff(params: {
         const source = state.players.find((p: any) => p.userId === sourceUserId);
         const target = state.players.find((p: any) => p.userId === targetUserId);
         if (target && target.hp > 0) {
-          const bonus = source
-            ? resolveScheduledDamage({ source, target, base: 1, abilityId: ability.id, damageType: (ability as any).damageType })
-            : 1;
+          const stackRoll = source
+            ? resolveScheduledDamageRoll({ source, target, base: 1, abilityId: ability.id, damageType: (ability as any).damageType })
+            : null;
+          const bonus = stackRoll ? stackRoll.damage : 1;
           applyDamageToTarget(target as any, bonus);
           if (bonus > 0) {
             pushEvent(state, {
@@ -1195,6 +1196,7 @@ export function addBuff(params: {
               abilityId: ability.id,
               abilityName: ability.name,
               value: bonus,
+              isCrit: stackRoll?.isCrit ?? false,
               effectType: "DAMAGE",
             });
           }

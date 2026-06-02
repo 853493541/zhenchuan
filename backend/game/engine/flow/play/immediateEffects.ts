@@ -2372,7 +2372,8 @@ export function applyImmediateEffects(params: {
           });
           // Deal the remaining damage as a single hit, attributed to the source DoT ability
           if (totalDmg > 0 && !hasDamageImmune(effTarget as any)) {
-            const settDmg = resolveScheduledDamage({ source, target: effTarget, base: totalDmg, abilityId: ability.id, damageType: (ability as any).damageType });
+            const settleRoll = resolveScheduledDamageRoll({ source, target: effTarget, base: totalDmg, abilityId: ability.id, damageType: (ability as any).damageType });
+            const settDmg = settleRoll.damage;
             if (settDmg > 0) {
               const { adjustedDamage: adjSett, redirectPlayer: rtSett, redirectAmt: raSett } = preCheckRedirect(state, effTarget as any, settDmg);
               const applySett = adjSett;
@@ -2390,6 +2391,7 @@ export function applyImmediateEffects(params: {
                 abilityName: settleBuff.sourceAbilityName ?? settleBuff.name,
                 effectType: "SETTLE_DOT",
                 value: applySett,
+                isCrit: settleRoll.isCrit,
                 shieldAbsorbed: (resultSett.shieldAbsorbed ?? 0) > 0 ? resultSett.shieldAbsorbed : undefined,
               });
               if (resultSett.hpDamage > 0 || resultSett.shieldAbsorbed > 0) {
@@ -2397,6 +2399,36 @@ export function applyImmediateEffects(params: {
               }
               if (rtSett && raSett > 0) {
                 applyRedirectToOpponent(state, rtSett, raSett);
+              }
+            }
+          }
+
+          // Per-dot burst: extra damage per consumed DoT
+          const perDotDamage = Number((effect as any).perDotDamage ?? 0);
+          if (perDotDamage > 0 && !hasDamageImmune(effTarget as any)) {
+            const dotBurstRoll = resolveScheduledDamageRoll({ source, target: effTarget, base: perDotDamage, abilityId: ability.id, damageType: (ability as any).damageType });
+            const dBurst = dotBurstRoll.damage;
+            if (dBurst > 0) {
+              const { adjustedDamage: adjB, redirectPlayer: rtB, redirectAmt: raB } = preCheckRedirect(state, effTarget as any, dBurst);
+              const applyB = adjB;
+              const resultB = applyB > 0 ? applyDamageToTarget(effTarget as any, applyB) : { hpDamage: 0, shieldAbsorbed: 0 };
+              state.events.push({
+                id: randomUUID(), timestamp: settleNow, turn: state.turn,
+                type: "DAMAGE",
+                actorUserId: source.userId,
+                targetUserId: effTarget.userId,
+                abilityId: ability.id,
+                abilityName: ability.name,
+                effectType: "DAMAGE",
+                value: applyB,
+                isCrit: dotBurstRoll.isCrit,
+                shieldAbsorbed: (resultB.shieldAbsorbed ?? 0) > 0 ? resultB.shieldAbsorbed : undefined,
+              });
+              if (resultB.hpDamage > 0 || resultB.shieldAbsorbed > 0) {
+                processOnDamageTaken(state, effTarget as any, resultB.hpDamage, source.userId, resultB.shieldAbsorbed);
+              }
+              if (rtB && raB > 0) {
+                applyRedirectToOpponent(state, rtB, raB);
               }
             }
           }

@@ -2488,6 +2488,7 @@ export const BASE_ABILITIES: AbilityRecord = {
         type: "SETTLE_SOURCE_DOTS",
         sourceAbilityIds: ["shang_yang_zhi", "lan_cui_yu_zhe", "zhong_lin_yu_xiu", "she_ying", "chan_xiao"],
         settleMultiplier: 1,
+        perDotDamage: 2,
       } as any,
     ],
     buffs: [],

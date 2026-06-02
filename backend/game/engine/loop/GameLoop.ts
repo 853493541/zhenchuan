@@ -2409,13 +2409,14 @@ export class GameLoop {
         if (reachAbility && reachTarget && (reachTarget.hp ?? 0) > 0 && !blocksEnemyTargeting(reachTarget) && !hasDamageImmune(reachTarget as any)) {
           const reachDamage = Math.max(0, Number(dashStateBefore.hitDamageOnComplete ?? 0));
           if (reachDamage > 0) {
-            const finalDamage = resolveScheduledDamage({
+            const reachDamageRoll = resolveScheduledDamageRoll({
               source: player,
               target: reachTarget,
               base: reachDamage,
               abilityId: reachAbilityId,
               damageType: (reachAbility as any)?.damageType,
             });
+            const finalDamage = reachDamageRoll.damage;
             if (finalDamage > 0) {
               const { adjustedDamage, redirectPlayer, redirectAmt } = preCheckRedirect(
                 this.state, reachTarget as any, finalDamage
@@ -2435,6 +2436,7 @@ export class GameLoop {
                 abilityName: reachAbility.name,
                 effectType: dashStateBefore.hitEffectTypeOnComplete ?? "DAMAGE",
                 value: reachApply,
+                isCrit: reachDamageRoll.isCrit,
               } as any);
               if (reachResult.hpDamage > 0 || reachResult.shieldAbsorbed > 0) {
                 processOnDamageTaken(this.state, reachTarget as any, reachResult.hpDamage, player.userId, reachResult.shieldAbsorbed);
@@ -4048,7 +4050,7 @@ export class GameLoop {
                     actorUserId: opp.userId,
                     targetUserId: player.userId,
                     abilityId: buff.sourceAbilityId,
-                    abilityName: buff.sourceAbilityName ?? buff.name,
+                    abilityName: buff.name ?? buff.sourceAbilityName,
                     effectType: "PERIODIC_DAMAGE",
                     value: periApply,
                     isCrit: periDamageRoll.isCrit,
@@ -4429,13 +4431,14 @@ export class GameLoop {
             // TIMED_SELF_DAMAGE: delayed damage applied to the buff owner.
             if (e.type === "TIMED_SELF_DAMAGE") {
               const sourcePlayer = this.state.players.find((p) => p.userId === (buff as any).sourceUserId) ?? opp;
-              const dmg = resolveScheduledDamage({
+              const timedSelfRoll = resolveScheduledDamageRoll({
                 source: sourcePlayer,
                 target: player,
                 base: e.value ?? 0,
                 abilityId: buff.sourceAbilityId,
                 damageType: (ABILITIES[buff.sourceAbilityId ?? ""] as any)?.damageType,
               });
+              const dmg = timedSelfRoll.damage;
               const {
                 adjustedDamage: timedApply,
                 redirectPlayer: timedRedirectPlayer,
@@ -4460,6 +4463,7 @@ export class GameLoop {
                   abilityName: buff.sourceAbilityName ?? buff.name,
                   effectType: "TIMED_SELF_DAMAGE",
                   value: timedApply,
+                  isCrit: timedSelfRoll.isCrit,
                   shieldAbsorbed: timedResult.shieldAbsorbed > 0 ? timedResult.shieldAbsorbed : undefined,
                 });
               }

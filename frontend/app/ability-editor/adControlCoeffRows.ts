@@ -188,9 +188,9 @@ export const AD_CONTROL_COEFF_ROWS: AdControlCoeffRow[] = [
   },
   {
     "abilityName": "玉石俱焚",
-    "outputType": "额外造成伤害",
-    "textCoeff": "1.0",
-    "currentCoeff": "0.074\\|0.104\\|0.099\\|0.086\\|0.52"
+    "outputType": "每DOT额外伤害",
+    "textCoeff": "2.0",
+    "currentCoeff": "2.0"
   },
   {
     "abilityName": "玉石俱焚",
@@ -263,12 +263,6 @@ export const AD_CONTROL_COEFF_ROWS: AdControlCoeffRow[] = [
     "outputType": "造成持续伤害",
     "textCoeff": "0.125",
     "currentCoeff": "0.1"
-  },
-  {
-    "abilityName": "剑主天地",
-    "outputType": "引爆造成伤害",
-    "textCoeff": "0.125",
-    "currentCoeff": "1+0.1*N"
   },
   {
     "abilityName": "剑主天地",

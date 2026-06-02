@@ -1148,7 +1148,7 @@ const COMBAT_PRESET_RARITIES = [
   { id: 'white', label: '白装', color: '#f3f4f6', stats: { critChancePct: 0, defensePct: 0, huajinPct: 40, maxHp: 300000, attackDamage: 10000, poFangPct: 30 } },
   { id: 'green', label: '绿装', color: '#42b663', stats: { critChancePct: 30, defensePct: 12, huajinPct: 55, maxHp: 900000, attackDamage: 30000, poFangPct: 32 } },
   { id: 'blue', label: '蓝装', color: '#3a8dff', stats: { critChancePct: 36, defensePct: 16, huajinPct: 60, maxHp: 1050000, attackDamage: 40000, poFangPct: 35 } },
-  { id: 'purple', label: '紫装', color: '#9f5fd9', stats: { critChancePct: 40, defensePct: 23, huajinPct: 73, maxHp: 1200000, attackDamage: 61000, poFangPct: 42 } },
+  { id: 'purple', label: '紫装', color: '#9f5fd9', stats: { critChancePct: 40, defensePct: 23, huajinPct: 73, maxHp: 1200000, attackDamage: 61000, poFangPct: 46 } },
 ] as const;
 
 const COMBAT_PRESET_STAT_ROWS: Array<{ key: CombatPresetStatKey; label: string }> = [

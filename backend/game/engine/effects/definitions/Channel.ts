@@ -7,7 +7,7 @@ import {
   ActiveBuff,
 } from "../../state/types";
 import { blocksEnemyTargeting } from "../../rules/guards";
-import { resolveScheduledDamage, resolveHealAmountRoll } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll, resolveHealAmountRoll } from "../../utils/combatMath";
 import { applyDamageToTarget, applyHealToTarget } from "../../utils/health";
 import { pushEvent } from "../events";
 import { applyRedirectToOpponent, preCheckRedirect, processOnDamageTaken } from "../onDamageHooks";
@@ -46,13 +46,14 @@ export function handleChannelEffect(
       value: 0,
     });
   } else {
-    const dmg = resolveScheduledDamage({
+    const channelDamageRoll = resolveScheduledDamageRoll({
       source,
       target: enemy,
       base: 10,
       abilityId: ability.id,
       damageType: (ability as any).damageType,
     });
+    const dmg = channelDamageRoll.damage;
 
     let eventDamage = dmg;
     let shieldAbsorbed = 0;
@@ -81,6 +82,7 @@ export function handleChannelEffect(
       abilityName: ability.name,
       effectType: "DAMAGE",
       value: eventDamage,
+      isCrit: channelDamageRoll.isCrit,
       shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
     });
   }

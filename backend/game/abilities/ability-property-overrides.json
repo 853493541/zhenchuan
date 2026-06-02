@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-06-01T00:59:19.761Z",
+  "updatedAt": "2026-06-02T02:37:11.019Z",
   "abilities": {
     "baizu": {
       "properties": {
@@ -628,11 +628,12 @@
       "numeric": {
         "effects.0.value": 0.5989,
         "cooldownTicks": 450,
-        "effects.1.settleMultiplier": 1
+        "effects.1.settleMultiplier": 1,
+        "effects.1.perDotDamage": 1
       },
       "description": "对目标造成(0.5989*攻击力)点伤害，若该目标正受到自身“绝境·商阳指”“绝境·兰摧玉折”“绝境·钟林毓秀”“绝境·蛇影”“绝境·蟾啸”持续性伤害，则使其剩余伤害立即生效。每一个持续伤害效果被吞噬会额外造成(1.0攻击力）点伤害。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "fixed",
+      "adControlStatus": "needs-more",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "万花",
@@ -2051,7 +2052,7 @@
       },
       "description": "对目标造成(3.8541*攻击力)点伤害，并附带1层急曲效果，若目标已存在3层急曲则直接引爆。\n急曲:每3秒造成(0.125*攻击力)点伤害，持续18秒，可以叠加3层。",
       "descriptionReviewStatus": "fixed",
-      "adControlStatus": "unfixed",
+      "adControlStatus": "fixed",
       "cooldownReviewStatus": "fixed",
       "tags": {
         "school": "七秀",

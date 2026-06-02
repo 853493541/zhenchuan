@@ -19,7 +19,7 @@ import { GameState, Ability, AbilityEffect, ActiveBuff } from "../../state/types
 import { PlayerState } from "../../state/types";
 import { Position, gameplayUnitsToWorldUnits } from "../../state/types/position";
 import { pushEvent } from "../events";
-import { resolveScheduledDamage } from "../../utils/combatMath";
+import { resolveScheduledDamageRoll } from "../../utils/combatMath";
 import { applyDamageToTarget } from "../../utils/health";
 import { blocksEnemyTargeting, hasDamageImmune } from "../../rules/guards";
 import { getDunLiReflectVictim } from "../dunLiReflect";
@@ -249,13 +249,14 @@ export function handleDirectionalDash(
       );
       if (distToPath > routeRadius) continue;
 
-      const dmg = resolveScheduledDamage({
+      const damageRoll = resolveScheduledDamageRoll({
         source: source as any,
         target: targetPlayer,
         base: effect.routeDamage ?? 0,
         abilityId: ability.id,
         damageType: (ability as any).damageType,
       });
+      const dmg = damageRoll.damage;
 
       // Damage immunity + 盾立 reflect
       let damageVictim: any = targetPlayer;
@@ -297,6 +298,7 @@ export function handleDirectionalDash(
         abilityName: ability.name,
         effectType: "DAMAGE",
         value: eventDamage,
+        isCrit: damageRoll.isCrit,
         shieldAbsorbed: shieldAbsorbed > 0 ? shieldAbsorbed : undefined,
       });
     }
