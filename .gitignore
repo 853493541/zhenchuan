@@ -112,3 +112,6 @@ frontend/node_modules/
 cookies.txt
 cookies/*.txt
 *.session
+
+# exported-map viewer-only data
+backend/game/exported-maps/VIEW ONLY/

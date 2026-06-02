@@ -1,0 +1,18 @@
+{
+  "kind": "jx3-transform-conventions",
+  "version": 1,
+  "coordinateSystem": "three-rh",
+  "entities": {
+    "defaultFile": "entities/full.json",
+    "defaultMatrixFormat": "source-lh-row-major",
+    "normalizedRhIndexFile": "entity-index-rh.json",
+    "normalizedRhFile": "entities/full.rh.json",
+    "normalizedRhMatrixFormat": "three-matrix4-column-major",
+    "normalizedRhRequiresImporterZFlip": false,
+    "worldPosFormat": "three-rh"
+  },
+  "notes": [
+    "Use entity-index-rh.json + entities/full.rh.json to avoid importer-side LH/RH Z-flip conversion.",
+    "entity-index.json + entities/full.json remain for backward compatibility with existing loaders."
+  ]
+}

@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "formatRevision": 2,
+  "generator": "collision-generator-v3-shell",
+  "generatedAt": 1780386556689,
+  "mesh": "wj_破草席001_003_hd.glb",
+  "models": {
+    "broadPhase": "box-prisms",
+    "narrowPhase": "surface-shell-triangles",
+    "shellThickness": 0.06,
+    "shellTriangleFormat": "packed-triangle-xyz9",
+    "attachment": "per-glb-sidecar-json"
+  },
+  "status": "ok",
+  "error": null,
+  "hasCollision": true,
+  "collisionStats": {
+    "parts": 1,
+    "shells": 1,
+    "shellTriangles": 2
+  },
+  "parts": [
+    {
+      "id": "part_0",
+      "localCx": -10.659,
+      "localCz": -147.665,
+      "localW": 114.965,
+      "localD": 0,
+      "localBaseY": 0,
+      "localTopY": 0
+    }
+  ],
+  "shells": [
+    {
+      "type": "surface-shell",
+      "thickness": 0.06,
+      "triangleCount": 2,
+      "triangleFormat": "packed-triangle-xyz9",
+      "bounds": {
+        "minX": -68.141,
+        "maxX": 46.824,
+        "minY": 0,
+        "maxY": 0,
+        "minZ": -147.665,
+        "maxZ": -147.665
+      },
+      "triangles": [
+        [
+          -17.679,
+          0,
+          -147.665,
+          -17.662,
+          0,
+          -147.665,
+          46.824,
+          0,
+          -147.665
+        ],
+        [
+          -17.662,
+          0,
+          -147.665,
+          -17.679,
+          0,
+          -147.665,
+          -68.141,
+          0,
+          -147.665
+        ]
+      ]
+    }
+  ]
+}

@@ -1,6 +1,8 @@
 /**
  * DraftScreen - Main screen during draft phase
  * Shows shop, selection, gold/level, and bench area (备战区)
+ *
+ * NOTE: No longer in use. This was a design for the TFT version of the game.
  */
 
 "use client";

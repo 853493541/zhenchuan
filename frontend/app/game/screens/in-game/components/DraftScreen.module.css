@@ -5,7 +5,7 @@
   width: 100%;
   background: linear-gradient(135deg, #0f1f3f 0%, #1a1a2e 50%, #2d1b4e 100%);
   color: white;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Source Han Sans CN", sans-serif;
   overflow: hidden;
 }
 
