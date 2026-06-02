@@ -201,8 +201,9 @@ export default function HomePage() {
   const [me, setMe] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [autoJoinEnabled, setAutoJoinEnabled] = useState(true);
-  const [resourcePackGateReady, setResourcePackGateReady] = useState(false);
-  const [resourcePackGateChecking, setResourcePackGateChecking] = useState(true);
+  const alreadyPassed = typeof window !== 'undefined' && window.localStorage.getItem(RESOURCE_PACK_READY_STORAGE_KEY) === 'true';
+  const [resourcePackGateReady, setResourcePackGateReady] = useState(alreadyPassed);
+  const [resourcePackGateChecking, setResourcePackGateChecking] = useState(!alreadyPassed);
   const [selectedStartMode, setSelectedStartMode] = useState<StartMode>(YUMEN_1V1_BASIC_MODE);
   const [openModeMenu, setOpenModeMenu] = useState(false);
   const [resourcePackOverlay, setResourcePackOverlay] = useState<{ action: "download" | "check"; nonce: number } | null>(null);
