@@ -3908,6 +3908,12 @@ function formatGameHealthRatio(current: number, max: number): string {
 
 function formatCompactSeconds(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds <= 0) return '0';
+  if (seconds >= 60) {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.floor(seconds % 60);
+    if (remainingSeconds === 0) return `${minutes}分钟`;
+    return `${minutes}分${remainingSeconds}秒`;
+  }
   return formatCompactNumber(seconds);
 }
 
@@ -3918,7 +3924,9 @@ function formatGcdBarSeconds(seconds: number): string {
 
 function formatTicksAsSeconds(ticks: number | undefined): string {
   const safeTicks = Math.max(0, Number(ticks ?? 0));
-  return `${formatCompactSeconds(safeTicks / SERVER_TICK_RATE)}秒`;
+  const seconds = safeTicks / SERVER_TICK_RATE;
+  if (seconds >= 60) return formatCompactSeconds(seconds);
+  return `${formatCompactSeconds(seconds)}秒`;
 }
 
 function getRuntimeCountdownTicks(source: any, valueKey: string, syncedAtKey: string, nowMs: number): number {
